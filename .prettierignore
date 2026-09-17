@@ -3,3 +3,9 @@ dist/
 test-results/
 playwright-report/
 bun.lock
+src-tauri/target/
+src-tauri/gen/
+public/pdfjs/
+tmp/
+output/
+tests/platform/.compiled/

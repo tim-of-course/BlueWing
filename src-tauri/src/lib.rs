@@ -150,6 +150,8 @@ pub fn run() {
             )
             .title("Bluewing")
             .inner_size(1400.0, 900.0)
+            // Terminal commands and release downloads must finish while another app is active.
+            .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
             .on_page_load(move |_, payload| {
                 if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
                     page_handle

@@ -12,7 +12,9 @@ The previous PlanVyper application is a reference. **Its code, documentation, te
 
 Complete this workflow: create a project, import a PDF, choose and calibrate a sheet, draw lengths/areas/counts, apply a simple calculation, inspect its sources, export quantities, close, and reopen. An agent can inspect the same project and make the same edits through the CLI while the desktop app shows the results.
 
-Proposed initial scope:
+The first usable MVP targets macOS. Windows follows after the macOS workflow is usable and verified.
+
+Initial scope:
 
 - One open project session, multiple sheets, local project storage, and one base calibration per sheet.
 - Paths, explicit area polygons, and count markers; selection, point editing, move, copy, and delete.
@@ -109,6 +111,8 @@ Store the current project, not an event-sourced reconstruction of every past ent
 
 SQLite is a reasonable proposed container for current records and imported source assets. Keep SQL mapping and migrations in TypeScript; Rust executes generic, bounded transactions on an opened project connection. Ordinary edits update affected records without copying PDFs or all history. Use one writable application session per project in the MVP. Opening the same project in another writer is outside that scope.
 
+The implementation uses a `.bluewing` SQLite container with format version 1. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
+
 Version the new project format. Importing old project files is a separate need to confirm, not a reason to inherit the old database schema. Add explicit migrations when the new model evolves rather than building representations for unimplemented future features.
 
 ## CLI: operate the desktop project
@@ -143,7 +147,7 @@ Use `@solidjs/diagnostics` in development and CI. Give important UI stores, sign
 
 Run development checks before the production build and browser smoke checks. RC.8 also supports an observe build, but it omits some development checks, so it does not replace development verification. Bluewing starts as a client-rendered application; SSR and SSR tests are not required for this desktop workflow. Chromium and WebKit checks supplement the later native app checks.
 
-The initial scaffold verifies browser startup and sheet-panel toggling. It does not establish the native shell, CLI, persistence, offline delivery, or any takeoff workflow as complete. See [repository setup](../README.md) for commands and current validation scope.
+Development checks include sheet-panel toggling and an estimating workflow through PDF import, calibration, drawing, recipes, quantities, export, and reopening. Native checks exercise the desktop bridge, SQLite, CLI image rendering, and complete cached web-version activation. See [repository setup](../README.md) for commands and the separate validation scopes.
 
 ## Web application updates
 
@@ -171,3 +175,7 @@ Write new product decisions into this brief in place. Historical specs remain ev
 4. Change a persisted property and a calculation command. Observe which modules change and whether unrelated behavior breaks before expanding the feature list.
 
 Use focused domain examples and a few complete workflows to check these boundaries. Test the actual native app as well as the browser development view. Do not infer readiness from the number of generated tests or implemented command names.
+
+Use the local Behavioral Health Group permit set dated March 27, 2026 as a real import/rendering reference. It has 15 sheets, including the A2.0 new-work floor plan. The source PDF is in the user's Downloads directory and is not committed to the repository. It supplements the independent wall, area, count, and package-rounding examples; it is not a complete MVP acceptance specification.
+
+Keep the project in Git and save useful working checkpoints after the relevant checks pass. The reference repository remains separate.

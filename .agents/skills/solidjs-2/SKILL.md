@@ -19,6 +19,7 @@ Read the installed types when an API is uncertain. `package.json` and `bun.lock`
 - Components execute setup once. Keep reactive property reads in JSX, accessors, memos, or the compute half of effects. Destructuring props or reading a signal into a plain variable in component setup loses tracking. Use `untrack` only for an intentional snapshot.
 - Use `class` with strings, arrays, or objects. `classList`, `className`, `htmlFor`, `use:`, and `/*@once*/` are old forms. Use `for` on labels and camel-case handlers such as `onClick`.
 - Pass values to DOM attributes, for example `value={name()}`. Pass accessors to a component only when its declared API expects an accessor. Enumerated attributes such as `draggable` and `aria-expanded` use string tokens, for example `aria-expanded={open() ? 'true' : 'false'}`. Boolean `false` can remove an attribute rather than write the string `"false"`.
+- Check the web JSX types for HTML attribute spelling. For example, keyboard focus uses `tabindex`, not React's `tabIndex`.
 - Default `<For>` gives a raw item and index accessor; `keyed={false}` gives an item accessor and numeric index; a key function gives item and index accessors. Match the callback to the mode. `Index` is removed.
 
 ## Batching, effects, and ownership

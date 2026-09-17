@@ -1,46 +1,81 @@
 # Bluewing
 
-Construction takeoff application restart. Product scope and architecture live in [the restart brief](docs/restart-brief.md). This checkout currently provides the Solid 2 web scaffold and development tooling. Native integration, project saving, PDF import, drawing, recipes, and offline web updates are still to be built.
+A macOS-first construction takeoff app. Import PDF plans, calibrate sheets, draw paths, areas, and counts, and calculate quantities with editable project recipes. Flat groups can reuse the same drawing objects. Quantities show source contributions, waste, whole-package rounding, and incomplete calculations.
+
+Projects save locally as `.bluewing` SQLite files. UI and CLI edits share one TypeScript command session with revision checks and session undo/redo. The small Tauri shell provides files, database transactions, the CLI connection, and offline web bundles. Windows support follows macOS.
 
 ## Run
 
-Use Bun (the tested version is recorded in `package.json`). Node from `.node-version` is also used by tools with Node entry points, including Playwright. Install the locked dependencies:
+The initial desktop build requires macOS 15.4 or newer for the current PDF renderer's web APIs. Use Bun 1.3.14, Node from `.node-version`, Rust, and the macOS Xcode command-line tools:
 
 ```sh
 bun install --frozen-lockfile
-bun run dev
+bun run desktop
 ```
 
-The page contains an empty workspace and a working sheet-panel toggle. It is a small browser integration target, not a completed takeoff workflow.
+For browser development, use `bun run dev`. It runs the real application with IndexedDB storage; Open reopens the most recently created browser project. Desktop projects use native file dialogs and SQLite.
+
+Build the macOS app:
+
+```sh
+bun run desktop:build
+```
+
+The output is `src-tauri/target/release/bundle/macos/Bluewing.app`. The bundle includes the `bluewing` CLI beside its desktop executable in `Contents/MacOS`. The local build is unsigned and not notarized. Signing for distribution is separate from running the MVP on this machine.
+
+## Use
+
+1. Create a project and import a PDF. Every page becomes a sheet.
+2. Choose Calibrate, click the ends of a known dimension, and enter its physical length.
+3. Draw a Path, Area, or Count set. Finish a gesture with Enter or Finish; Escape cancels.
+4. Select drawing objects and add a named group. Assign a recipe, edit its inputs, and inspect Quantities.
+5. Export CSV or JSON. Each completed edit saves before the UI accepts it. Close and reopen to continue later; undo history lasts for the current project session.
+
+Shortcuts: V select, L path, F area, C count, R calibration, Q drawing/quantities, and Cmd-Z / Shift-Cmd-Z undo/redo. Shift-click selects multiple objects; drag a selected point to edit it; Alt-drag moves the selection. Space-drag pans, and Ctrl/Cmd-scroll zooms. Snapping copies coordinates without linking objects.
+
+The recipe editor supports number/boolean inputs, declared units, multiple outputs, and constrained formulas. Starter recipes cover wall area, floor area, counts, and a stud estimate. See the [product brief](docs/restart-brief.md) for calculation rules and deferred features.
+
+The CLI operates the running desktop app:
+
+```sh
+src-tauri/target/release/bundle/macos/Bluewing.app/Contents/MacOS/bluewing commands.list
+```
+
+See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs/web-releases.md). A public web-release host is not configured in this repository.
 
 ## Verify
 
-Install the test browsers once:
+Install the browsers once, then run the web checks:
 
 ```sh
 bunx --no-install playwright install chromium webkit
-```
-
-On Linux, use `bunx --no-install playwright install --with-deps chromium webkit` to install the system dependencies too. Then run:
-
-```sh
 bun run verify
 ```
 
-This runs type checking, ESLint, formatting checks, development browser diagnostics, the production build, and production browser smoke tests in that order. Individual commands are defined in `package.json`. `bun run format` applies formatting.
+On Linux, add `--with-deps` to the browser install. Verification runs type checking, lint, formatting, core/storage tests, development diagnostics, the production build, and production browser workflows. The platform test command uses Bun to bundle its tests and Node's SQLite implementation to execute SQL; Chromium and WebKit exercise actual IndexedDB transactions.
 
-ESLint uses strict type-aware TypeScript rules, the Solid 2 preset, and JSX accessibility rules, with zero warnings allowed. ESLint 9 is retained because the current accessibility plugin declares support through version 9. TypeScript 6 matches the supported range of typescript-eslint; installing the newest major of each package independently would produce incompatible peers.
+Native checks:
 
-Development browser tests record Solid diagnostics and attribution, check visible behavior and silent holds, and bound expected reruns. Production tests verify the built page and the absence of the development bridge. Both run in Chromium and WebKit. The current sheet toggle is synchronous; its no-silent-holds assertion does not yet prove async estimating workflows are responsive. Add delayed-source scenarios when those workflows are implemented.
+```sh
+bun run build
+bun run test:native
+cargo build --manifest-path src-tauri/Cargo.toml --locked --bins
+python3 tests/native/smoke.py
+python3 tests/desktop/workflow.py
+```
 
-JSON diagnostic artifacts and failure traces are retained in `test-results/` and the HTML reports in `playwright-report/`. The GitHub Actions workflow runs the same stages and uploads browser evidence. It takes effect when this project is put in a GitHub repository; no hosted CI run is implied by local verification.
+Set `BLUEWING_TEST_PLAN` to the local Behavioral Health Group PDF when running the desktop workflow to include its 15-sheet import and rendering check. That source plan is not stored in Git. Independent fixtures establish 384 sq ft wall area, 360 sq ft floor area, three items, and allowance/package arithmetic.
 
-The diagnostic bridge is installed only by the development server, including its local `/__solid/diagnostics` endpoint. Production uses the ordinary static Vite build. SSR is not part of the current desktop architecture.
+To verify full web delivery, build a release with `bun run web:release <version>` and set `BLUEWING_TEST_RELEASE_DIRECTORY` to that output directory when running `tests/desktop/workflow.py`. The test starts a local release server, stages and activates the release, stops the server, then restarts and uses the cached app. Set `BLUEWING_NATIVE_BIN_DIR` to an app bundle's `Contents/MacOS` directory to test its included binaries.
 
-## Dependencies and agents
+Browser traces and Solid diagnostic JSON are retained in `test-results/`. Native product evidence is written to `tmp/desktop-workflow/`. The GitHub workflow checks web behavior and builds a macOS app; a local pass does not imply a hosted CI run.
 
-Read [the Solid 2 repo skill](.agents/skills/solidjs-2/SKILL.md) when working on components, reactive state, dependency upgrades, or frontend tests. `AGENTS.md` points agents to it automatically.
+See the [MVP validation record](docs/validation.md) for the completed checks, real-plan evidence, and remaining verification limits.
 
-Direct packages are exact-pinned; package overrides keep the transitive Solid compiler and signals runtime aligned. `bunfig.toml` makes new dependencies exact by default. Keep `bun.lock` in version control and use `bun install --frozen-lockfile` for reproducible installs. Upgrade the Solid package set deliberately, including its compiler, renderer, diagnostics, and integrations, with development and production checks in the same change.
+## Development
 
-Browser checks are only the web portion of validation. The native shell, desktop CLI, saving/reopening, web-version activation, and offline startup remain the first product milestone in the restart brief.
+The [Solid 2 repo skill](.agents/skills/solidjs-2/SKILL.md) covers RC-specific APIs and diagnostics. Solid is pinned to `2.0.0-rc.8` with its compatible compiler, renderer, diagnostics, and Vite integration. Keep `bun.lock` and `src-tauri/Cargo.lock` committed. Upgrade the Solid package set deliberately.
+
+`src/core` owns plain TypeScript geometry, measurement, recipes, commands, and accepted state. `src/platform` maps records/assets to storage and orchestrates web updates. `src/app` connects UI and CLI to the session. `src/pdf` and the shared canvas painter serve both drawing and CLI images. Rust in `src-tauri` supplies generic native capabilities.
+
+Use Git checkpoints after relevant checks pass. The old PlanVyper project is a separate reference, never a runtime dependency.

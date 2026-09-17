@@ -1,4 +1,5 @@
 node_modules/
+public/pdfjs/
 dist/
 test-results/
 playwright-report/
@@ -9,3 +10,6 @@ tmp/
 output/
 *.bluewing
 *.bluewing-journal
+*.bluewing.lock
+tests/platform/.compiled/
+__pycache__/
