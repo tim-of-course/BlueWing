@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bluewing",
+  "version": "0.1.0",
+  "identifier": "com.bluewing.app",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "bun run dev --port 1420 --strictPort",
+    "beforeBuildCommand": "bun run build"
+  },
+  "app": {
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": ["app"] }
+}
