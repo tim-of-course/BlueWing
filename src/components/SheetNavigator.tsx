@@ -10,6 +10,7 @@ import { Portal } from '@solidjs/web';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import type { Group, Sheet } from '../core/types';
+import { convertQuantity, measureGeometry } from '../core/geometry';
 import ToolIcon from './ToolIcon';
 import './sheet-navigator.css';
 
@@ -24,6 +25,35 @@ interface Preview {
   sheet: Sheet;
   x: number;
   y: number;
+}
+
+const number = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+const groupMetrics = [
+  { kind: 'path', key: 'length', unit: 'ft', label: 'ft' },
+  { kind: 'area', key: 'area', unit: 'ft2', label: 'ft²' },
+  { kind: 'count', key: 'count', unit: 'ea', label: 'ea' },
+] as const;
+
+function VisibilityIcon(props: { visible: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10Z" />
+      <circle cx="10" cy="10" r="2.3" />
+      <Show when={!props.visible}>
+        <path d="m3 3 14 14" />
+      </Show>
+    </svg>
+  );
 }
 
 function SheetPreview(props: {
@@ -215,7 +245,13 @@ export default function SheetNavigator(props: Props) {
   };
   const selectGroup = (group: Group, sheetId?: string) => {
     if (sheetId) props.controller.setActiveSheetId(sheetId);
-    props.controller.setSelection(sheetId ? members(group, sheetId) : []);
+    props.controller.setSelection(
+      sheetId
+        ? members(group, sheetId).filter((id) =>
+            props.controller.visibleGeometryIds().has(id),
+          )
+        : [],
+    );
     props.controller.setActiveGroupId(group.id);
     props.onInspect();
   };
@@ -238,44 +274,111 @@ export default function SheetNavigator(props: Props) {
       }
     return [...kinds];
   };
-  const groupRow = (group: Group, sheetId?: string) => (
-    <button
-      type="button"
-      class={[
-        'group-row',
-        props.controller.activeGroupId() === group.id &&
-        (!sheetId || props.controller.activeSheetId() === sheetId)
-          ? 'active'
-          : '',
-      ]}
-      disabled={props.disabled}
-      onClick={() => {
-        selectGroup(group, sheetId);
-      }}
-      aria-label={`${group.name}, ${String(sheetId ? members(group, sheetId).length : group.geometryIds.length)} drawing objects`}
-      title={`${groupKinds(group, sheetId).join(', ') || 'Empty group'} · ${String(Object.values(props.controller.project()?.assignments ?? {}).filter((entry) => entry.groupId === group.id).length)} recipes`}
-    >
-      <span class="group-kind" style={{ color: group.color ?? '#3b82f6' }}>
-        <Show
-          when={groupKinds(group, sheetId).length === 1}
-          fallback={
-            <span aria-hidden="true">
-              {groupKinds(group, sheetId).length ? '◈' : '○'}
-            </span>
-          }
+  const groupRow = (group: Group, sheetId?: string) => {
+    const totals = createMemo(
+      () => {
+        const project = props.controller.project();
+        if (!project) return [];
+        const measured = group.geometryIds.flatMap((id) => {
+          const geometry = project.geometries[id];
+          return geometry && geometry.sheetId === sheetId
+            ? [
+                {
+                  kind: geometry.kind,
+                  value: measureGeometry(project, geometry),
+                },
+              ]
+            : [];
+        });
+        return groupMetrics.flatMap((metric) => {
+          const values = measured.filter((item) => item.kind === metric.kind);
+          if (!values.length) return [];
+          const unavailable = values.some((item) => !item.value[metric.key]);
+          const total = values.reduce((sum, item) => {
+            const quantity = item.value[metric.key];
+            return (
+              sum +
+              (quantity ? convertQuantity(quantity, metric.unit).value : 0)
+            );
+          }, 0);
+          return [
+            {
+              text: `${unavailable ? '—' : number.format(total)} ${metric.label}`,
+              title: unavailable
+                ? `${metric.key} unavailable: ${[...new Set(values.flatMap((item) => (item.value.diagnostic ? [item.value.diagnostic] : [])))].join('; ')}`
+                : `${metric.key}: ${number.format(total)} ${metric.label}`,
+            },
+          ];
+        });
+      },
+      { name: 'navigator.groupTotals' },
+    );
+    const visible = () =>
+      !sheetId || props.controller.isGroupVisible(group.id, sheetId);
+    return (
+      <div class={['group-line', !visible() ? 'geometry-hidden' : '']}>
+        <button
+          type="button"
+          class={[
+            'group-row',
+            props.controller.activeGroupId() === group.id &&
+            (!sheetId || props.controller.activeSheetId() === sheetId)
+              ? 'active'
+              : '',
+          ]}
+          disabled={props.disabled}
+          onClick={() => {
+            selectGroup(group, sheetId);
+          }}
+          aria-label={`${group.name}, ${String(sheetId ? members(group, sheetId).length : group.geometryIds.length)} drawing objects`}
+          title={`${group.name} · ${groupKinds(group, sheetId).join(', ') || 'Empty group'} · ${String(Object.values(props.controller.project()?.assignments ?? {}).filter((entry) => entry.groupId === group.id).length)} recipes`}
         >
-          <ToolIcon tool={groupKinds(group, sheetId)[0] ?? 'select'} />
+          <span class="group-kind">
+            <Show
+              when={groupKinds(group, sheetId).length === 1}
+              fallback={
+                <span aria-hidden="true">
+                  {groupKinds(group, sheetId).length ? '◈' : '○'}
+                </span>
+              }
+            >
+              <ToolIcon tool={groupKinds(group, sheetId)[0] ?? 'select'} />
+            </Show>
+          </span>
+          <span class="row-name">{group.name}</span>
+          <span class="group-totals">
+            <For each={totals()} fallback={<small>Empty</small>}>
+              {(total) => <small title={total.title}>{total.text}</small>}
+            </For>
+          </span>
+          <span
+            class="group-color"
+            style={{ 'background-color': group.color ?? '#3b82f6' }}
+            aria-hidden="true"
+          />
+        </button>
+        <Show when={sheetId} fallback={<span class="visibility-spacer" />}>
+          {(id) => (
+            <button
+              type="button"
+              class="navigator-visibility"
+              disabled={props.disabled}
+              aria-label={`${visible() ? 'Hide' : 'Show'} ${group.name} on ${props.controller.project()?.sheets[id()]?.name ?? 'sheet'}`}
+              title={`${visible() ? 'Hide' : 'Show'} group drawing objects`}
+              onClick={() => {
+                props.controller.setGroupVisible(group.id, id(), !visible());
+              }}
+            >
+              <VisibilityIcon visible={visible()} />
+            </button>
+          )}
         </Show>
-      </span>
-      <span class="row-name">{group.name}</span>
-      <small>
-        {sheetId ? members(group, sheetId).length : group.geometryIds.length}
-      </small>
-    </button>
-  );
+      </div>
+    );
+  };
   return (
     <>
-      <div class="panel-heading">
+      <div class="panel-heading navigator-heading">
         <h2>
           Sheets <span class="muted">{sheets().length}</span>
         </h2>
@@ -297,10 +400,21 @@ export default function SheetNavigator(props: Props) {
         <input
           type="search"
           aria-label="Filter sheets and groups"
-          placeholder="Filter sheets & groups…"
+          placeholder="Find sheet or group"
           value={filter()}
           onInput={(event) => setFilter(event.currentTarget.value)}
         />
+        <Show when={filter()}>
+          <button
+            type="button"
+            class="navigator-clear"
+            aria-label="Clear sheet and group filter"
+            title="Clear filter"
+            onClick={() => setFilter('')}
+          >
+            ×
+          </button>
+        </Show>
       </div>
       <div class="sheet-list" onScroll={hidePreview}>
         <For
@@ -340,7 +454,14 @@ export default function SheetNavigator(props: Props) {
                   leavePreview();
               }}
             >
-              <div class="sheet-line">
+              <div
+                class={[
+                  'sheet-line',
+                  !props.controller.isSheetVisible(sheet.id)
+                    ? 'geometry-hidden'
+                    : '',
+                ]}
+              >
                 <button
                   type="button"
                   class="sheet-expand"
@@ -434,6 +555,23 @@ export default function SheetNavigator(props: Props) {
                   }}
                 >
                   <span class="row-name">{sheet.name}</span>
+                </button>
+                <button
+                  type="button"
+                  class="navigator-visibility"
+                  disabled={props.disabled}
+                  aria-label={`${props.controller.isSheetVisible(sheet.id) ? 'Hide' : 'Show'} drawing objects on ${sheet.name}`}
+                  title={`${props.controller.isSheetVisible(sheet.id) ? 'Hide' : 'Show'} sheet drawing objects`}
+                  onClick={() => {
+                    props.controller.setSheetVisible(
+                      sheet.id,
+                      !props.controller.isSheetVisible(sheet.id),
+                    );
+                  }}
+                >
+                  <VisibilityIcon
+                    visible={props.controller.isSheetVisible(sheet.id)}
+                  />
                 </button>
               </div>
               <Show when={expanded(sheet.id)}>

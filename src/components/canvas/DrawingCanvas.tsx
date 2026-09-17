@@ -173,6 +173,12 @@ export default function DrawingCanvas(props: {
     name: 'canvas.editPreview',
   });
   const [hover, setHover] = createSignal<Point | null>(null);
+  const [cursor, setCursor] = createSignal<{
+    point: Point;
+    sheetId: string;
+  } | null>(null, {
+    name: 'canvas.cursor',
+  });
   const [snapped, setSnapped] = createSignal(false);
   const [selectionBox, setSelectionBox] = createSignal<{
     start: Point;
@@ -192,7 +198,9 @@ export default function DrawingCanvas(props: {
   const geometries = createMemo(
     () =>
       Object.values(props.controller.project()?.geometries ?? {}).filter(
-        (item) => item.sheetId === sheet()?.id,
+        (item) =>
+          item.sheetId === sheet()?.id &&
+          props.controller.visibleGeometryIds().has(item.id),
       ),
     { name: 'canvas.geometries' },
   );
@@ -206,6 +214,17 @@ export default function DrawingCanvas(props: {
       previous?.height === next?.height &&
       previous?.rotation === next?.rotation,
   });
+  const crosshair = createMemo(
+    () => {
+      const current = cursor();
+      return current?.sheetId === sheet()?.id &&
+        !panCursor() &&
+        !props.interactionDisabled
+        ? current?.point
+        : undefined;
+    },
+    { name: 'canvas.crosshair' },
+  );
   const dirty = () => draft() !== null || edit() !== null;
   const viewKey = createMemo(
     () => {
@@ -326,7 +345,9 @@ export default function DrawingCanvas(props: {
       image: image(),
       geometries: geometries(),
       selected: props.controller.selection(),
-      groups: props.controller.project()?.groups,
+      groups: Object.values(props.controller.project()?.groups ?? {}).filter(
+        (group) => props.controller.isGroupVisible(group.id, sheet()?.id ?? ''),
+      ),
       draft: draft(),
       edit: edit(),
       hover: hover(),
@@ -351,7 +372,7 @@ export default function DrawingCanvas(props: {
         ctx.drawImage(state.image, 0, 0, state.sheet.width, state.sheet.height);
       const pixel = 1 / state.camera.zoom;
       const colors: Record<string, string> = {};
-      for (const group of Object.values(state.groups ?? {}))
+      for (const group of state.groups)
         for (const id of group.geometryIds)
           colors[id] = group.color ?? '#3b82f6';
       let displayed = state.geometries;
@@ -695,6 +716,17 @@ export default function DrawingCanvas(props: {
   }
   function pointerMove(event: PointerEvent) {
     if (savingNow) return;
+    const local = localPoint(event);
+    const currentSheet = sheet();
+    setCursor(
+      currentSheet &&
+        local.x >= 0 &&
+        local.y >= 0 &&
+        local.x <= viewport().width &&
+        local.y <= viewport().height
+        ? { point: local, sheetId: currentSheet.id }
+        : null,
+    );
     const point = pagePoint(event);
     if (gesture?.kind === 'pan') {
       const local = localPoint(event);
@@ -860,6 +892,7 @@ export default function DrawingCanvas(props: {
     const blur = () => {
       spaceDown = false;
       cancelGesture();
+      setCursor(null);
     };
     const wheel = (event: WheelEvent) => {
       if (!sheet()) return;
@@ -929,6 +962,7 @@ export default function DrawingCanvas(props: {
         onPointerCancel={cancelGesture}
         onLostPointerCapture={cancelGesture}
         onPointerLeave={() => {
+          setCursor(null);
           if (!gesture) {
             setHover(null);
             setSnapped(false);
@@ -941,6 +975,20 @@ export default function DrawingCanvas(props: {
       >
         Draw and edit sheet measurements using the drawing tools.
       </canvas>
+      <Show when={crosshair()}>
+        {(point) => (
+          <div class="canvas-crosshair" aria-hidden="true">
+            <span
+              class="crosshair-horizontal"
+              style={{ top: `${String(point().y)}px` }}
+            />
+            <span
+              class="crosshair-vertical"
+              style={{ left: `${String(point().x)}px` }}
+            />
+          </div>
+        )}
+      </Show>
       <Show when={!sheet()}>
         <div
           style={{
@@ -1008,23 +1056,21 @@ export default function DrawingCanvas(props: {
             Fit selection
           </button>
         </div>
-        <p
-          style={{
-            position: 'absolute',
-            bottom: '0',
-            left: '12px',
-            padding: '5px 8px',
-            background: '#161b24dd',
-            'pointer-events': 'none',
-            'font-size': '11px',
-          }}
-        >
-          {props.tool === 'calibrate' && !draft()
-            ? 'Click the first calibration point · '
-            : ''}
-          Scroll to zoom · Space / middle-drag to pan · Drag to select or move ·
-          Shift disables snapping
-        </p>
+        <Show when={props.tool === 'calibrate' && !draft()}>
+          <p
+            style={{
+              position: 'absolute',
+              top: '12px',
+              left: '12px',
+              padding: '5px 8px',
+              background: '#161b24dd',
+              'pointer-events': 'none',
+              'font-size': '11px',
+            }}
+          >
+            Click the first calibration point.
+          </p>
+        </Show>
       </Show>
       <Show when={loading() || renderError()}>
         <p

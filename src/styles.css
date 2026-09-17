@@ -177,6 +177,27 @@ small,
   min-height: 0;
   overflow: hidden;
 }
+.canvas-crosshair {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: difference;
+  opacity: 0.6;
+}
+.canvas-crosshair span {
+  position: absolute;
+  background: white;
+}
+.crosshair-horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+.crosshair-vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
 .empty-workspace {
   margin: auto;
   text-align: center;

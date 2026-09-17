@@ -19,6 +19,12 @@ export interface WorkspaceController {
   setActiveSheetId(id: string | null): void;
   selection: Accessor<string[]>;
   setSelection(ids: string[]): void;
+  visibleGeometryIds: Accessor<ReadonlySet<string>>;
+  isSheetVisible(sheetId: string): boolean;
+  setSheetVisible(sheetId: string, visible: boolean): void;
+  isGroupVisible(groupId: string, sheetId: string): boolean;
+  setGroupVisible(groupId: string, sheetId: string, visible: boolean): void;
+  showGeometry(id: string, groupId: string): void;
   activeGroupId: Accessor<string | null>;
   setActiveGroupId(id: string | null): void;
   drawingGroupId: Accessor<string | null>;

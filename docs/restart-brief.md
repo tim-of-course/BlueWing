@@ -133,6 +133,10 @@ Use the current SolidJS interface as the visual reference: dark canvas-centered 
 
 Initially expose the drawing and quantities workspaces, with groups accessible from navigation and recipe assignments in the contextual inspector. A session undo stack does not require the existing History workspace. Hide deferred features instead of building inactive navigation around them.
 
+**Compact functionality takes priority.** The user's PlanSwift reference (`2998.jpg`) calls for a dense sheet/group tree with one-line rows, clear indentation, measured totals, color swatches, visibility controls, and a compact search. Keep the modern styling while making common work available directly in those rows. Full-canvas crosshairs follow the mouse; general navigation help belongs in the status bar, leaving the plan unobstructed.
+
+Visibility is local view state, saved per project on the device. A sheet control hides its takeoff drawing while leaving the PDF visible; a group control applies to that group on that sheet. Hidden geometry is excluded from selection and snapping, but retains its measurements and contributions to the estimate. Shared geometry remains visible through any visible group; ungrouped geometry follows the sheet control. Drawing into a hidden group or following a quantity source reveals the relevant drawing.
+
 Review components individually before copying them. Presentation components and CSS are stronger reuse candidates than the canvas controller, project stores, or native projections. A component can preserve its appearance while receiving new, smaller inputs and actions.
 
 Keep one drawing implementation for the MVP and reuse its geometry/measurement conventions for CLI images. Browser development should execute the actual TypeScript core through a small development storage adapter, rather than a separately maintained read-only mock application. Shipping full browser-only project storage is a later decision.

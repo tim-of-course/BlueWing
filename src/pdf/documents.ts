@@ -1,9 +1,8 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { Sheet } from '../core/types';
 
-GlobalWorkerOptions.workerSrc = workerUrl;
+GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
 
 /** Imported coordinates are the rotated, top-left PDF viewport at scale 1. */
 export class PdfDocuments {

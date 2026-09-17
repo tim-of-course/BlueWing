@@ -6,6 +6,11 @@ import { Application, type Observation } from './application';
 import { choosePdf, chooseProject, writeOutput } from './files';
 import { connectCli } from './cli';
 import type { WorkspaceController } from './contracts';
+import {
+  readVisibility,
+  visibleDrawingIds,
+  type DrawingVisibility,
+} from './visibility';
 
 export function createWorkspace(): WorkspaceController {
   const app = new Application(isTauri());
@@ -15,7 +20,7 @@ export function createWorkspace(): WorkspaceController {
   const [activeSheetId, setActiveSheetId] = createSignal<string | null>(null, {
     name: 'workspace.activeSheet',
   });
-  const [selection, setSelection] = createSignal<string[]>([], {
+  const [selectedIds, setSelection] = createSignal<string[]>([], {
     name: 'workspace.selection',
   });
   const [activeGroupId, setActiveGroupId] = createSignal<string | null>(null, {
@@ -25,6 +30,63 @@ export function createWorkspace(): WorkspaceController {
     null,
     { name: 'workspace.drawingGroup' },
   );
+  const [visibility, setVisibility] = createSignal<DrawingVisibility>(
+    { hiddenSheets: [], hiddenGroups: {} },
+    { name: 'workspace.drawingVisibility' },
+  );
+  const visibleGeometryIds = createMemo(
+    () => visibleDrawingIds(project(), visibility()),
+    { name: 'workspace.visibleDrawing' },
+  );
+  const selection = createMemo(
+    () => selectedIds().filter((id) => visibleGeometryIds().has(id)),
+    {
+      name: 'workspace.visibleSelection',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((id, index) => id === next[index]),
+    },
+  );
+  function changeVisibility(next: DrawingVisibility) {
+    setVisibility(next);
+    // A hidden selection must not reappear selected when its group is shown.
+    const visible = visibleDrawingIds(app.project, next);
+    setSelection((ids) => ids.filter((id) => visible.has(id)));
+    if (app.project) {
+      try {
+        localStorage.setItem(
+          `bluewing.visibility.${app.project.id}`,
+          JSON.stringify(next),
+        );
+      } catch {
+        // Visibility still works when saving a device preference is unavailable.
+      }
+    }
+  }
+  function setSheetVisible(sheetId: string, visible: boolean) {
+    const previous = visibility();
+    if (previous.hiddenSheets.includes(sheetId) === !visible) return;
+    changeVisibility({
+      ...previous,
+      hiddenSheets: visible
+        ? previous.hiddenSheets.filter((id) => id !== sheetId)
+        : [...previous.hiddenSheets, sheetId],
+    });
+  }
+  function setGroupVisible(groupId: string, sheetId: string, visible: boolean) {
+    const previous = visibility();
+    const hidden = previous.hiddenGroups[sheetId] ?? [];
+    if (hidden.includes(groupId) === !visible) return;
+    changeVisibility({
+      ...previous,
+      hiddenGroups: {
+        ...previous.hiddenGroups,
+        [sheetId]: visible
+          ? hidden.filter((id) => id !== groupId)
+          : [...hidden, groupId],
+      },
+    });
+  }
   const [busy, setBusy] = createSignal(false, { name: 'workspace.saving' });
   const [error, setError] = createSignal<string | null>(null, {
     name: 'workspace.error',
@@ -54,6 +116,7 @@ export function createWorkspace(): WorkspaceController {
       setCanUndo(app.session?.canUndo ?? false);
       setCanRedo(app.session?.canRedo ?? false);
       if (publishedId !== (current?.id ?? null)) {
+        setVisibility(readVisibility(current?.id ?? null));
         setSelection([]);
         setActiveGroupId(null);
         setDrawingGroupId(null);
@@ -134,7 +197,34 @@ export function createWorkspace(): WorkspaceController {
       setSelection([]);
     },
     selection,
-    setSelection,
+    setSelection(ids) {
+      setSelection(ids.filter((id) => visibleGeometryIds().has(id)));
+    },
+    visibleGeometryIds,
+    isSheetVisible: (sheetId) => !visibility().hiddenSheets.includes(sheetId),
+    setSheetVisible,
+    isGroupVisible: (groupId, sheetId) =>
+      !visibility().hiddenGroups[sheetId]?.includes(groupId),
+    setGroupVisible,
+    showGeometry(id, groupId) {
+      const geometry = app.project?.geometries[id];
+      if (!geometry) return;
+      const view = visibility();
+      changeVisibility({
+        hiddenSheets: view.hiddenSheets.filter(
+          (sheetId) => sheetId !== geometry.sheetId,
+        ),
+        hiddenGroups: {
+          ...view.hiddenGroups,
+          [geometry.sheetId]: (
+            view.hiddenGroups[geometry.sheetId] ?? []
+          ).filter((hidden) => hidden !== groupId),
+        },
+      });
+      setActiveSheetId(geometry.sheetId);
+      setActiveGroupId(groupId);
+      setSelection([id]);
+    },
     activeGroupId,
     setActiveGroupId,
     drawingGroupId,
@@ -228,6 +318,22 @@ export function createWorkspace(): WorkspaceController {
           payload: { id: group.id, geometryIds: [...group.geometryIds, id] },
         });
       await batch(commands, expected);
+      const view = visibility();
+      if (
+        view.hiddenSheets.includes(sheetId) ||
+        (groupId && view.hiddenGroups[sheetId]?.includes(groupId))
+      )
+        changeVisibility({
+          hiddenSheets: view.hiddenSheets.filter(
+            (hidden) => hidden !== sheetId,
+          ),
+          hiddenGroups: {
+            ...view.hiddenGroups,
+            [sheetId]: (view.hiddenGroups[sheetId] ?? []).filter(
+              (hidden) => hidden !== groupId,
+            ),
+          },
+        });
       setSelection([id]);
       return id;
     },

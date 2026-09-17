@@ -1,26 +1,61 @@
+.workspace-panel-content > .panel-heading.navigator-heading {
+  min-height: 34px;
+  padding-block: 4px;
+}
+.navigator-heading button {
+  padding: 3px 6px;
+  font-size: 11px;
+}
 .navigator-filter {
-  padding: 0 12px 10px;
+  position: relative;
+  margin: 0 7px 5px;
+  flex-shrink: 0;
 }
 .navigator-filter input {
   width: 100%;
+  height: 26px;
+  padding: 3px 26px 3px 7px;
   font-size: 11px;
+}
+.navigator-filter input::-webkit-search-cancel-button {
+  display: none;
+}
+.navigator-clear {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #aab8cc;
+  font-size: 16px;
 }
 .sheet-list {
   border-bottom: 0;
-  padding: 0 7px 14px;
+  padding: 0 5px 8px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
 }
-.sheet-line {
+.sheet-line,
+.group-line {
   display: flex;
   align-items: center;
   min-width: 0;
 }
+.sheet-line {
+  height: 24px;
+}
 .sheet-line .sheet-expand {
   background: transparent;
   border: 0;
-  padding: 5px 3px;
-  width: 20px;
-  flex: 0 0 20px;
-  color: #64748b;
+  padding: 0;
+  height: 24px;
+  width: 18px;
+  flex: 0 0 18px;
+  color: #aab8cc;
 }
 .sheet-line .sheet-expand:disabled {
   opacity: 0;
@@ -32,7 +67,9 @@
   text-align: left;
   background: transparent;
   border-color: transparent;
-  padding: 7px 8px;
+  height: 24px;
+  padding: 2px 5px;
+  border-radius: 2px;
   font-weight: 500;
   min-width: 0;
   font-size: 11px;
@@ -47,41 +84,84 @@
   text-overflow: ellipsis;
 }
 .sheet-groups {
-  margin: 2px 0 4px 27px;
-  padding-left: 4px;
-  border-left: 1px solid #2b3545;
+  margin: 0 0 0 13px;
+  padding-left: 5px;
+  border-left: 1px solid #364256;
 }
 .sheet-groups:empty {
   display: none;
 }
 .group-row {
   display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: center;
   text-align: left;
   background: transparent;
   border-color: transparent;
-  width: 100%;
-  margin: 1px 0;
-  padding: 5px 7px;
-  gap: 6px;
+  height: 22px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  gap: 4px;
   font-size: 11px;
 }
 .group-kind {
-  width: 17px;
+  width: 16px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
+  color: #aab8cc;
 }
-.group-row small {
+.group-color {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  margin-left: 2px;
+  border: 1px solid #ffffff30;
+}
+.group-kind svg {
+  width: 15px;
+  height: 15px;
+}
+.group-totals {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
   margin-left: auto;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.group-totals small {
+  font-size: 10px;
+  color: #bdcadd;
+}
+.navigator-visibility,
+.visibility-spacer {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+}
+.navigator-visibility {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #aab8cc;
+}
+.geometry-hidden > .navigator-visibility {
+  color: #718096;
+}
+.geometry-hidden > .group-row .row-name {
+  color: #8996a9;
 }
 .unplaced-heading {
   color: #94a3b8;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin: 16px 8px 5px;
+  margin: 8px 6px 3px;
 }
 .sheet-branch.drop-target {
   box-shadow: inset 0 2px #60a5fa;

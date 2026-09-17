@@ -182,13 +182,8 @@ export default function Quantities(props: {
                                       source.geometryId
                                     ];
                                   if (geometry) {
-                                    props.controller.setActiveSheetId(
-                                      geometry.sheetId,
-                                    );
-                                    props.controller.setSelection([
+                                    props.controller.showGeometry(
                                       geometry.id,
-                                    ]);
-                                    props.controller.setActiveGroupId(
                                       output.groupId,
                                     );
                                     props.onShowDrawing();

@@ -35,6 +35,8 @@ Shortcuts: V select, L path, F area, C count, R scale setup, Q drawing/quantitie
 
 Hover or focus a sheet to preview its source page. Groups appear under each sheet containing their drawing objects; selecting a group inspects its sheet-local members. The inspector's **Group for new drawing** choice is separate from inspection. Drag a panel's inner edge to resize it, or use its fixed corner control to collapse, peek, and pin it. Layout preferences are saved on this device. Right-click a sheet for its actions, and drag rows or use Alt-Up/Down to reorder them.
 
+The compact navigator shows each group's length (ft), area (ft²), or marker count (ea), followed by its color and eye button. New groups receive distinct editable colors. Mixed groups show separate totals; uncalibrated lengths/areas show a dash. Search stays above the scrolling list and has a clear button. Sheet and group eyes hide drawing without changing estimate totals; hidden drawing cannot be selected or snapped to. These visibility choices are saved on this device. Full-canvas crosshairs follow the mouse and disappear during panning or when the pointer leaves the canvas.
+
 The recipe editor supports number/boolean inputs, declared units, multiple outputs, and constrained formulas. Starter recipes cover wall area, floor area, counts, and a stud estimate. See the [product brief](docs/restart-brief.md) for calculation rules and deferred features.
 
 The CLI operates the running desktop app:

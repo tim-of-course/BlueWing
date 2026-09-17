@@ -40,7 +40,11 @@ export async function navigatorWorkflow(page: Page) {
   await expect(page.getByLabel('Object name', { exact: true })).toHaveValue(
     'Path 1',
   );
-  await expect(page.getByText('24 ft', { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole('complementary', { name: 'Inspector', exact: true })
+      .getByText('24 ft', { exact: true }),
+  ).toBeVisible();
   await page.getByLabel('Object name', { exact: true }).fill('North wall');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(

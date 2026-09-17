@@ -136,6 +136,9 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('combobox', { name: 'Recipe to assign', exact: true })
     .selectOption('floor-area');
+  await expect(
+    page.getByRole('button', { name: 'Floor, 1 drawing objects', exact: true }),
+  ).toContainText('ft²');
   await page
     .getByRole('button', { name: 'Assign recipe', exact: true })
     .click();
@@ -172,6 +175,12 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('combobox', { name: 'Recipe to assign', exact: true })
     .selectOption('count');
+  await expect(
+    page.getByRole('button', {
+      name: 'Fixtures, 1 drawing objects',
+      exact: true,
+    }),
+  ).toContainText('3 ea');
   await page
     .getByRole('button', { name: 'Assign recipe', exact: true })
     .click();

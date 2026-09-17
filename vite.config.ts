@@ -10,6 +10,12 @@ for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
   });
 }
 
+// Serve the prebuilt worker unchanged, without injecting the Vite HMR client.
+cpSync(
+  'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
+  'public/pdfjs/pdf.worker.min.mjs',
+);
+
 export default defineConfig({
   plugins: [solid({ diagnostics: true })],
   resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },

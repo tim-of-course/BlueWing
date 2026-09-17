@@ -22,6 +22,16 @@ const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
   { id: 'count', label: 'Count', key: 'C', icon: '⊕' },
   { id: 'calibrate', label: 'Set scale', key: 'R', icon: '↔' },
 ];
+const groupColors = [
+  '#3b82f6',
+  '#f97316',
+  '#22c55e',
+  '#a855f7',
+  '#eab308',
+  '#06b6d4',
+  '#f43f5e',
+  '#84cc16',
+];
 export default function App() {
   const controller = createWorkspace();
   const [sheetsVisible, setSheetsVisible] = createSignal(
@@ -96,6 +106,16 @@ export default function App() {
     if (id === 'select') controller.setActiveGroupId(null);
     setQuantities(false);
     if (id !== 'select') setInspectorPeek((value) => value + 1);
+  };
+  const nextGroupColor = () => {
+    const groups = Object.values(controller.project()?.groups ?? {});
+    return (
+      groupColors.find((color) =>
+        groups.every((group) => group.color !== color),
+      ) ??
+      groupColors[groups.length % groupColors.length] ??
+      '#3b82f6'
+    );
   };
   onSettled(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -441,7 +461,7 @@ export default function App() {
                     run(async () => {
                       const id = await controller.createGroup(
                         groupName().trim(),
-                        '#3b82f6',
+                        nextGroupColor(),
                       );
                       setGroupName('');
                       controller.setActiveGroupId(id);
@@ -532,7 +552,7 @@ export default function App() {
         <span>
           {draft()
             ? 'Enter to finish · Escape to cancel'
-            : 'Shift-click to select multiple · Q switches workspace'}
+            : 'Wheel: zoom · Space / middle-drag: pan · Q: quantities'}
         </span>
         <span>
           {controller.activeSheetId() &&
