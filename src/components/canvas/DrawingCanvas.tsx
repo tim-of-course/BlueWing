@@ -811,7 +811,7 @@ export default function DrawingCanvas(props: {
     const keydown = (event: KeyboardEvent) => {
       if (!canvas?.getClientRects().length) return;
       if (
-        document.querySelector('[role="dialog"]') ||
+        document.querySelector('[role="dialog"],dialog[open]') ||
         (event.target instanceof Element &&
           event.target.closest(
             'input,textarea,select,[contenteditable="true"]',
@@ -1019,6 +1019,9 @@ export default function DrawingCanvas(props: {
             'font-size': '11px',
           }}
         >
+          {props.tool === 'calibrate' && !draft()
+            ? 'Click the first calibration point · '
+            : ''}
           Scroll to zoom · Space / middle-drag to pan · Drag to select or move ·
           Shift disables snapping
         </p>

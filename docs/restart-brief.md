@@ -63,6 +63,8 @@ Measurement combines geometry with sheet calibration. It supplies typed length, 
 
 Changing calibration changes derived measurements, not stored points or object IDs. Uncalibrated geometry is still drawable and editable. Counts remain valid; physical lengths and areas are unavailable until calibrated. An unavailable measurement is not zero.
 
+Sheet scale setup defaults to the printed scale: architectural/metric presets, then a custom paper-to-real ratio. Two-point measurement is the secondary choice for a known dimension. Opening setup never changes calibration; apply the selected scale explicitly. Reopening shows the existing scale, including custom or measured values. Ratio conversion uses the imported PDF's paper size, independent of canvas zoom.
+
 A later scale-region implementation can extend measurement without changing geometry ownership. That boundary is the preparation needed now; region partitioning and precedence rules can wait.
 
 ## Calculation: explain quantities from measurements

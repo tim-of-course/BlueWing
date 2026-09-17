@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
 import { calculateProject, exportQuantities } from './calculations';
+import { calibrationFromRatio, type PaperScale } from './scale';
 
 export interface PayloadSchema {
   type?: 'object' | 'array' | 'string' | 'number' | 'boolean';
@@ -148,6 +149,27 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
       pageIndex: 0,
       width: 1000,
       height: 800,
+    },
+  ],
+  [
+    'sheet.scale',
+    'Set a PDF sheet scale from printed paper and real distances (72 page units per paper inch).',
+    object({
+      id: string,
+      paper: object({
+        value: positive,
+        unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
+      }),
+      real: object({
+        value: positive,
+        unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
+      }),
+    }),
+    true,
+    {
+      id: 'sheet-1',
+      paper: { value: 0.25, unit: 'in' },
+      real: { value: 1, unit: 'ft' },
     },
   ],
   [
@@ -552,6 +574,10 @@ export function executeCommand(
       break;
     case 'sheet.put':
       next.sheets[entityId] = structuredClone(payload) as unknown as Sheet;
+      break;
+    case 'sheet.scale':
+      requireEntity(next.sheets, entityId, 'Sheet').calibration =
+        calibrationFromRatio(payload as unknown as PaperScale);
       break;
     case 'sheet.calibrate':
       requireEntity(next.sheets, entityId, 'Sheet').calibration =

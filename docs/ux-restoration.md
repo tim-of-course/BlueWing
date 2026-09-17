@@ -61,3 +61,13 @@ All four workflows reached mechanical completion with successful root outcomes. 
 | Canvas              | `wf_881d2178-35d3-48bf-97cc-a85dd5d000cd` | `agt_e40d7c39-96ba-4f02-a5f9-ab7154d6bced` |
 | Panels              | `wf_42d1b144-db18-4704-9ea5-fee612b2aa9d` | `agt_f821f17e-e107-4423-baa0-76d388c7005f` |
 | Selection inspector | `wf_bd759c0f-8d33-4efa-a758-b50040ba6c17` | `agt_2a4df6ce-91d7-46ae-8111-3ec6b3292641` |
+
+## Printed-scale follow-up
+
+Set scale (R) now opens presets and custom paper-to-real ratios before offering two-point measurement. Architectural presets use the same fractions as PlanVyper; metric ratios and true 1:1 are also available. New sheets suggest 1/4″ = 1′-0″ without applying it. Reopening shows the saved scale, and the footer uses a matching preset label when available. The explicit `sheet.scale` command shares persistence, revision checks, and Undo with the UI. Existing geometry is unchanged when a scale is applied.
+
+Reference: PlanVyper `ModalManager.tsx` scale setup and `store/calibration.ts`. This follows the user's September 17 direction; measurement remains useful when the PDF has been resized or the printed scale is missing.
+
+Follow-up validation: static checks, 28 core tests, 6 platform tests, 12 development browser tests, and 8 production browser tests passed. Chromium and WebKit verified ratio entry, preset changes, two-point measurement, cancellation, Undo/Redo, and reopening. Development captures had no diagnostics or silent holds. Printed-scale test gestures use actual-size zoom to avoid browser pointer rounding changing the physical fixture dimensions. Production screenshots of both scale forms were visually checked.
+
+The follow-up reference review used one Banana Split coordinator on configured `gpt-6-astra` / medium reasoning, with zero child agents. Workflow `wf_4e57d6f9-be91-4554-a577-5a2637c278d7`, coordinator `agt_80509b5d-0955-4f6d-8d3b-934e5f50084e`, completed with a successful read-only result. Runtime diagnostics recorded no rejections, revisions, acceptances, or turns without a disposition; there were no approval requests or host-assisted actions. The GPT-6 host implemented and verified the change; its reasoning level is unavailable.

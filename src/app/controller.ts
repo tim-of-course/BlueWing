@@ -258,6 +258,12 @@ export function createWorkspace(): WorkspaceController {
     },
     moveSelection: (dx, dy, expected) =>
       command('geometry.move', { ids: selection(), dx, dy }, expected),
+    setScale: (id, scale, expected) =>
+      command(
+        'sheet.scale',
+        { id, paper: scale.paper, real: scale.real },
+        expected,
+      ),
     calibrate: (id, start, end, value, unit, expected) =>
       command(
         'sheet.calibrate',

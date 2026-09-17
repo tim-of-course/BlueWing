@@ -45,13 +45,17 @@ export async function startProject(page: Page): Promise<void> {
 
 export async function drawWall(page: Page): Promise<void> {
   await page
-    .getByRole('button', { name: 'Calibrate (R)', exact: true })
+    .getByRole('button', { name: 'Set scale (R)', exact: true })
     .click();
-  await pagePoint(page, 72, 144);
-  await pagePoint(page, 360, 144);
-  await page.getByLabel('Known length', { exact: true }).fill('24');
-  await page.getByRole('button', { name: 'Set scale', exact: true }).click();
-  await expect(page.getByLabel('Known length', { exact: true })).toBeHidden();
+  await page.getByRole('button', { name: 'Custom ratio', exact: true }).click();
+  await page.getByLabel('Real distance', { exact: true }).fill('6');
+  await page.getByRole('button', { name: 'Apply scale', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Set sheet scale' }),
+  ).toBeHidden();
+  // Use one CSS pixel per page unit so WebKit's pointer rounding cannot
+  // alter the independent printed-scale fixture measurements.
+  await page.getByLabel('Drawing canvas', { exact: true }).press('Control+1');
   await page.getByRole('button', { name: 'Path (L)', exact: true }).click();
   await pagePoint(page, 72, 144);
   await pagePoint(page, 360, 144);

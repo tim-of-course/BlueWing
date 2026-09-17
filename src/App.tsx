@@ -10,13 +10,17 @@ import UpdateDialog from './components/UpdateDialog';
 import ToolIcon from './components/ToolIcon';
 import WorkspacePanel from './components/WorkspacePanel';
 import SheetNavigator from './components/SheetNavigator';
+import SheetScaleDialog from './components/SheetScaleDialog';
+import type { Sheet } from './core/types';
+import type { Observation } from './app/application';
+import { formatScale } from './core/scale';
 
 const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
   { id: 'select', label: 'Select', key: 'V', icon: '↖' },
   { id: 'path', label: 'Path', key: 'L', icon: '╱' },
   { id: 'area', label: 'Area', key: 'F', icon: '◇' },
   { id: 'count', label: 'Count', key: 'C', icon: '⊕' },
-  { id: 'calibrate', label: 'Calibrate', key: 'R', icon: '↔' },
+  { id: 'calibrate', label: 'Set scale', key: 'R', icon: '↔' },
 ];
 export default function App() {
   const controller = createWorkspace();
@@ -31,6 +35,10 @@ export default function App() {
   );
   const [inspectorPeek, setInspectorPeek] = createSignal(0);
   const [sheetDraft, setSheetDraft] = createSignal(false);
+  const [scaleDialog, setScaleDialog] = createSignal<{
+    sheet: Sheet;
+    expected: Observation;
+  } | null>(null);
   createEffect(sheetsVisible, (value) => {
     localStorage.setItem('bluewing.panel.sheets.pinned', String(value));
   });
@@ -65,6 +73,7 @@ export default function App() {
     inspectorDraft() ||
     selectionDraft() ||
     sheetDraft() ||
+    scaleDialog() !== null ||
     projectAction() !== null ||
     groupName().trim() !== '';
   createEffect(
@@ -75,6 +84,14 @@ export default function App() {
     { name: 'workspace.unfinishedEdits' },
   );
   const chooseTool = (id: DrawingTool) => {
+    if (id === 'calibrate') {
+      const sheet =
+        controller.project()?.sheets[controller.activeSheetId() ?? ''];
+      if (sheet) setScaleDialog({ sheet, expected: controller.observe() });
+      setTool('select');
+      setQuantities(false);
+      return;
+    }
     setTool(id);
     if (id === 'select') controller.setActiveGroupId(null);
     setQuantities(false);
@@ -94,6 +111,7 @@ export default function App() {
         updateOpen() ||
         projectAction() ||
         sheetDraft() ||
+        scaleDialog() ||
         inspectorDraft() ||
         selectionDraft()
       )
@@ -520,13 +538,27 @@ export default function App() {
           {controller.activeSheetId() &&
           controller.project()?.sheets[controller.activeSheetId() ?? '']
             ?.calibration
-            ? `Scale: 1″ = ${(((controller.project()?.sheets[controller.activeSheetId() ?? '']?.calibration?.metresPerUnit ?? 0) * 72) / 0.3048).toLocaleString(undefined, { maximumFractionDigits: 3 })}′`
+            ? `Scale: ${formatScale(controller.project()?.sheets[controller.activeSheetId() ?? '']?.calibration)}`
             : controller.activeSheetId()
               ? 'Sheet uncalibrated'
               : 'Ready'}{' '}
           · {controller.selection().length} selected
         </span>
       </footer>
+      <Show when={scaleDialog()} keyed>
+        {(target) => (
+          <SheetScaleDialog
+            sheet={target.sheet}
+            expected={target.expected}
+            controller={controller}
+            onClose={() => setScaleDialog(null)}
+            onMeasure={() => {
+              setScaleDialog(null);
+              setTool('calibrate');
+            }}
+          />
+        )}
+      </Show>
       <Show when={projectAction()}>
         <div class="modal-backdrop">
           <section

@@ -1,5 +1,6 @@
 import type { Accessor } from 'solid-js';
 import type { Observation } from './application';
+import type { PaperScale } from '../core/scale';
 import type {
   CalculationResult,
   GeometryKind,
@@ -56,6 +57,11 @@ export interface WorkspaceController {
   deleteSelection(): Promise<void>;
   copySelection(): Promise<void>;
   moveSelection(dx: number, dy: number, expected?: Observation): Promise<void>;
+  setScale(
+    sheetId: string,
+    scale: PaperScale,
+    expected?: Observation,
+  ): Promise<void>;
   calibrate(
     sheetId: string,
     from: Point,

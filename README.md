@@ -26,12 +26,12 @@ The output is `src-tauri/target/release/bundle/macos/Bluewing.app`. The bundle i
 ## Use
 
 1. Create a project and import a PDF. Every page becomes a sheet.
-2. Choose Calibrate, click the ends of a known dimension, and enter its physical length.
+2. Choose Set scale (R) and select the scale printed on the sheet. Architectural and metric presets come first, followed by Custom ratio. For a resized plan or a missing printed scale, choose Two points, then Measure on plan, click a known dimension's endpoints, and enter its physical length. A scale is only saved when you apply it.
 3. Draw a Path, Area, or Count set. Finish a gesture with Enter or Finish; Escape cancels.
 4. Select drawing objects and add a named group. Assign a recipe, edit its inputs, and inspect Quantities.
 5. Export CSV or JSON. Each completed edit saves before the UI accepts it. Close and reopen to continue later; undo history lasts for the current project session.
 
-Shortcuts: V select, L path, F area, C count, R calibration, Q drawing/quantities, Cmd-Z / Shift-Cmd-Z undo/redo, Cmd-D duplicate, Backspace/Delete remove, Cmd-0 fit sheet, and Cmd-1 actual size. Use Ctrl in place of Cmd outside macOS. Scroll zooms toward the pointer; Space-drag or middle-drag pans. Shift-click or a selection rectangle selects multiple objects; drag selected objects to move them or a selected point to edit it. Shift bypasses point and angle snapping. Snapping copies coordinates without linking objects.
+Shortcuts: V select, L path, F area, C count, R scale setup, Q drawing/quantities, Cmd-Z / Shift-Cmd-Z undo/redo, Cmd-D duplicate, Backspace/Delete remove, Cmd-0 fit sheet, and Cmd-1 actual size. Use Ctrl in place of Cmd outside macOS. Scroll zooms toward the pointer; Space-drag or middle-drag pans. Shift-click or a selection rectangle selects multiple objects; drag selected objects to move them or a selected point to edit it. Shift bypasses point and angle snapping. Snapping copies coordinates without linking objects.
 
 Hover or focus a sheet to preview its source page. Groups appear under each sheet containing their drawing objects; selecting a group inspects its sheet-local members. The inspector's **Group for new drawing** choice is separate from inspection. Drag a panel's inner edge to resize it, or use its fixed corner control to collapse, peek, and pin it. Layout preferences are saved on this device. Right-click a sheet for its actions, and drag rows or use Alt-Up/Down to reorder them.
 

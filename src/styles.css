@@ -302,6 +302,18 @@ footer {
 .dialog.compact {
   width: 420px;
 }
+.sheet-scale-dialog {
+  width: min(480px, 90vw);
+  color: inherit;
+}
+.sheet-scale-dialog::backdrop {
+  background: #0009;
+}
+.scale-ratio-fields {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  gap: 12px;
+}
 .dialog h2 {
   margin-bottom: 16px;
   font-size: 16px;
