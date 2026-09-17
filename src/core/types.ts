@@ -17,6 +17,7 @@ export interface Sheet {
   name: string;
   assetId: string;
   pageIndex: number;
+  order?: number;
   width: number;
   height: number;
   rotation?: number;

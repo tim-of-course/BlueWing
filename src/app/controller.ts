@@ -21,6 +21,10 @@ export function createWorkspace(): WorkspaceController {
   const [activeGroupId, setActiveGroupId] = createSignal<string | null>(null, {
     name: 'workspace.activeGroup',
   });
+  const [drawingGroupId, setDrawingGroupId] = createSignal<string | null>(
+    null,
+    { name: 'workspace.drawingGroup' },
+  );
   const [busy, setBusy] = createSignal(false, { name: 'workspace.saving' });
   const [error, setError] = createSignal<string | null>(null, {
     name: 'workspace.error',
@@ -52,6 +56,7 @@ export function createWorkspace(): WorkspaceController {
       if (publishedId !== (current?.id ?? null)) {
         setSelection([]);
         setActiveGroupId(null);
+        setDrawingGroupId(null);
         setActiveSheetId(Object.keys(current?.sheets ?? {})[0] ?? null);
         publishedId = current?.id ?? null;
       } else {
@@ -62,6 +67,7 @@ export function createWorkspace(): WorkspaceController {
             : (Object.keys(current?.sheets ?? {})[0] ?? null),
         );
         setActiveGroupId((id) => (id && current?.groups[id] ? id : null));
+        setDrawingGroupId((id) => (id && current?.groups[id] ? id : null));
       }
     }),
   );
@@ -131,6 +137,8 @@ export function createWorkspace(): WorkspaceController {
     setSelection,
     activeGroupId,
     setActiveGroupId,
+    drawingGroupId,
+    setDrawingGroupId,
     busy,
     error,
     dismissError: () => setError(null),
@@ -166,6 +174,33 @@ export function createWorkspace(): WorkspaceController {
       }
     },
     undo: () => command('history.undo'),
+    renameSheet: (id, name, expected) =>
+      command('sheet.put', { ...requireProject().sheets[id], name }, expected),
+    async duplicateSheet(id) {
+      const current = requireProject();
+      const source = current.sheets[id];
+      if (!source) throw new Error('Sheet no longer exists');
+      await command('sheet.put', {
+        ...source,
+        id: crypto.randomUUID(),
+        name: `${source.name} copy`,
+        order:
+          Math.max(
+            -1,
+            ...Object.values(current.sheets).map(
+              (sheet) => sheet.order ?? sheet.pageIndex,
+            ),
+          ) + 1,
+      });
+    },
+    deleteSheet: (id) => command('sheet.delete', { id }),
+    reorderSheets: (ids) =>
+      batch(
+        ids.map((id, order) => ({
+          name: 'sheet.put',
+          payload: { ...requireProject().sheets[id], order },
+        })),
+      ),
     redo: () => command('history.redo'),
     async addGeometry(kind, points, name, expected) {
       const sheetId = activeSheetId();
@@ -185,7 +220,7 @@ export function createWorkspace(): WorkspaceController {
           },
         },
       ];
-      const groupId = activeGroupId();
+      const groupId = drawingGroupId();
       const group = groupId ? requireProject().groups[groupId] : undefined;
       if (group)
         commands.push({
@@ -233,6 +268,7 @@ export function createWorkspace(): WorkspaceController {
       const id = crypto.randomUUID();
       await command('group.put', { id, name, color, geometryIds: selection() });
       setActiveGroupId(id);
+      setDrawingGroupId(id);
       return id;
     },
     async updateGroup(id, patch, expected) {

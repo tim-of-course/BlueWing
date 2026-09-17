@@ -240,6 +240,16 @@ export class Application {
     if (!session) throw new Error('Open a project first');
     const id = crypto.randomUUID();
     const sheets = await this.pdf.import(id, file.name, file.data);
+    const firstOrder =
+      Math.max(
+        -1,
+        ...Object.values(session.project.sheets).map(
+          (sheet) => sheet.order ?? sheet.pageIndex,
+        ),
+      ) + 1;
+    sheets.forEach((sheet, index) => {
+      sheet.order = firstOrder + index;
+    });
     this.storage.stageAsset({ id, ...file });
     try {
       await session.dispatch({

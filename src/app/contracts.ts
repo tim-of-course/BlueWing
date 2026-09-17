@@ -20,6 +20,8 @@ export interface WorkspaceController {
   setSelection(ids: string[]): void;
   activeGroupId: Accessor<string | null>;
   setActiveGroupId(id: string | null): void;
+  drawingGroupId: Accessor<string | null>;
+  setDrawingGroupId(id: string | null): void;
   busy: Accessor<boolean>;
   error: Accessor<string | null>;
   dismissError(): void;
@@ -34,6 +36,10 @@ export interface WorkspaceController {
   closeProject(): Promise<void>;
   renameProject(name: string): Promise<void>;
   importPdf(): Promise<void>;
+  renameSheet(id: string, name: string, expected?: Observation): Promise<void>;
+  duplicateSheet(id: string): Promise<void>;
+  deleteSheet(id: string): Promise<void>;
+  reorderSheets(ids: string[]): Promise<void>;
   undo(): Promise<void>;
   redo(): Promise<void>;
   addGeometry(

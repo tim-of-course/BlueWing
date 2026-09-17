@@ -61,6 +61,7 @@ const sheet = object(
     name: string,
     assetId: string,
     pageIndex: { type: 'number', minimum: 0 },
+    order: number,
     width: positive,
     height: positive,
     rotation: number,
