@@ -1,0 +1,52 @@
+{
+  "name": "bluewing",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "bun@1.3.14",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "check": "bun run typecheck && bun run lint && bun run format:check",
+    "test:dev": "playwright test",
+    "test:production": "playwright test --config playwright.production.config.ts",
+    "verify": "bun run check && bun run test:dev && bun run build && bun run test:production"
+  },
+  "dependencies": {
+    "@solidjs/web": "2.0.0-rc.8",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.3",
+    "pdfjs-dist": "6.3.289",
+    "solid-js": "2.0.0-rc.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.63.0",
+    "@solidjs/diagnostics": "2.0.0-rc.8",
+    "@solidjs/vite-plugin": "3.0.0-next.35",
+    "@tauri-apps/cli": "2.11.4",
+    "@types/node": "22.20.3",
+    "eslint": "9.39.5",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-solid": "0.18.0",
+    "globals": "17.12.0",
+    "prettier": "3.9.7",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vite": "8.3.0"
+  },
+  "overrides": {
+    "@solidjs/signals": "2.0.0-rc.8",
+    "@solidjs/compiler": "2.0.0-rc.8",
+    "@solidjs/babel-plugin": "2.0.0-rc.8"
+  }
+}
