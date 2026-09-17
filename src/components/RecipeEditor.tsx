@@ -7,6 +7,7 @@ import {
 import type { FormulaValue } from '../core/formula';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
+import { calculateProject } from '../core/calculations';
 import type {
   GeometryKind,
   Recipe,
@@ -29,6 +30,35 @@ export default function RecipeEditor(props: {
   const [dirty, setDirty] = createSignal(false);
   const [error, setError] = createSignal('');
   const [saving, setSaving] = createSignal(false);
+  const preview = createMemo(
+    () => {
+      const recipe = draft();
+      const project = props.controller.project();
+      const ids = props.controller.selection();
+      if (!recipe || !project || !ids.length) return null;
+      return calculateProject({
+        ...project,
+        recipes: { [recipe.id]: recipe },
+        groups: {
+          preview: {
+            id: 'preview',
+            name: 'Selected drawing',
+            geometryIds: ids,
+          },
+        },
+        assignments: {
+          preview: {
+            id: 'preview',
+            groupId: 'preview',
+            recipeId: recipe.id,
+            inputs: {},
+            allowances: {},
+          },
+        },
+      });
+    },
+    { name: 'recipe.selectedDrawingPreview' },
+  );
   const validation = createMemo(
     () => {
       const recipe = draft();
@@ -358,6 +388,60 @@ export default function RecipeEditor(props: {
               Formulas support arithmetic, ceil, floor, round, min, max and
               if(condition, yes, no). Output units must match the formula.
             </p>
+            <details class="formula-reference">
+              <summary>Variables, units and formula reference</summary>
+              <p>
+                Path: <code>length</code>. Area: <code>area</code> and{' '}
+                <code>perimeter</code>. Count: <code>count</code>. Only the
+                measurements available for the drawing type can be used.
+              </p>
+              <p>
+                Inputs in this recipe:{' '}
+                {recipe()
+                  .inputs.map((input) => `${input.name} (${input.unit})`)
+                  .join(', ') || 'None'}
+                .
+              </p>
+              <p>
+                Arithmetic: <code>+ - * / ^</code>. Comparison:{' '}
+                <code>&lt; &lt;= &gt; &gt;= == !=</code>. Conditions:{' '}
+                <code>if(condition, yes, no)</code>. Functions:{' '}
+                <code>ceil, floor, round, min, max</code>.
+              </p>
+              <p>
+                Declared input units supply dimensions. For example,{' '}
+                <code>length * height * layers</code> produces area when height
+                is a length and layers is scalar. Units convert automatically to
+                the output unit. Plain numbers have no length or area unit.
+              </p>
+            </details>
+            <Show when={preview()}>
+              {(result) => (
+                <details class="formula-reference">
+                  <summary>Preview on selected drawing</summary>
+                  <p>
+                    Base quantities using this recipe's default inputs, before
+                    waste and package rounding. Preview does not save or assign
+                    the recipe.
+                  </p>
+                  <For each={result().outputs}>
+                    {(output) => (
+                      <div>
+                        <strong>
+                          {output.name}:{' '}
+                          {output.complete
+                            ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
+                            : 'Unavailable'}
+                        </strong>
+                        <For each={output.diagnostics}>
+                          {(message) => <p class="warning">{message}</p>}
+                        </For>
+                      </div>
+                    )}
+                  </For>
+                </details>
+              )}
+            </Show>
             <For each={recipe().outputs} keyed={false}>
               {(item, index) => (
                 <fieldset disabled={saving()} class="stack">

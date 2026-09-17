@@ -9,7 +9,9 @@ test('built workspace responds and omits the diagnostics bridge', async ({
   await expect(
     page.getByRole('heading', { name: 'No project open' }),
   ).toBeVisible();
-  const sheets = page.getByRole('button', { name: 'Sheets', exact: true });
+  const sheets = page.locator(
+    '.workspace-panel[data-side=left] > .workspace-panel-control',
+  );
   await sheets.click();
   await expect(
     page.getByRole('complementary', { name: 'Sheets' }),

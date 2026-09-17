@@ -135,6 +135,8 @@ Review components individually before copying them. Presentation components and 
 
 Keep one drawing implementation for the MVP and reuse its geometry/measurement conventions for CLI images. Browser development should execute the actual TypeScript core through a small development storage adapter, rather than a separately maintained read-only mock application. Shipping full browser-only project storage is a later decision.
 
+The September 17 UI review confirms source-page previews on hover or keyboard focus, groups shown beneath each sheet containing their members, ordinary wheel zoom toward the pointer, and draggable panel dividers. Group nesting in the navigator is a projection of flat reusable groups, not a hierarchy in project data. Preserve the reference's compact rows, sheet/group search, sheet-local group selection, contextual selection measurements, and separate next-drawing group choice. Panels collapse, temporarily peek, pin, and retain device-local widths. Resizing and navigation preserve the drawing view. See the [UI restoration record](ux-restoration.md) for provenance, implemented details, and historical behaviors intentionally left out.
+
 ## SolidJS 2 and agent tooling
 
 **Confirmed framework choice: SolidJS 2.** At setup on September 16, 2026, the newest published Solid 2 version was `2.0.0-rc.8`; stable 2.0 had not been released. This is the initial pin. The npm `latest` tag still selected Solid 1, and related packages had different tag defaults, so resolve concrete compatible versions rather than installing a tag across the package set. See the [RC.8 release](https://github.com/solidjs/solid/releases/tag/solid-js%402.0.0-rc.8).

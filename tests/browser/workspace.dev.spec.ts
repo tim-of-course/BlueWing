@@ -18,7 +18,9 @@ test('sheet navigation responds without reactive diagnostics', async ({
     }
   });
   await page.goto('/');
-  const sheets = page.getByRole('button', { name: 'Sheets', exact: true });
+  const sheets = page.locator(
+    '.workspace-panel[data-side=left] > .workspace-panel-control',
+  );
   const navigator = page.getByRole('complementary', { name: 'Sheets' });
   await expect(navigator).toBeVisible();
 
@@ -45,7 +47,7 @@ test('sheet navigation responds without reactive diagnostics', async ({
   expect(artifact.attribution?.reruns.length).toBeGreaterThan(0);
   expectNoDiagnostics(artifact);
   expectNoSilentHolds(artifact);
-  // Two bindings (expanded and hidden), each updated by two interactions.
-  expectRerunBudget(artifact, 4);
+  // Two panel toggles update width, visibility, inert state, control labels and persisted preference.
+  expectRerunBudget(artifact, 24);
   expect(errors).toEqual([]);
 });

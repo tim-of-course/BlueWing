@@ -31,7 +31,9 @@ The output is `src-tauri/target/release/bundle/macos/Bluewing.app`. The bundle i
 4. Select drawing objects and add a named group. Assign a recipe, edit its inputs, and inspect Quantities.
 5. Export CSV or JSON. Each completed edit saves before the UI accepts it. Close and reopen to continue later; undo history lasts for the current project session.
 
-Shortcuts: V select, L path, F area, C count, R calibration, Q drawing/quantities, and Cmd-Z / Shift-Cmd-Z undo/redo. Shift-click selects multiple objects; drag a selected point to edit it; Alt-drag moves the selection. Space-drag pans, and Ctrl/Cmd-scroll zooms. Snapping copies coordinates without linking objects.
+Shortcuts: V select, L path, F area, C count, R calibration, Q drawing/quantities, Cmd-Z / Shift-Cmd-Z undo/redo, Cmd-D duplicate, Backspace/Delete remove, Cmd-0 fit sheet, and Cmd-1 actual size. Use Ctrl in place of Cmd outside macOS. Scroll zooms toward the pointer; Space-drag or middle-drag pans. Shift-click or a selection rectangle selects multiple objects; drag selected objects to move them or a selected point to edit it. Shift bypasses point and angle snapping. Snapping copies coordinates without linking objects.
+
+Hover or focus a sheet to preview its source page. Groups appear under each sheet containing their drawing objects; selecting a group inspects its sheet-local members. The inspector's **Group for new drawing** choice is separate from inspection. Drag a panel's inner edge to resize it, or use its fixed corner control to collapse, peek, and pin it. Layout preferences are saved on this device. Right-click a sheet for its actions, and drag rows or use Alt-Up/Down to reorder them.
 
 The recipe editor supports number/boolean inputs, declared units, multiple outputs, and constrained formulas. Starter recipes cover wall area, floor area, counts, and a stud estimate. See the [product brief](docs/restart-brief.md) for calculation rules and deferred features.
 
@@ -71,6 +73,8 @@ To verify full web delivery, build a release with `bun run web:release <version>
 Browser traces and Solid diagnostic JSON are retained in `test-results/`. Native product evidence is written to `tmp/desktop-workflow/`. The GitHub workflow checks web behavior and builds a macOS app; a local pass does not imply a hosted CI run.
 
 See the [MVP validation record](docs/validation.md) for the completed checks, real-plan evidence, and remaining verification limits.
+
+The [UI restoration record](docs/ux-restoration.md) documents the subsequent reference review and restored interaction decisions.
 
 ## Development
 

@@ -1,4 +1,4 @@
-import { For, Show } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 const number = (value: number) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
@@ -8,6 +8,7 @@ export default function Quantities(props: {
   onShowDrawing: () => void;
   navigationDisabled?: boolean;
 }) {
+  const [filter, setFilter] = createSignal('');
   const exportFile = (format: 'csv' | 'json') => {
     const report = props.onError;
     void props.controller.exportQuantities(format).catch((cause: unknown) => {
@@ -73,11 +74,34 @@ export default function Quantities(props: {
                 </For>
               </tbody>
             </table>
+            <label class="field quantity-filter">
+              Filter source breakdowns
+              <input
+                type="search"
+                placeholder="Group, material or output…"
+                value={filter()}
+                onInput={(event) => setFilter(event.currentTarget.value)}
+              />
+            </label>
             <For
-              each={result().outputs}
+              each={result().outputs.filter(
+                (output) =>
+                  !filter().trim() ||
+                  [
+                    output.materialId,
+                    output.name,
+                    props.controller.project()?.groups[output.groupId]?.name ??
+                      '',
+                  ]
+                    .join(' ')
+                    .toLowerCase()
+                    .includes(filter().trim().toLowerCase()),
+              )}
               fallback={
                 <p class="muted">
-                  Assign a recipe to a group to calculate quantities.
+                  {filter().trim()
+                    ? 'No source breakdowns match.'
+                    : 'Assign a recipe to a group to calculate quantities.'}
                 </p>
               }
             >

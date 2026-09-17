@@ -3,10 +3,13 @@ import { createWorkspace } from './app/controller';
 import type { DrawingTool } from './app/contracts';
 import DrawingCanvas from './components/canvas/DrawingCanvas';
 import GroupInspector from './components/GroupInspector';
+import SelectionInspector from './components/SelectionInspector';
 import RecipeEditor from './components/RecipeEditor';
 import Quantities from './components/Quantities';
 import UpdateDialog from './components/UpdateDialog';
 import ToolIcon from './components/ToolIcon';
+import WorkspacePanel from './components/WorkspacePanel';
+import SheetNavigator from './components/SheetNavigator';
 
 const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
   { id: 'select', label: 'Select', key: 'V', icon: '↖' },
@@ -17,12 +20,23 @@ const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
 ];
 export default function App() {
   const controller = createWorkspace();
-  const [sheetsVisible, setSheetsVisible] = createSignal(true, {
-    name: 'workspace.sheetsVisible',
+  const [sheetsVisible, setSheetsVisible] = createSignal(
+    localStorage.getItem('bluewing.panel.sheets.pinned') !== 'false',
+    {
+      name: 'workspace.sheetsVisible',
+    },
+  );
+  const [inspectorVisible, setInspectorVisible] = createSignal(
+    localStorage.getItem('bluewing.panel.inspector.pinned') !== 'false',
+  );
+  const [inspectorPeek, setInspectorPeek] = createSignal(0);
+  const [sheetDraft, setSheetDraft] = createSignal(false);
+  createEffect(sheetsVisible, (value) => {
+    localStorage.setItem('bluewing.panel.sheets.pinned', String(value));
   });
-  const [inspectorVisible, setInspectorVisible] = createSignal(true);
-  const [leftWidth, setLeftWidth] = createSignal(292);
-  const [rightWidth, setRightWidth] = createSignal(330);
+  createEffect(inspectorVisible, (value) => {
+    localStorage.setItem('bluewing.panel.inspector.pinned', String(value));
+  });
   const [tool, setTool] = createSignal<DrawingTool>('select', {
     name: 'workspace.tool',
   });
@@ -34,6 +48,7 @@ export default function App() {
   const [draft, setDraft] = createSignal(false);
   const [recipeDraft, setRecipeDraft] = createSignal(false);
   const [inspectorDraft, setInspectorDraft] = createSignal(false);
+  const [selectionDraft, setSelectionDraft] = createSignal(false);
   const [updateOpen, setUpdateOpen] = createSignal(false);
   const [projectAction, setProjectAction] = createSignal<
     'create' | 'rename' | null
@@ -48,6 +63,8 @@ export default function App() {
     draft() ||
     recipeDraft() ||
     inspectorDraft() ||
+    selectionDraft() ||
+    sheetDraft() ||
     projectAction() !== null ||
     groupName().trim() !== '';
   createEffect(
@@ -57,6 +74,12 @@ export default function App() {
     },
     { name: 'workspace.unfinishedEdits' },
   );
+  const chooseTool = (id: DrawingTool) => {
+    setTool(id);
+    if (id === 'select') controller.setActiveGroupId(null);
+    setQuantities(false);
+    if (id !== 'select') setInspectorPeek((value) => value + 1);
+  };
   onSettled(() => {
     const keydown = (event: KeyboardEvent) => {
       if (
@@ -66,11 +89,22 @@ export default function App() {
         )
       )
         return;
-      if (recipeOpen() || updateOpen() || projectAction()) return;
+      if (
+        recipeOpen() ||
+        updateOpen() ||
+        projectAction() ||
+        sheetDraft() ||
+        inspectorDraft() ||
+        selectionDraft()
+      )
+        return;
       const key = event.key.toLowerCase();
       if ((event.metaKey || event.ctrlKey) && key === 'z') {
         event.preventDefault();
         run(() => (event.shiftKey ? controller.redo() : controller.undo()));
+      } else if ((event.metaKey || event.ctrlKey) && key === 'd' && !draft()) {
+        event.preventDefault();
+        run(() => controller.copySelection());
       } else if (
         !event.metaKey &&
         !event.ctrlKey &&
@@ -78,9 +112,12 @@ export default function App() {
         !draft()
       ) {
         const match = tools.find((item) => item.key.toLowerCase() === key);
-        if (match) setTool(match.id);
+        if (match) chooseTool(match.id);
         if (key === 'q') setQuantities((current) => !current);
-        if (key === 'delete') run(() => controller.deleteSelection());
+        if (key === 'delete' || key === 'backspace') {
+          event.preventDefault();
+          run(() => controller.deleteSelection());
+        }
       }
     };
     window.addEventListener('keydown', keydown);
@@ -94,15 +131,7 @@ export default function App() {
         <strong class="brand">Bluewing</strong>
         <button
           type="button"
-          aria-controls="sheet-navigator"
-          aria-expanded={sheetsVisible() ? 'true' : 'false'}
-          onClick={() => setSheetsVisible((value) => !value)}
-        >
-          Sheets
-        </button>
-        <button
-          type="button"
-          disabled={controller.busy() || hasDraft()}
+          disabled={controller.busy() || hasDraft() || !!controller.project()}
           onClick={() => {
             setProjectName('Untitled project');
             setProjectAction('create');
@@ -112,7 +141,7 @@ export default function App() {
         </button>
         <button
           type="button"
-          disabled={controller.busy() || hasDraft()}
+          disabled={controller.busy() || hasDraft() || !!controller.project()}
           onClick={() => {
             run(() => controller.openProject());
           }}
@@ -149,7 +178,7 @@ export default function App() {
         <button
           type="button"
           class={!quantities() ? 'active' : ''}
-          disabled={draft()}
+          disabled={draft() || selectionDraft()}
           onClick={() => setQuantities(false)}
         >
           Drawing
@@ -157,7 +186,7 @@ export default function App() {
         <button
           type="button"
           class={quantities() ? 'active' : ''}
-          disabled={draft()}
+          disabled={draft() || selectionDraft()}
           onClick={() => setQuantities(true)}
         >
           Quantities
@@ -168,13 +197,6 @@ export default function App() {
           onClick={() => setRecipeOpen(true)}
         >
           Recipes
-        </button>
-        <button
-          type="button"
-          aria-expanded={inspectorVisible() ? 'true' : 'false'}
-          onClick={() => setInspectorVisible((value) => !value)}
-        >
-          Inspector
         </button>
         <button type="button" onClick={() => setUpdateOpen(true)}>
           Updates
@@ -195,138 +217,32 @@ export default function App() {
         </div>
       </Show>
       <div class="workspace-body">
-        <aside
+        <WorkspacePanel
           id="sheet-navigator"
-          class="navigator"
-          aria-label="Sheets"
-          hidden={!sheetsVisible()}
-          style={{ width: `${String(leftWidth())}px` }}
+          label="Sheets"
+          side="left"
+          defaultWidth={292}
+          minWidth={220}
+          maxWidth={500}
+          pinned={sheetsVisible()}
+          onPinnedChange={setSheetsVisible}
         >
-          <div class="panel-heading">
-            <h2>Sheets</h2>
-            <button
-              type="button"
-              disabled={!controller.project() || controller.busy() || draft()}
-              onClick={() => {
-                run(() => controller.importPdf());
-              }}
-            >
-              Import PDF
-            </button>
-          </div>
-          <div class="sheet-list">
-            <For
-              each={Object.values(controller.project()?.sheets ?? {})}
-              fallback={<p class="muted">No sheets loaded</p>}
-            >
-              {(sheet) => (
-                <button
-                  class={[
-                    'sheet-row',
-                    controller.activeSheetId() === sheet.id ? 'active' : '',
-                  ]}
-                  type="button"
-                  disabled={draft()}
-                  onClick={() => {
-                    controller.setActiveSheetId(sheet.id);
-                    controller.setSelection([]);
-                  }}
-                >
-                  <span class="sheet-icon">▤</span>
-                  <span>
-                    {sheet.name}
-                    <small>
-                      {Math.round(sheet.width)} × {Math.round(sheet.height)} ·{' '}
-                      {sheet.calibration ? 'Calibrated' : 'Set scale'}
-                    </small>
-                  </span>
-                </button>
-              )}
-            </For>
-          </div>
-          <div class="panel-heading">
-            <h2>Groups</h2>
-            <button
-              type="button"
-              disabled={draft() || inspectorDraft()}
-              onClick={() => {
-                controller.setActiveGroupId(null);
-              }}
-            >
-              Clear context
-            </button>
-          </div>
-          <p class="hint">New drawing joins the selected group.</p>
-          <For each={Object.values(controller.project()?.groups ?? {})}>
-            {(group) => (
-              <button
-                type="button"
-                disabled={draft() || inspectorDraft()}
-                class={[
-                  'group-row',
-                  controller.activeGroupId() === group.id ? 'active' : '',
-                ]}
-                onClick={() => {
-                  controller.setActiveGroupId(group.id);
-                }}
-              >
-                <span
-                  class="color-dot"
-                  style={{ background: group.color ?? '#3b82f6' }}
-                />
-                <span>{group.name}</span>
-                <small>{group.geometryIds.length}</small>
-              </button>
-            )}
-          </For>
-          <Show when={controller.project()}>
-            <form
-              class="new-group"
-              onSubmit={(event) => {
-                event.preventDefault();
-                run(async () => {
-                  const id = await controller.createGroup(
-                    groupName().trim(),
-                    '#3b82f6',
-                  );
-                  setGroupName('');
-                  controller.setActiveGroupId(id);
-                });
-              }}
-            >
-              <input
-                aria-label="New group name"
-                placeholder="New group name"
-                value={groupName()}
-                onInput={(event) => setGroupName(event.currentTarget.value)}
-              />
-              <button
-                type="submit"
-                disabled={
-                  !groupName().trim() ||
-                  controller.busy() ||
-                  draft() ||
-                  inspectorDraft()
-                }
-              >
-                Add
-              </button>
-            </form>
-          </Show>
-          <label class="panel-resize">
-            Panel width
-            <input
-              aria-label="Sheets panel width"
-              type="range"
-              min="220"
-              max="500"
-              value={leftWidth()}
-              onInput={(event) =>
-                setLeftWidth(event.currentTarget.valueAsNumber)
-              }
-            />
-          </label>
-        </aside>
+          <SheetNavigator
+            controller={controller}
+            disabled={
+              draft() ||
+              inspectorDraft() ||
+              selectionDraft() ||
+              controller.busy()
+            }
+            onError={setError}
+            onDraftChange={setSheetDraft}
+            onInspect={() => {
+              setTool('select');
+              setInspectorPeek((value) => value + 1);
+            }}
+          />
+        </WorkspacePanel>
         <main class="main-workspace">
           <Show
             when={controller.project()}
@@ -358,7 +274,12 @@ export default function App() {
             <div class="workspace-toolbar">
               <button
                 type="button"
-                disabled={!controller.canUndo() || controller.busy()}
+                disabled={
+                  !controller.canUndo() ||
+                  controller.busy() ||
+                  selectionDraft() ||
+                  inspectorDraft()
+                }
                 onClick={() => {
                   run(() => controller.undo());
                 }}
@@ -367,7 +288,12 @@ export default function App() {
               </button>
               <button
                 type="button"
-                disabled={!controller.canRedo() || controller.busy()}
+                disabled={
+                  !controller.canRedo() ||
+                  controller.busy() ||
+                  selectionDraft() ||
+                  inspectorDraft()
+                }
                 onClick={() => {
                   run(() => controller.redo());
                 }}
@@ -376,16 +302,26 @@ export default function App() {
               </button>
               <button
                 type="button"
-                disabled={!controller.selection().length || controller.busy()}
+                disabled={
+                  !controller.selection().length ||
+                  controller.busy() ||
+                  selectionDraft() ||
+                  inspectorDraft()
+                }
                 onClick={() => {
                   run(() => controller.copySelection());
                 }}
               >
-                Copy
+                Duplicate
               </button>
               <button
                 type="button"
-                disabled={!controller.selection().length || controller.busy()}
+                disabled={
+                  !controller.selection().length ||
+                  controller.busy() ||
+                  selectionDraft() ||
+                  inspectorDraft()
+                }
                 onClick={() => {
                   run(() => controller.deleteSelection());
                 }}
@@ -397,55 +333,147 @@ export default function App() {
                 {controller.selection().length} selected
               </span>
             </div>
-            <Show
-              when={!quantities()}
-              fallback={
-                <Quantities
-                  controller={controller}
-                  onError={setError}
-                  onShowDrawing={() => setQuantities(false)}
-                  navigationDisabled={inspectorDraft()}
-                />
-              }
-            >
+            <Show when={quantities()}>
+              <Quantities
+                controller={controller}
+                onError={setError}
+                onShowDrawing={() => setQuantities(false)}
+                navigationDisabled={inspectorDraft()}
+              />
+            </Show>
+            <div class="drawing-workspace" hidden={quantities()}>
               <DrawingCanvas
                 controller={controller}
                 tool={tool()}
                 onError={setError}
                 onDraftChange={setDraft}
+                interactionDisabled={inspectorDraft() || selectionDraft()}
               />
-            </Show>
+            </div>
           </Show>
         </main>
-        <aside
-          class="inspector"
-          aria-label="Inspector"
-          hidden={!inspectorVisible()}
-          style={{ width: `${String(rightWidth())}px` }}
+        <WorkspacePanel
+          id="group-inspector"
+          label="Inspector"
+          side="right"
+          defaultWidth={330}
+          minWidth={260}
+          maxWidth={550}
+          pinned={inspectorVisible()}
+          onPinnedChange={setInspectorVisible}
+          peekRequest={inspectorPeek()}
         >
           <div class="panel-heading">
             <h2>Inspector</h2>
           </div>
-          <GroupInspector
-            controller={controller}
-            onError={setError}
-            onDraftChange={setInspectorDraft}
-            navigationDisabled={draft()}
-          />
-          <label class="panel-resize">
-            Panel width
-            <input
-              aria-label="Inspector panel width"
-              type="range"
-              min="260"
-              max="550"
-              value={rightWidth()}
-              onInput={(event) =>
-                setRightWidth(event.currentTarget.valueAsNumber)
+          <Show when={controller.project()}>
+            <Show
+              when={
+                tool() === 'path' || tool() === 'area' || tool() === 'count'
               }
+            >
+              <section class="panel-section new-work stack">
+                <h3>New {tool() === 'path' ? 'path' : tool()}</h3>
+                <label class="field">
+                  Group for new drawing
+                  <select
+                    aria-label="Group for new drawing"
+                    value={controller.drawingGroupId() ?? ''}
+                    disabled={draft()}
+                    onChange={(event) => {
+                      controller.setDrawingGroupId(
+                        event.currentTarget.value || null,
+                      );
+                    }}
+                  >
+                    <option value="">No group</option>
+                    <For
+                      each={Object.values(controller.project()?.groups ?? {})}
+                    >
+                      {(group) => (
+                        <option value={group.id}>{group.name}</option>
+                      )}
+                    </For>
+                  </select>
+                </label>
+                <p class="hint">New drawings join this group.</p>
+                <button
+                  type="button"
+                  disabled={draft() || inspectorDraft()}
+                  onClick={() => {
+                    controller.setDrawingGroupId(null);
+                    controller.setActiveGroupId(null);
+                  }}
+                >
+                  Clear context
+                </button>
+              </section>
+            </Show>
+            <section class="create-group-section">
+              <h3>
+                {controller.selection().length
+                  ? 'Group selected drawing'
+                  : 'Create group'}
+              </h3>
+              <Show when={controller.project()}>
+                <form
+                  class="new-group"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    run(async () => {
+                      const id = await controller.createGroup(
+                        groupName().trim(),
+                        '#3b82f6',
+                      );
+                      setGroupName('');
+                      controller.setActiveGroupId(id);
+                    });
+                  }}
+                >
+                  <input
+                    aria-label="New group name"
+                    placeholder="New group name"
+                    value={groupName()}
+                    onInput={(event) => setGroupName(event.currentTarget.value)}
+                  />
+                  <button
+                    type="submit"
+                    disabled={
+                      !groupName().trim() ||
+                      controller.busy() ||
+                      draft() ||
+                      inspectorDraft()
+                    }
+                  >
+                    Add
+                  </button>
+                </form>
+              </Show>
+            </section>
+          </Show>
+          <Show
+            when={controller.activeGroupId()}
+            fallback={
+              <Show
+                when={tool() === 'select' && controller.selection().length > 0}
+              >
+                <SelectionInspector
+                  controller={controller}
+                  onError={setError}
+                  onDraftChange={setSelectionDraft}
+                  navigationDisabled={draft()}
+                />
+              </Show>
+            }
+          >
+            <GroupInspector
+              controller={controller}
+              onError={setError}
+              onDraftChange={setInspectorDraft}
+              navigationDisabled={draft()}
             />
-          </label>
-        </aside>
+          </Show>
+        </WorkspacePanel>
         <nav class="tool-rail" aria-label="Drawing tools">
           <For each={tools}>
             {(item) => (
@@ -455,10 +483,14 @@ export default function App() {
                 aria-label={`${item.label} (${item.key})`}
                 aria-pressed={tool() === item.id ? 'true' : 'false'}
                 title={`${item.label} (${item.key})`}
-                disabled={draft() || !controller.project()}
+                disabled={
+                  draft() ||
+                  selectionDraft() ||
+                  inspectorDraft() ||
+                  !controller.project()
+                }
                 onClick={() => {
-                  setTool(item.id);
-                  setQuantities(false);
+                  chooseTool(item.id);
                 }}
               >
                 <ToolIcon tool={item.id} />
@@ -484,7 +516,16 @@ export default function App() {
             ? 'Enter to finish · Escape to cancel'
             : 'Shift-click to select multiple · Q switches workspace'}
         </span>
-        <span>{controller.native ? 'Desktop' : 'Browser workspace'}</span>
+        <span>
+          {controller.activeSheetId() &&
+          controller.project()?.sheets[controller.activeSheetId() ?? '']
+            ?.calibration
+            ? `Scale: 1″ = ${(((controller.project()?.sheets[controller.activeSheetId() ?? '']?.calibration?.metresPerUnit ?? 0) * 72) / 0.3048).toLocaleString(undefined, { maximumFractionDigits: 3 })}′`
+            : controller.activeSheetId()
+              ? 'Sheet uncalibrated'
+              : 'Ready'}{' '}
+          · {controller.selection().length} selected
+        </span>
       </footer>
       <Show when={projectAction()}>
         <div class="modal-backdrop">
