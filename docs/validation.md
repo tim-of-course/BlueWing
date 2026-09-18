@@ -2,7 +2,15 @@
 
 Validated locally on September 16, 2026. The first macOS MVP supports PDF import, calibration, path/area/count drawing and editing, reusable groups, editable recipes, traceable quantities, exports, session undo/redo, local saving, a desktop CLI, and cached web updates.
 
-The release app is at `src-tauri/target/release/bundle/macos/Bluewing.app`. This is a local Apple Silicon build requiring macOS 15.4 or newer. It is unsigned and not notarized. Windows support and a public web-release host remain deferred.
+The macOS release app is at `src-tauri/target/release/bundle/macos/Bluewing.app`. This is a local Apple Silicon build requiring macOS 15.4 or newer. It is unsigned and not notarized. A public web-release host remains deferred.
+
+## Windows setup, September 17, 2026
+
+Verified locally on Windows x64 with Node 22.22.3, Bun 1.3.13 (the manifest pin remains 1.3.14), Rust 1.95.0, Visual Studio Build Tools 2026, and WebView2 153.0.4234.32. Frozen dependency installation succeeded without lockfile changes.
+
+Windows packaging uses an NSIS override and an ICO generated from the existing app icon. `bun run desktop` starts the development app; `bun run desktop:build` produces `src-tauri/target/release/bundle/nsis/Bluewing_0.1.0_x64-setup.exe`. The installer includes both desktop and CLI executables. The build is unsigned. Formatting preserves Windows checkout line endings, and the platform-test command names its three test files explicitly because Bun's wildcard expansion failed on Windows.
+
+Type checking, lint, formatting, 26 core tests, six platform tests, all eight development/production Chromium and WebKit scenarios, six Rust tests, and the native smoke and desktop workflows passed. The native workflows exercised the actual Windows WebView2 app, PDF rendering, SQLite persistence, CLI transport, and cached-version activation with offline reopening. The optional 15-sheet source plan was not used for this Windows check. No new tests or product guards were added.
 
 ## Results
 

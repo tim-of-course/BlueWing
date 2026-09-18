@@ -12,7 +12,7 @@ The previous PlanVyper application is a reference. **Its code, documentation, te
 
 Complete this workflow: create a project, import a PDF, choose and calibrate a sheet, draw lengths/areas/counts, apply a simple calculation, inspect its sources, export quantities, close, and reopen. An agent can inspect the same project and make the same edits through the CLI while the desktop app shows the results.
 
-The first usable MVP targets macOS. Windows follows after the macOS workflow is usable and verified.
+The first usable MVP targeted macOS. Windows is now supported with a WebView2 desktop shell and NSIS installer; local Windows verification is recorded in `docs/validation.md`.
 
 Initial scope:
 

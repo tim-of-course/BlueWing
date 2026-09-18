@@ -1,12 +1,12 @@
 # Bluewing
 
-A macOS-first construction takeoff app. Import PDF plans, calibrate sheets, draw paths, areas, and counts, and calculate quantities with editable project recipes. Flat groups can reuse the same drawing objects. Quantities show source contributions, waste, whole-package rounding, and incomplete calculations.
+A construction takeoff app for Windows and macOS. Import PDF plans, calibrate sheets, draw paths, areas, and counts, and calculate quantities with editable project recipes. Flat groups can reuse the same drawing objects. Quantities show source contributions, waste, whole-package rounding, and incomplete calculations.
 
-Projects save locally as `.bluewing` SQLite files. UI and CLI edits share one TypeScript command session with revision checks and session undo/redo. The small Tauri shell provides files, database transactions, the CLI connection, and offline web bundles. Windows support follows macOS.
+Projects save locally as `.bluewing` SQLite files. UI and CLI edits share one TypeScript command session with revision checks and session undo/redo. The small Tauri shell provides files, database transactions, the CLI connection, and offline web bundles.
 
 ## Run
 
-The initial desktop build requires macOS 15.4 or newer for the current PDF renderer's web APIs. Use Bun 1.3.14, Node from `.node-version`, Rust, and the macOS Xcode command-line tools:
+Use Bun (the project pins 1.3.14), Node from `.node-version`, and Rust. Windows development requires Visual Studio Build Tools with Desktop development with C++ and the Windows SDK, the MSVC Rust toolchain, and Microsoft Edge WebView2. macOS requires 15.4 or newer and Xcode command-line tools.
 
 ```sh
 bun install --frozen-lockfile
@@ -15,13 +15,19 @@ bun run desktop
 
 For browser development, use `bun run dev`. It runs the real application with IndexedDB storage; Open reopens the most recently created browser project. Desktop projects use native file dialogs and SQLite.
 
-Build the macOS app:
+Build the desktop app for the current platform:
 
 ```sh
 bun run desktop:build
 ```
 
-The output is `src-tauri/target/release/bundle/macos/Bluewing.app`. The bundle includes the `bluewing` CLI beside its desktop executable in `Contents/MacOS`. The local build is unsigned and not notarized. Signing for distribution is separate from running the MVP on this machine.
+On Windows, the installer is in `src-tauri/target/release/bundle/nsis/`. You can also run `src-tauri/target/release/bluewing-desktop.exe` directly; `bluewing.exe` is its CLI. On macOS, the output is `src-tauri/target/release/bundle/macos/Bluewing.app`, with the CLI beside its desktop executable in `Contents/MacOS`. Local builds are unsigned; distribution signing is separate.
+
+From PowerShell, with the desktop app running, call the CLI with:
+
+```powershell
+.\src-tauri\target\release\bluewing.exe commands.list
+```
 
 ## Use
 
@@ -69,6 +75,8 @@ python3 tests/desktop/workflow.py
 ```
 
 Set `BLUEWING_TEST_PLAN` to the local Behavioral Health Group PDF when running the desktop workflow to include its 15-sheet import and rendering check. That source plan is not stored in Git. Independent fixtures establish 384 sq ft wall area, 360 sq ft floor area, three items, and allowance/package arithmetic.
+
+On Windows, use `python` in place of `python3`. Set test environment variables with PowerShell syntax, for example `$env:BLUEWING_NATIVE_BIN_DIR = "$PWD/src-tauri/target/release"`. Formatting accepts the checkout's LF or CRLF line endings.
 
 To verify full web delivery, build a release with `bun run web:release <version>` and set `BLUEWING_TEST_RELEASE_DIRECTORY` to that output directory when running `tests/desktop/workflow.py`. The test starts a local release server, stages and activates the release, stops the server, then restarts and uses the cached app. Set `BLUEWING_NATIVE_BIN_DIR` to an app bundle's `Contents/MacOS` directory to test its included binaries.
 

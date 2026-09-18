@@ -20,12 +20,12 @@
     "test:production": "playwright test --config playwright.production.config.ts",
     "verify": "bun run check && bun run test:core && bun run test:platform && bun run test:dev && bun run build && bun run test:production",
     "desktop": "tauri dev",
-    "desktop:build": "tauri build --bundles app",
+    "desktop:build": "tauri build",
     "cli:build": "cargo build --manifest-path src-tauri/Cargo.toml --locked --bin bluewing --release",
     "test:core": "bun test tests/core",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
     "web:release": "bun scripts/web-release.ts",
-    "test:platform": "bun build tests/platform/storage.test.ts tests/platform/updates.test.ts tests/platform/browser.test.ts --target=node --external=@playwright/test --outdir=tests/platform/.compiled && bun build src/platform/browser-storage.ts --target=browser --outdir=tests/platform/.compiled && node --test tests/platform/.compiled/*.test.js"
+    "test:platform": "bun build tests/platform/storage.test.ts tests/platform/updates.test.ts tests/platform/browser.test.ts --target=node --external=@playwright/test --outdir=tests/platform/.compiled && bun build src/platform/browser-storage.ts --target=browser --outdir=tests/platform/.compiled && node --test tests/platform/.compiled/storage.test.js tests/platform/.compiled/updates.test.js tests/platform/.compiled/browser.test.js"
   },
   "dependencies": {
     "@solidjs/web": "2.0.0-rc.8",
