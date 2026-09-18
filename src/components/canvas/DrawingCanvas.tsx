@@ -9,7 +9,11 @@ import {
 import type { DrawingTool, WorkspaceController } from '../../app/contracts';
 import type { Observation } from '../../app/application';
 import type { Geometry, LengthUnit, Point, Sheet } from '../../core/types';
-import { distance, hitTestGeometry } from '../../core/geometry';
+import {
+  distance,
+  hitTestGeometry,
+  hitTestGeometrySweep,
+} from '../../core/geometry';
 import { paintTakeoff } from './paint';
 
 /** Canvas-local CSS pixels = camera offset + page coordinates * zoom. */
@@ -67,7 +71,12 @@ type Edit =
     };
 type Gesture =
   | { kind: 'pan'; start: Point; camera: Camera }
-  | { kind: 'select'; start: Point; previous: string[] }
+  | {
+      kind: 'select';
+      start: Point;
+      previous: string[];
+      subtract: boolean;
+    }
   | {
       kind: 'point';
       start: Point;
@@ -149,6 +158,12 @@ export default function DrawingCanvas(props: {
   let gesture: Gesture | null = null;
   let savingNow = false;
   let spaceDown = false;
+  let brushPrevious: Point | null = null;
+  let brushSelection: Set<string> | null = null;
+  const [brushMode, setBrushMode] = createSignal<'add' | 'subtract' | null>(
+    null,
+    { name: 'canvas.brushSelectionMode' },
+  );
   const [panCursor, setPanCursor] = createSignal<'grab' | 'grabbing' | null>(
     null,
   );
@@ -161,9 +176,10 @@ export default function DrawingCanvas(props: {
     { width: 1, height: 1, dpr: 1 },
     { name: 'canvas.viewport' },
   );
-  const [image, setImage] = createSignal<HTMLCanvasElement | null>(null, {
-    name: 'canvas.pdfImage',
-  });
+  const [renderedImage, setRenderedImage] = createSignal<{
+    sheet: Sheet;
+    canvas: HTMLCanvasElement;
+  } | null>(null, { name: 'canvas.renderedPdf' });
   const [loading, setLoading] = createSignal(false);
   const [renderError, setRenderError] = createSignal('');
   const [draft, setDraft] = createSignal<Draft | null>(null, {
@@ -202,7 +218,12 @@ export default function DrawingCanvas(props: {
           item.sheetId === sheet()?.id &&
           props.controller.visibleGeometryIds().has(item.id),
       ),
-    { name: 'canvas.geometries' },
+    {
+      name: 'canvas.geometries',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((item, index) => item === next[index]),
+    },
   );
   const renderSheet = createMemo(() => sheet(), {
     name: 'canvas.renderSheet',
@@ -214,6 +235,13 @@ export default function DrawingCanvas(props: {
       previous?.height === next?.height &&
       previous?.rotation === next?.rotation,
   });
+  const image = createMemo(
+    () => {
+      const rendered = renderedImage();
+      return rendered?.sheet === renderSheet() ? rendered?.canvas : undefined;
+    },
+    { name: 'canvas.pdfImage' },
+  );
   const crosshair = createMemo(
     () => {
       const current = cursor();
@@ -307,7 +335,7 @@ export default function DrawingCanvas(props: {
       report: props.onError,
     }),
     ({ current, controller, report }) => {
-      setImage(null);
+      stopBrush();
       setRenderError('');
       if (!current) {
         setLoading(false);
@@ -319,7 +347,7 @@ export default function DrawingCanvas(props: {
         .renderSheet(current, 3000)
         .then((rendered) => {
           if (!cancelled) {
-            setImage(rendered);
+            setRenderedImage({ sheet: current, canvas: rendered });
             setLoading(false);
           }
         })
@@ -604,6 +632,45 @@ export default function DrawingCanvas(props: {
       setSaving(false);
     }
   }
+  function stopBrush() {
+    brushSelection = null;
+    brushPrevious = null;
+    setBrushMode(null);
+  }
+  function paintSelection(point: Point, subtract: boolean) {
+    if (!brushSelection || props.interactionDisabled || dirty() || savingNow)
+      return;
+    const previous = brushPrevious ?? point;
+    brushPrevious = point;
+    let changed = false;
+    for (const item of geometries()) {
+      if (!hitTestGeometrySweep(item, previous, point, 10 / camera().zoom))
+        continue;
+      if (subtract) changed = brushSelection.delete(item.id) || changed;
+      else if (!brushSelection.has(item.id)) {
+        brushSelection.add(item.id);
+        changed = true;
+      }
+    }
+    setBrushMode(subtract ? 'subtract' : 'add');
+    if (changed) {
+      props.controller.setActiveGroupId(null);
+      props.controller.setSelection([...brushSelection]);
+    }
+  }
+  function paintAtCursor(subtract: boolean) {
+    const current = cursor();
+    if (!current || current.sheetId !== sheet()?.id || spaceDown || gesture)
+      return;
+    const view = camera();
+    paintSelection(
+      {
+        x: (current.point.x - view.x) / view.zoom,
+        y: (current.point.y - view.y) / view.zoom,
+      },
+      subtract,
+    );
+  }
   function pointerDown(event: PointerEvent) {
     if (savingNow || !sheet()) return;
     if (gesture) return;
@@ -613,6 +680,7 @@ export default function DrawingCanvas(props: {
       setPanCursor('grabbing');
       setHover(null);
       setSnapped(false);
+      brushPrevious = null;
       gesture = { kind: 'pan', start: localPoint(event), camera: camera() };
       canvas?.setPointerCapture(event.pointerId);
       return;
@@ -622,6 +690,11 @@ export default function DrawingCanvas(props: {
     const current = sheet();
     if (!current) return;
     const point = pagePoint(event);
+    if (brushSelection) {
+      event.preventDefault();
+      paintSelection(point, event.altKey);
+      return;
+    }
     if (props.tool !== 'select') {
       if (
         point.x < 0 ||
@@ -687,24 +760,25 @@ export default function DrawingCanvas(props: {
       .reverse()
       .find((item) => hitTestGeometry(item, point, 7 / camera().zoom));
     if (!hit) {
-      if (!event.shiftKey) props.controller.setSelection([]);
+      if (!event.shiftKey && !event.altKey) props.controller.setSelection([]);
       gesture = {
         kind: 'select',
         start: point,
-        previous: event.shiftKey ? selected : [],
+        previous: event.shiftKey || event.altKey ? selected : [],
+        subtract: event.altKey,
       };
       canvas?.setPointerCapture(event.pointerId);
       return;
     }
-    const ids = event.shiftKey
-      ? selected.includes(hit.id)
-        ? selected.filter((id) => id !== hit.id)
-        : [...selected, hit.id]
-      : selected.includes(hit.id)
-        ? selected
-        : [hit.id];
+    const ids = event.altKey
+      ? selected.filter((id) => id !== hit.id)
+      : event.shiftKey
+        ? [...new Set([...selected, hit.id])]
+        : selected.includes(hit.id)
+          ? selected
+          : [hit.id];
     props.controller.setSelection(ids);
-    if (event.shiftKey) return;
+    if (event.shiftKey || event.altKey) return;
     gesture = {
       kind: 'move',
       start: point,
@@ -735,6 +809,11 @@ export default function DrawingCanvas(props: {
         x: gesture.camera.x + local.x - gesture.start.x,
         y: gesture.camera.y + local.y - gesture.start.y,
       });
+      return;
+    }
+    if (brushSelection && !gesture) {
+      if (spaceDown) brushPrevious = null;
+      else paintSelection(point, event.altKey);
       return;
     }
     if (gesture?.kind === 'point') {
@@ -786,15 +865,16 @@ export default function DrawingCanvas(props: {
       canvas.releasePointerCapture(event.pointerId);
     if (completed?.kind === 'select') {
       const end = pagePoint(event);
-      if (distance(end, completed.start) * camera().zoom >= 3)
-        props.controller.setSelection([
-          ...new Set([
-            ...completed.previous,
-            ...geometries()
-              .filter((item) => intersectsSelection(item, completed.start, end))
-              .map((item) => item.id),
-          ]),
-        ]);
+      if (distance(end, completed.start) * camera().zoom >= 3) {
+        const hits = geometries()
+          .filter((item) => intersectsSelection(item, completed.start, end))
+          .map((item) => item.id);
+        props.controller.setSelection(
+          completed.subtract
+            ? completed.previous.filter((id) => !hits.includes(id))
+            : [...new Set([...completed.previous, ...hits])],
+        );
+      }
       setSelectionBox(null);
     } else if (completed && completed.kind !== 'pan' && edit()) void commit();
   }
@@ -823,6 +903,7 @@ export default function DrawingCanvas(props: {
       const bounds = element.getBoundingClientRect();
       if (bounds.width <= 1 || bounds.height <= 1) {
         spaceDown = false;
+        stopBrush();
         cancelGesture();
         return;
       }
@@ -850,6 +931,31 @@ export default function DrawingCanvas(props: {
           ))
       )
         return;
+      if (
+        event.code === 'KeyB' &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.repeat &&
+        !dirty() &&
+        !gesture &&
+        !props.interactionDisabled &&
+        !savingNow &&
+        sheet()
+      ) {
+        event.preventDefault();
+        brushSelection = new Set(props.controller.selection());
+        brushPrevious = null;
+        setBrushMode(event.altKey ? 'subtract' : 'add');
+        setHover(null);
+        setSnapped(false);
+        paintAtCursor(event.altKey);
+      }
+      if (event.key === 'Alt' && brushSelection) {
+        event.preventDefault();
+        brushPrevious = null;
+        setBrushMode('subtract');
+        paintAtCursor(true);
+      }
       if ((event.metaKey || event.ctrlKey) && event.key === '0') {
         event.preventDefault();
         fit();
@@ -869,11 +975,13 @@ export default function DrawingCanvas(props: {
           return;
         event.preventDefault();
         spaceDown = true;
+        brushPrevious = null;
         if (gesture?.kind !== 'pan') setPanCursor('grab');
       }
       if (event.key === 'Escape') {
         if (props.interactionDisabled && !dirty()) return;
         event.preventDefault();
+        stopBrush();
         if (dirty() || gesture) cancel();
         else props.controller.setSelection([]);
         setPanCursor(spaceDown ? 'grab' : null);
@@ -884,6 +992,11 @@ export default function DrawingCanvas(props: {
       }
     };
     const keyup = (event: KeyboardEvent) => {
+      if (event.code === 'KeyB') stopBrush();
+      if (event.key === 'Alt' && brushSelection) {
+        brushPrevious = null;
+        setBrushMode('add');
+      }
       if (event.code === 'Space') {
         spaceDown = false;
         if (gesture?.kind !== 'pan') setPanCursor(null);
@@ -891,6 +1004,7 @@ export default function DrawingCanvas(props: {
     };
     const blur = () => {
       spaceDown = false;
+      stopBrush();
       cancelGesture();
       setCursor(null);
     };
@@ -911,6 +1025,7 @@ export default function DrawingCanvas(props: {
       );
       setHover(null);
       setSnapped(false);
+      brushPrevious = null;
     };
     const surface = canvas;
     surface?.addEventListener('wheel', wheel, { passive: false });
@@ -947,14 +1062,14 @@ export default function DrawingCanvas(props: {
         data-camera-y={camera().y}
         data-camera-zoom={camera().zoom}
         data-sheet-id={sheet()?.id}
+        data-brush-mode={brushMode() ?? undefined}
         tabindex={0}
         style={{
           display: 'block',
           width: '100%',
           height: '100%',
           'touch-action': 'none',
-          cursor:
-            panCursor() ?? (props.tool === 'select' ? 'default' : 'crosshair'),
+          cursor: panCursor() ?? (crosshair() ? 'none' : 'crosshair'),
         }}
         onPointerDown={pointerDown}
         onPointerMove={pointerMove}
@@ -963,6 +1078,7 @@ export default function DrawingCanvas(props: {
         onLostPointerCapture={cancelGesture}
         onPointerLeave={() => {
           setCursor(null);
+          brushPrevious = null;
           if (!gesture) {
             setHover(null);
             setSnapped(false);
@@ -986,6 +1102,27 @@ export default function DrawingCanvas(props: {
               class="crosshair-vertical"
               style={{ left: `${String(point().x)}px` }}
             />
+            <svg
+              class="canvas-reticle"
+              viewBox="-13 -13 26 26"
+              style={{
+                left: `${String(point().x)}px`,
+                top: `${String(point().y)}px`,
+              }}
+            >
+              <path
+                class="reticle-shape"
+                d="M-4-8H-8V-4 M4-8H8V-4 M8 4V8H4 M-4 8H-8V4"
+              />
+              <circle class="reticle-dot" r="2" />
+              <Show when={brushMode()}>
+                <circle class="brush-radius" r="10" />
+                <path
+                  class="reticle-shape"
+                  d={brushMode() === 'subtract' ? 'M8 12h6' : 'M8 12h6m-3-3v6'}
+                />
+              </Show>
+            </svg>
           </div>
         )}
       </Show>

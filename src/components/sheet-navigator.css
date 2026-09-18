@@ -1,6 +1,7 @@
 .workspace-panel-content > .panel-heading.navigator-heading {
   min-height: 34px;
   padding-block: 4px;
+  gap: 4px;
 }
 .navigator-heading button {
   padding: 3px 6px;

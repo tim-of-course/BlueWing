@@ -11,6 +11,7 @@ import ToolIcon from './components/ToolIcon';
 import WorkspacePanel from './components/WorkspacePanel';
 import SheetNavigator from './components/SheetNavigator';
 import SheetScaleDialog from './components/SheetScaleDialog';
+import SheetNamesDialog from './components/SheetNamesDialog';
 import type { Sheet } from './core/types';
 import type { Observation } from './app/application';
 import { formatScale } from './core/scale';
@@ -49,6 +50,10 @@ export default function App() {
     sheet: Sheet;
     expected: Observation;
   } | null>(null);
+  const [sheetNamesDialog, setSheetNamesDialog] = createSignal<{
+    sheets: Sheet[];
+    expected: Observation;
+  } | null>(null);
   createEffect(sheetsVisible, (value) => {
     localStorage.setItem('bluewing.panel.sheets.pinned', String(value));
   });
@@ -84,6 +89,7 @@ export default function App() {
     selectionDraft() ||
     sheetDraft() ||
     scaleDialog() !== null ||
+    sheetNamesDialog() !== null ||
     projectAction() !== null ||
     groupName().trim() !== '';
   createEffect(
@@ -132,6 +138,7 @@ export default function App() {
         projectAction() ||
         sheetDraft() ||
         scaleDialog() ||
+        sheetNamesDialog() ||
         inspectorDraft() ||
         selectionDraft()
       )
@@ -275,6 +282,14 @@ export default function App() {
             }
             onError={setError}
             onDraftChange={setSheetDraft}
+            onAutoName={() => {
+              setSheetNamesDialog({
+                sheets: Object.values(controller.project()?.sheets ?? {}).sort(
+                  (a, b) => (a.order ?? a.pageIndex) - (b.order ?? b.pageIndex),
+                ),
+                expected: controller.observe(),
+              });
+            }}
             onInspect={() => {
               setTool('select');
               setInspectorPeek((value) => value + 1);
@@ -309,7 +324,13 @@ export default function App() {
               </div>
             }
           >
-            <div class="workspace-toolbar">
+            <div
+              class="workspace-toolbar"
+              style={{
+                'padding-left': sheetsVisible() ? undefined : '42px',
+                'padding-right': inspectorVisible() ? undefined : '42px',
+              }}
+            >
               <button
                 type="button"
                 disabled={
@@ -520,7 +541,11 @@ export default function App() {
                 class={tool() === item.id ? 'active' : ''}
                 aria-label={`${item.label} (${item.key})`}
                 aria-pressed={tool() === item.id ? 'true' : 'false'}
-                title={`${item.label} (${item.key})`}
+                title={
+                  item.id === 'select'
+                    ? 'Select (V) · Hold B to paint select · Shift adds · Alt/Option subtracts'
+                    : `${item.label} (${item.key})`
+                }
                 disabled={
                   draft() ||
                   selectionDraft() ||
@@ -552,7 +577,7 @@ export default function App() {
         <span>
           {draft()
             ? 'Enter to finish · Escape to cancel'
-            : 'Wheel: zoom · Space / middle-drag: pan · Q: quantities'}
+            : 'Wheel: zoom · Space: pan · Hold B: paint select · Alt: subtract · Q: quantities'}
         </span>
         <span>
           {controller.activeSheetId() &&
@@ -576,6 +601,16 @@ export default function App() {
               setScaleDialog(null);
               setTool('calibrate');
             }}
+          />
+        )}
+      </Show>
+      <Show when={sheetNamesDialog()} keyed>
+        {(target) => (
+          <SheetNamesDialog
+            sheets={target.sheets}
+            expected={target.expected}
+            controller={controller}
+            onClose={() => setSheetNamesDialog(null)}
           />
         )}
       </Show>

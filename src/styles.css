@@ -198,6 +198,27 @@ small,
   bottom: 0;
   width: 1px;
 }
+.canvas-reticle {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+}
+.canvas-reticle .reticle-shape {
+  fill: none;
+  stroke: white;
+  stroke-width: 1.5;
+}
+.canvas-reticle .reticle-dot {
+  fill: white;
+}
+.canvas-reticle .brush-radius {
+  fill: none;
+  stroke: white;
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
 .empty-workspace {
   margin: auto;
   text-align: center;

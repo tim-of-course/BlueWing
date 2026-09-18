@@ -1,6 +1,7 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Sheet } from '../core/types';
+import { suggestSheetName, type SheetNameSuggestion } from './sheet-names';
 
 GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
 
@@ -65,6 +66,20 @@ export class PdfDocuments {
       sheet,
       { x: 0, y: 0, width: sheet.width, height: sheet.height },
       maxDimension,
+    );
+  }
+
+  async suggestName(sheet: Sheet): Promise<SheetNameSuggestion> {
+    const pdf = await this.document(sheet.assetId);
+    const page = await pdf.getPage(sheet.pageIndex + 1);
+    const viewport = page.getViewport({
+      scale: 1,
+      rotation: sheet.rotation ?? 0,
+    });
+    const text = await page.getTextContent();
+    return suggestSheetName(
+      text.items.filter((item) => 'str' in item),
+      viewport,
     );
   }
 

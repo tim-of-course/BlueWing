@@ -266,6 +266,16 @@ export function createWorkspace(): WorkspaceController {
     undo: () => command('history.undo'),
     renameSheet: (id, name, expected) =>
       command('sheet.put', { ...requireProject().sheets[id], name }, expected),
+    suggestSheetName: (sheet) => app.pdf.suggestName(sheet),
+    async renameSheets(names, expected) {
+      const current = requireProject();
+      const commands = names.map(({ id, name }) => {
+        const sheet = current.sheets[id];
+        if (!sheet) throw new Error('Sheet no longer exists');
+        return { name: 'sheet.put', payload: { ...sheet, name: name.trim() } };
+      });
+      if (commands.length) await batch(commands, expected);
+    },
     async duplicateSheet(id) {
       const current = requireProject();
       const source = current.sheets[id];

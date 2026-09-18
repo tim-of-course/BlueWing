@@ -255,6 +255,30 @@ export function hitTestGeometry(
     )
   );
 }
+/** A swept brush catches objects between pointer events, including fast movement. */
+export function hitTestGeometrySweep(
+  geometry: Geometry,
+  start: Point,
+  end: Point,
+  tolerance: number,
+): boolean {
+  if (
+    hitTestGeometry(geometry, start, tolerance) ||
+    hitTestGeometry(geometry, end, tolerance) ||
+    geometry.points.some(
+      (point) =>
+        distance(point, nearestPointOnSegment(point, start, end)) <= tolerance,
+    )
+  )
+    return true;
+  if (geometry.kind === 'count') return false;
+  return geometry.points.some((point, index) => {
+    const next =
+      geometry.points[index + 1] ??
+      (geometry.kind === 'area' ? geometry.points[0] : undefined);
+    return next !== undefined && intersects(start, end, point, next);
+  });
+}
 /** Caller supplies geometry from the active sheet; snapping creates no shared topology. */
 export function snapPoint(
   point: Point,

@@ -1,6 +1,7 @@
 import type { Accessor } from 'solid-js';
 import type { Observation } from './application';
 import type { PaperScale } from '../core/scale';
+import type { SheetNameSuggestion } from '../pdf/sheet-names';
 import type {
   CalculationResult,
   GeometryKind,
@@ -44,6 +45,11 @@ export interface WorkspaceController {
   renameProject(name: string): Promise<void>;
   importPdf(): Promise<void>;
   renameSheet(id: string, name: string, expected?: Observation): Promise<void>;
+  suggestSheetName(sheet: Sheet): Promise<SheetNameSuggestion>;
+  renameSheets(
+    names: { id: string; name: string }[],
+    expected: Observation,
+  ): Promise<void>;
   duplicateSheet(id: string): Promise<void>;
   deleteSheet(id: string): Promise<void>;
   reorderSheets(ids: string[]): Promise<void>;

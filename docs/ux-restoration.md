@@ -39,7 +39,7 @@ Additional ordinary-flow corrections: New/Open are unavailable while a project i
 
 This pass does not revive Layers, nested group data, shared topology, geometry generators, permanent history, collaboration, or recipe publication/versioning. Those remain excluded by the restart decisions.
 
-The old design also has a full native command menu, true clipboard cut/copy/paste across sheets, a selection brush, formula autocomplete, and richer quantity sorting. This pass restores implemented actions and their names without presenting those larger interactions as complete. Source-sheet duplication duplicates the source page and calibration, not its takeoff. Group authoring currently chooses one group for the next drawing; membership editing still supports multiple groups.
+The old design also has a full native command menu, true clipboard cut/copy/paste across sheets, formula autocomplete, and richer quantity sorting. This pass restores implemented actions and their names without presenting those larger interactions as complete. Source-sheet duplication duplicates the source page and calibration, not its takeoff. Group authoring currently chooses one group for the next drawing; membership editing still supports multiple groups.
 
 ## Verification
 
@@ -93,3 +93,27 @@ One macOS WebKit automation limitation required a test adjustment: a real automa
 Earlier verification was interrupted by project-volume read errors, severe compilation delays, and failed GitHub DNS lookup. The user confirmed a computer issue and restarted with the volume connected. UI implementation checkpoint: `3c2a128`.
 
 The final macOS app build and isolated native CLI workflow passed. The workflow imported all 15 Behavioral Health Group sheets and rendered the floor plan and a detail crop, alongside wall/area/count calculations, shared groups, Undo, CSV export, and reopen checks. The rebuilt app is at `src-tauri/target/release/bundle/macos/Bluewing.app`; restart an already-running instance to load it.
+
+## Canvas and local sheet tools follow-up
+
+September 18, 2026, following the user's review of the compact workspace:
+
+- The drawing toolbar reserves 42px at each collapsed panel edge, so peek/pin controls cannot cover Undo or the selection count. Expanded panels retain the normal compact padding.
+- Hold B and sweep the pointer to paint-select without holding a mouse button. The brush adds to selection; Alt/Option+B removes. Its swept hit test catches thin paths and markers between pointer events. Hidden drawing remains excluded. Releasing B restores the current tool, and unfinished edits or text entry keep their context. Blur and Escape release the brush.
+- Shift-click and Shift-rectangle selection add; Alt/Option-click and Alt/Option-rectangle selection subtract. Shift-clicking an already-selected object keeps it selected. Shift still bypasses drawing snaps.
+- A center dot with scope brackets replaces the system cursor over the canvas. The existing full crosshairs remain, with a small brush ring and plus/minus cue while B is held. Panning uses a hand cursor. This is DOM/SVG cursor feedback shared by the macOS and Windows frontend, not an OS-specific cursor asset.
+- Sheet thumbnails render sequentially in background idle slots, retain decoded images for the open project, and reuse one source for duplicate PDF pages. Hovered pages move ahead in the queue. Rename, calibration, and normal project edits retain the thumbnail. Close, deletion, and unmount release unused URLs. In-flight rendering uses the existing PDF API and finishes before its stale result is discarded.
+- The Aa action in the Sheets header opens Auto-name sheets. A small local module reads embedded PDF text in the visually bottom-right quarter, joins nearby fragments, recognizes capital-letter/number codes with spaces and decimals, and gathers close title lines above, below, or continuing after the code. It filters likely dates, addresses, metadata, angled stamps, and repeated sheet-index codes. The review dialog supports editing and choosing suggestions; one revision-aware batch saves the selected names and Undo restores them together. No OCR dependency or cloud AI call was added. Unmatched/no-text sheets retain their names.
+
+The Behavioral Health Group reference produced matching codes and titles for all 14 numbered sheets, including `A2.0 · NEW WORK FLOOR PLAN` and the multiline A1.0 title. Its cover remains unmatched rather than borrowing a code from the sheet index. These are heuristic suggestions, and the review step remains useful for unfamiliar title-block layouts.
+
+Host review addressed a preview reset that ran a reactive calculation twice on project changes, and an old PDF image briefly remaining visible when switching sheets. Previews now belong to their project session; the painted PDF image is derived from the matching rendered sheet. Empty geometry lists no longer propagate equivalent array updates.
+
+Validation passed: TypeScript, lint, formatting, 39 core tests, six platform tests, 18 development browser scenarios, and 14 production browser scenarios. Chromium and WebKit cover paint selection, modifier behavior, collapsed toolbar spacing, cached previews, and reviewed sheet names with Undo/Redo and reopening. Development captures have no Solid diagnostics or silent holds. Production screenshots were visually checked for the scope cursor, toolbar spacing, and the naming dialog with the real plan set. The macOS app build and isolated native workflow passed, including the 15-sheet Behavioral Health Group import, rendering, calculations, export, Undo, and reopening. These new interactions have not yet been verified in the native Windows app.
+
+Two Banana Split coordinators completed successfully, with no child agents. Both used configured `gpt-6-astra` / medium reasoning. The thumbnail coordinator used two turns to incorporate naming context; the naming coordinator used three turns to address code spacing and inline title continuation. Runtime diagnostics recorded zero managed tool rejections, formal revisions, child acceptances, or turns without a disposition. No approvals or host-assisted actions were required. The GPT-6 host integrated and reviewed their work and ran browser/native verification; its reasoning level is unavailable.
+
+| Work              | Workflow                                  | Coordinator                                |
+| ----------------- | ----------------------------------------- | ------------------------------------------ |
+| Thumbnail cache   | `wf_a33d37cb-242e-4f77-9be4-8cb06a6b8f7a` | `agt_759dded2-9c8d-4701-9da2-ac60c466530a` |
+| Local sheet names | `wf_6d54e255-e536-4eb7-9352-ba6d5383b9ea` | `agt_8e5b3df8-92b6-43d0-a780-81db8c457306` |

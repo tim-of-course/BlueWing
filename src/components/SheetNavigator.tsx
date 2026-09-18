@@ -5,6 +5,7 @@ import {
   For,
   onCleanup,
   Show,
+  untrack,
 } from 'solid-js';
 import { Portal } from '@solidjs/web';
 import type { WorkspaceController } from '../app/contracts';
@@ -12,6 +13,7 @@ import type { Observation } from '../app/application';
 import type { Group, Sheet } from '../core/types';
 import { convertQuantity, measureGeometry } from '../core/geometry';
 import ToolIcon from './ToolIcon';
+import { SheetThumbnails } from './sheet-thumbnails';
 import './sheet-navigator.css';
 
 interface Props {
@@ -20,9 +22,11 @@ interface Props {
   onError: (message: string) => void;
   onDraftChange: (dirty: boolean) => void;
   onInspect: () => void;
+  onAutoName: () => void;
 }
 interface Preview {
   sheet: Sheet;
+  session: { id: string | undefined };
   x: number;
   y: number;
 }
@@ -58,30 +62,8 @@ function VisibilityIcon(props: { visible: boolean }) {
 
 function SheetPreview(props: {
   preview: Preview;
-  controller: WorkspaceController;
+  thumbnail: { source: string; error: string } | undefined;
 }) {
-  const [source, setSource] = createSignal('');
-  const [error, setError] = createSignal('');
-  createEffect(
-    () => ({ sheet: props.preview.sheet, controller: props.controller }),
-    ({ sheet, controller }) => {
-      let current = true;
-      setSource('');
-      setError('');
-      void controller
-        .renderSheet(sheet, 640)
-        .then((canvas) => {
-          if (current) setSource(canvas.toDataURL());
-        })
-        .catch(() => {
-          if (current) setError('Preview unavailable');
-        });
-      return () => {
-        current = false;
-      };
-    },
-    { name: 'navigator.sourcePreview' },
-  );
   return (
     <div
       class="sheet-preview"
@@ -95,11 +77,15 @@ function SheetPreview(props: {
     >
       <div class="sheet-preview-image">
         <Show
-          when={source()}
-          fallback={<span role="status">{error() || 'Loading preview…'}</span>}
+          when={props.thumbnail?.source}
+          fallback={
+            <span role="status">
+              {props.thumbnail?.error || 'Loading preview…'}
+            </span>
+          }
         >
           <img
-            src={source()}
+            src={props.thumbnail?.source}
             alt={`Plan preview: ${props.preview.sheet.name}`}
           />
         </Show>
@@ -114,6 +100,13 @@ function SheetPreview(props: {
 }
 
 export default function SheetNavigator(props: Props) {
+  const projectSession = createMemo(
+    () => ({ id: props.controller.project()?.id }),
+    {
+      name: 'navigator.projectSession',
+      equals: (previous, next) => previous.id === next.id,
+    },
+  );
   const [filter, setFilter] = createSignal('');
   const [collapsed, setCollapsed] = createSignal<string[]>([]);
   const [preview, setPreview] = createSignal<Preview | null>(null, {
@@ -141,6 +134,34 @@ export default function SheetNavigator(props: Props) {
       ),
     { name: 'navigator.orderedSheets' },
   );
+  const [thumbnailVersion, setThumbnailVersion] = createSignal(0);
+  const controller = untrack(() => props.controller);
+  const thumbnails = new SheetThumbnails(
+    (sheet) => controller.renderSheet(sheet, 640),
+    () => setThumbnailVersion((version) => version + 1),
+  );
+  const currentPreview = createMemo(() => {
+    const value = preview();
+    if (value?.session !== projectSession()) return null;
+    const sheet = props.controller.project()?.sheets[value.sheet.id];
+    return sheet ? { ...value, sheet } : null;
+  });
+  const previewThumbnail = () => {
+    thumbnailVersion();
+    const value = currentPreview();
+    const entry = value ? thumbnails.get(value.sheet) : undefined;
+    return entry ? { source: entry.source, error: entry.error } : undefined;
+  };
+  createEffect(
+    () => ({ projectId: props.controller.project()?.id, sheets: sheets() }),
+    ({ projectId, sheets }) => {
+      thumbnails.sync(projectId, sheets);
+    },
+    { name: 'navigator.prewarmThumbnails' },
+  );
+  onCleanup(() => {
+    thumbnails.clear();
+  });
   const groups = () => Object.values(props.controller.project()?.groups ?? {});
   const members = (group: Group, sheetId: string) =>
     group.geometryIds.filter(
@@ -184,7 +205,8 @@ export default function SheetNavigator(props: Props) {
   createEffect(
     () => props.controller.project()?.id,
     () => {
-      hidePreview();
+      clearTimeout(enterTimer);
+      clearTimeout(exitTimer);
       setCollapsed([]);
       setFilter('');
       setMenu(null);
@@ -215,8 +237,14 @@ export default function SheetNavigator(props: Props) {
   ) => {
     clearTimeout(enterTimer);
     clearTimeout(exitTimer);
+    thumbnails.prioritize(sheet);
     const rect = element.getBoundingClientRect();
-    const next = { sheet, x: rect.right, y: rect.top + 16 };
+    const next = {
+      sheet,
+      session: projectSession(),
+      x: rect.right,
+      y: rect.top + 16,
+    };
     if (immediate || preview()) setPreview(next);
     else enterTimer = setTimeout(() => setPreview(next), 120);
   };
@@ -382,6 +410,20 @@ export default function SheetNavigator(props: Props) {
         <h2>
           Sheets <span class="muted">{sheets().length}</span>
         </h2>
+        <button
+          type="button"
+          aria-label="Auto-name sheets"
+          title="Auto-name sheets from local PDF text"
+          disabled={
+            props.disabled || props.controller.busy() || !sheets().length
+          }
+          onClick={() => {
+            hidePreview();
+            props.onAutoName();
+          }}
+        >
+          Aa
+        </button>
         <button
           type="button"
           disabled={
@@ -604,10 +646,10 @@ export default function SheetNavigator(props: Props) {
           </For>
         </Show>
       </div>
-      <Show when={preview()}>
+      <Show when={currentPreview()}>
         {(value) => (
           <Portal>
-            <SheetPreview preview={value()} controller={props.controller} />
+            <SheetPreview preview={value()} thumbnail={previewThumbnail()} />
           </Portal>
         )}
       </Show>

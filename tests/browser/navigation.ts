@@ -20,6 +20,32 @@ export async function navigatorWorkflow(page: Page) {
   const preview = page.getByRole('tooltip', { name: 'Sheet preview' });
   await expect(preview).toBeVisible();
   await expect(preview.getByRole('img')).toBeVisible();
+  const thumbnailSource = await preview.getByRole('img').getAttribute('src');
+  if (!thumbnailSource) throw new Error('Missing preview thumbnail');
+  await canvas.focus();
+  await page.mouse.move(700, 600);
+  await expect(preview).toBeHidden();
+  // Inspect the tooltip as it mounts, before an eventual image assertion could
+  // hide a loading flash on repeated hover.
+  const [repeatedPreview] = await Promise.all([
+    page.evaluate(
+      () =>
+        new Promise<{ source: string | null; loading: boolean }>((resolve) => {
+          const observer = new MutationObserver(() => {
+            const tooltip = document.querySelector('.sheet-preview');
+            if (!tooltip) return;
+            observer.disconnect();
+            resolve({
+              source: tooltip.querySelector('img')?.getAttribute('src') ?? null,
+              loading: !!tooltip.querySelector('[role="status"]'),
+            });
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+        }),
+    ),
+    firstBranch.locator('.sheet-row').hover(),
+  ]);
+  expect(repeatedPreview).toEqual({ source: thumbnailSource, loading: false });
   await firstBranch
     .getByRole('button', { name: 'Walls, 1 drawing objects', exact: true })
     .hover();
@@ -138,6 +164,15 @@ export async function navigatorWorkflow(page: Page) {
   await page.getByLabel('Sheet name', { exact: true }).fill('A2.0 Floor plan');
   await page.getByRole('button', { name: 'Save sheet', exact: true }).click();
   await expect(firstRow).toContainText('A2.0 Floor plan');
+  await firstRow.hover();
+  await expect(preview.getByRole('img')).toHaveAttribute(
+    'src',
+    thumbnailSource,
+  );
+  await expect(preview.getByRole('img')).toHaveAttribute(
+    'alt',
+    'Plan preview: A2.0 Floor plan',
+  );
   await firstRow.press('Alt+ArrowDown');
   await expect(page.locator('.sheet-row').last()).toContainText(
     'A2.0 Floor plan',
