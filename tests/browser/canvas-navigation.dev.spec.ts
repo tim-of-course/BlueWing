@@ -21,6 +21,7 @@ async function view(canvas: Locator) {
 
 test('wheel and pinch anchor the cursor; pan and resize preserve the drawing view', async ({
   page,
+  browserName,
 }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -122,16 +123,33 @@ test('wheel and pinch anchor the cursor; pan and resize preserve the drawing vie
         page.getByText('1 points · Enter to finish', { exact: true }),
       ).toBeVisible();
       const beforePan = await view(canvas);
-      await page.mouse.move(
-        beforePan.left + beforePan.width / 2,
-        beforePan.top + beforePan.height / 2,
-      );
-      await page.mouse.down({ button: 'middle' });
-      await page.mouse.move(
-        beforePan.left + beforePan.width / 2 + 25,
-        beforePan.top + beforePan.height / 2 + 20,
-      );
-      await page.mouse.up({ button: 'middle' });
+      const panStart = {
+        x: beforePan.left + beforePan.width / 2,
+        y: beforePan.top + beforePan.height / 2,
+      };
+      await page.mouse.move(panStart.x, panStart.y);
+      if (browserName === 'webkit' && process.platform === 'darwin') {
+        // macOS WebKit automation can offset middle-button coordinates outside
+        // the viewport. Exercise its pointer handlers at the intended location;
+        // Chromium below still verifies the native middle-button input path.
+        for (const [type, dx, dy, button, buttons] of [
+          ['pointerdown', 0, 0, 1, 4],
+          ['pointermove', 25, 20, -1, 4],
+          ['pointerup', 25, 20, 1, 0],
+        ] as const)
+          await canvas.dispatchEvent(type, {
+            pointerId: 1,
+            pointerType: 'mouse',
+            clientX: panStart.x + dx,
+            clientY: panStart.y + dy,
+            button,
+            buttons,
+          });
+      } else {
+        await page.mouse.down({ button: 'middle' });
+        await page.mouse.move(panStart.x + 25, panStart.y + 20);
+        await page.mouse.up({ button: 'middle' });
+      }
       await expect
         .poll(async () => (await view(canvas)).x)
         .toBeCloseTo(beforePan.x + 25, 4);
