@@ -12,6 +12,16 @@ Windows packaging uses an NSIS override and an ICO generated from the existing a
 
 Type checking, lint, formatting, 26 core tests, six platform tests, all eight development/production Chromium and WebKit scenarios, six Rust tests, and the native smoke and desktop workflows passed. The native workflows exercised the actual Windows WebView2 app, PDF rendering, SQLite persistence, CLI transport, and cached-version activation with offline reopening. The optional 15-sheet source plan was not used for this Windows check. No new tests or product guards were added.
 
+## Windows integration, September 18, 2026
+
+Pulled the navigation, scale, and compact-workspace changes through `8dce026` and integrated the Windows setup changes. The README conflict retained the new shortcuts and navigation instructions.
+
+Verification passed: static checks, 29 core tests, six platform tests, 14 development and 10 production browser scenarios, six Rust tests, native smoke, and the release desktop workflow. The release workflow also downloaded `0.1.1-windows-0918`, activated it, stopped its local server, restarted offline, reopened the project, and rendered its PDF. The Windows NSIS installer was rebuilt with both executables.
+
+The first browser run used 14 workers alongside native builds and hit Solid compute-time diagnostics. All development scenarios passed with two workers and the original diagnostic budgets; Playwright now defaults to two workers to reduce contention. No application code or diagnostic assertions changed.
+
+The shared Tauri configuration still targets a macOS app with minimum macOS 15.4. The installed Tauri configuration loader selects `tauri.windows.conf.json` only for Windows; Rust source, dependency pins, and lockfiles are unchanged from upstream. A native macOS build was not rerun on this Windows machine.
+
 ## Results
 
 | Check                 | Result and scope                                                                                                                                                                                                                                             |

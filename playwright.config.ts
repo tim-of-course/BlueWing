@@ -5,6 +5,8 @@ export default defineConfig({
   testMatch: '**/*.dev.spec.ts',
   outputDir: 'test-results/dev',
   fullyParallel: true,
+  // Keep concurrent browsers from distorting Solid's compute-time diagnostics.
+  workers: 2,
   forbidOnly: Boolean(process.env['CI']),
   retries: 0,
   reporter: [
