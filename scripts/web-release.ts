@@ -15,7 +15,7 @@ await mkdir(destination);
 await cp('dist', destination, { recursive: true });
 await writeFile(
   join(destination, 'release.json'),
-  JSON.stringify({ version, bridgeVersion: 1 }),
+  JSON.stringify({ version, bridgeVersion: 2 }),
 );
 const files: { path: string; sha256: string; size: number }[] = [];
 async function collect(directory: string): Promise<void> {
@@ -35,7 +35,7 @@ async function collect(directory: string): Promise<void> {
 await collect(destination);
 await writeFile(
   join(destination, 'manifest.json'),
-  JSON.stringify({ version, bridgeVersion: 1, files }, null, 2),
+  JSON.stringify({ version, bridgeVersion: 2, files }, null, 2),
 );
 console.log(
   `Web release ${version}: ${destination}/manifest.json (${String(files.length)} files)`,

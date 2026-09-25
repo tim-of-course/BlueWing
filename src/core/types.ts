@@ -42,11 +42,16 @@ export interface RecipeInput {
   name: string;
   type: 'number' | 'boolean';
   unit: Unit;
-  default: number | boolean;
+  default?: number | boolean;
+  minimum?: number;
 }
 export interface OutputAllowance {
   wastePercent: number;
   packageSize?: number;
+}
+export interface LengthFormula {
+  formula: string;
+  unit: LengthUnit;
 }
 export interface RecipeOutput {
   id: string;
@@ -55,13 +60,30 @@ export interface RecipeOutput {
   unit: Unit;
   formula: string;
   allowance: OutputAllowance;
+  /** Piece outputs use ea, with an integer quantity and positive lengths. */
+  piece?: {
+    role: string;
+    cutLength: LengthFormula;
+    stockLength?: LengthFormula;
+  };
 }
 export interface Recipe {
   id: string;
   name: string;
+  category?: string;
+  description?: string;
+  reference?: string;
+  librarySource?: { id: string; name: string };
   geometryKinds: GeometryKind[];
   inputs: RecipeInput[];
   outputs: RecipeOutput[];
+}
+/** Assemblies extend the existing project recipe records without duplicating calculations. */
+export type Assembly = Recipe;
+export interface AssemblyLibrary {
+  version: 1;
+  revision: number;
+  assemblies: Record<string, Assembly>;
 }
 export interface Assignment {
   id: string;
@@ -69,9 +91,10 @@ export interface Assignment {
   recipeId: string;
   inputs: Record<string, number | boolean>;
   allowances: Record<string, OutputAllowance>;
+  geometryInputs?: Record<string, Record<string, number | boolean>>;
 }
 export interface Project {
-  formatVersion: 1;
+  formatVersion: 1 | 2;
   id: string;
   name: string;
   revision: number;
@@ -93,6 +116,8 @@ export interface CalculationSource {
   inputs: Record<string, number | boolean>;
   value: number | null;
   diagnostic?: string;
+  cutLength?: Quantity;
+  stockLength?: Quantity;
 }
 export interface CalculationOutput {
   groupId: string;
@@ -103,6 +128,9 @@ export interface CalculationOutput {
   name: string;
   unit: Unit;
   sources: CalculationSource[];
+  role?: string;
+  cutLength?: Quantity;
+  stockLength?: Quantity;
   baseAmount: number;
   wastePercent: number;
   wasteAmount: number;
@@ -113,7 +141,8 @@ export interface CalculationOutput {
   diagnostics: string[];
 }
 export interface QuantityTotal {
-  outputId: string;
+  cutLength?: Quantity;
+  stockLength?: Quantity;
   materialId: string;
   unit: Unit;
   amount: number;

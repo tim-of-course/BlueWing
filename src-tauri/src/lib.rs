@@ -65,6 +65,32 @@ fn write_file(path: String, data: String) -> Result<(), String> {
         &STANDARD.decode(data).map_err(|e| e.to_string())?,
     )
 }
+fn app_data_path(key: &str) -> Result<std::path::PathBuf, String> {
+    if key.is_empty()
+        || !key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+        || key.starts_with('.')
+    {
+        return Err("Invalid application data key".into());
+    }
+    Ok(transport::data_dir()?.join("data").join(key))
+}
+#[tauri::command]
+fn app_data_read(key: String) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(app_data_path(&key)?) {
+        Ok(data) => Ok(Some(data)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+#[tauri::command]
+fn app_data_write(key: String, data: String) -> Result<(), String> {
+    let path = app_data_path(&key)?;
+    std::fs::create_dir_all(path.parent().ok_or("Missing application data directory")?)
+        .map_err(|e| e.to_string())?;
+    storage::atomic_write(&path, data.as_bytes())
+}
 #[tauri::command]
 fn cache_stage(
     state: State<Shared>,
@@ -101,7 +127,7 @@ fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> 
         } else {
             "bluewing"
         });
-    json!({"bridgeVersion":1,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
+    json!({"bridgeVersion":2,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
 }
 #[tauri::command]
 fn cli_respond(
@@ -126,6 +152,8 @@ pub fn run() {
             database_close,
             database_query,
             database_transaction,
+            app_data_read,
+            app_data_write,
             read_file,
             write_file,
             cache_stage,

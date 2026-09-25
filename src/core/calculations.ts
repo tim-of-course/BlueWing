@@ -88,10 +88,10 @@ function effectiveInputs(
   assignment: Assignment,
 ): Record<string, number | boolean> {
   return Object.fromEntries(
-    recipe.inputs.map((input) => [
-      input.name,
-      assignment.inputs[input.name] ?? input.default,
-    ]),
+    recipe.inputs.flatMap((input) => {
+      const value = assignment.inputs[input.name] ?? input.default;
+      return value === undefined ? [] : [[input.name, value]];
+    }),
   );
 }
 function source(
@@ -101,7 +101,10 @@ function source(
   output: RecipeOutput,
   geometryId: string,
 ): CalculationSource {
-  const inputs = effectiveInputs(recipe, assignment);
+  const inputs = {
+    ...effectiveInputs(recipe, assignment),
+    ...assignment.geometryInputs?.[geometryId],
+  };
   try {
     const geometry = project.geometries[geometryId];
     if (!geometry) throw new Error('Geometry is missing');
@@ -111,8 +114,17 @@ function source(
         throw new Error(`Undeclared assignment input: ${key}`);
     for (const input of recipe.inputs) {
       const value = inputs[input.name];
+      if (value === undefined) throw new Error(`Required input: ${input.name}`);
       if (typeof value !== input.type)
         throw new Error(`Input ${input.name} must be ${input.type}`);
+      if (
+        typeof value === 'number' &&
+        input.minimum !== undefined &&
+        value < input.minimum
+      )
+        throw new Error(
+          `Input ${input.name} must be at least ${String(input.minimum)}`,
+        );
       if (typeof value === 'boolean') {
         if (input.unit !== 'scalar')
           throw new Error('Boolean inputs must be dimensionless');
@@ -131,6 +143,38 @@ function source(
     );
     if (!Number.isFinite(value) || value < 0)
       throw new Error('Calculated quantity must be finite and nonnegative');
+    if (output.piece) {
+      if (!Number.isInteger(value))
+        throw new Error('Piece quantity must be a whole number');
+      const length = (definition: {
+        formula: string;
+        unit: 'm' | 'mm' | 'ft' | 'in';
+      }) => {
+        const value = formulaQuantity({
+          value: formulaOutput(
+            evaluateFormula(definition.formula, variables),
+            definition.unit,
+          ),
+          unit: definition.unit,
+        }).value;
+        if (value <= 0) throw new Error('Piece length must be positive');
+        // Canonical metres make equivalent imperial/metric schedules combine.
+        return { value, unit: 'm' as const };
+      };
+      const cutLength = length(output.piece.cutLength);
+      const stockLength = output.piece.stockLength
+        ? length(output.piece.stockLength)
+        : undefined;
+      if (stockLength && stockLength.value + 1e-9 < cutLength.value)
+        throw new Error('Stock length is shorter than cut length');
+      return {
+        geometryId,
+        inputs,
+        value,
+        cutLength,
+        ...(stockLength ? { stockLength } : {}),
+      };
+    }
     return { geometryId, inputs, value };
   } catch (error) {
     return { geometryId, inputs, value: null, diagnostic: message(error) };
@@ -153,87 +197,127 @@ export function calculateProject(project: Project): CalculationResult {
           return !geometry || recipe.geometryKinds.includes(geometry.kind);
         })
         .map((id) => source(project, recipe, assignment, output, id));
-      const diagnostics = sources.flatMap((entry) =>
-        entry.diagnostic ? [`${entry.geometryId}: ${entry.diagnostic}`] : [],
-      );
-      if (!group) diagnostics.push('Assignment group is missing');
-      const allowance = assignment.allowances[output.id] ?? output.allowance;
-      const baseAmount = sources.reduce(
-        (sum, entry) => sum + (entry.value ?? 0),
-        0,
-      );
-      const wastePercent = allowance.wastePercent;
-      const validAllowance =
-        Number.isFinite(wastePercent) &&
-        wastePercent >= 0 &&
-        (allowance.packageSize === undefined ||
-          (Number.isFinite(allowance.packageSize) &&
-            allowance.packageSize > 0));
-      if (!validAllowance)
-        diagnostics.push(
-          'Waste must be nonnegative and package size must be positive',
+      const buckets = new Map<string, CalculationSource[]>();
+      if (!sources.length) buckets.set('', []);
+      for (const source of sources) {
+        const key = output.piece
+          ? JSON.stringify([
+              source.stockLength
+                ? null
+                : source.cutLength?.value.toPrecision(12),
+              source.stockLength?.value.toPrecision(12),
+            ])
+          : '';
+        const bucket = buckets.get(key) ?? [];
+        bucket.push(source);
+        buckets.set(key, bucket);
+      }
+      for (const sources of buckets.values()) {
+        const diagnostics = sources.flatMap((entry) =>
+          entry.diagnostic ? [`${entry.geometryId}: ${entry.diagnostic}`] : [],
         );
-      const wasteAmount = validAllowance
-        ? (baseAmount * wastePercent) / 100
-        : 0;
-      const adjustedAmount = baseAmount + wasteAmount;
-      // Compensate only for floating-point noise at an exact package boundary.
-      const ratio =
-        validAllowance && allowance.packageSize
-          ? adjustedAmount / allowance.packageSize
-          : null;
-      const packageCount =
-        ratio === null
-          ? null
-          : Math.max(
-              ratio > 0 ? 1 : 0,
-              Math.ceil(
-                ratio - Number.EPSILON * Math.max(1, Math.abs(ratio)) * 8,
-              ),
-            );
-      const purchasedAmount =
-        packageCount === null
-          ? adjustedAmount
-          : packageCount * (allowance.packageSize ?? 0);
-      if (
-        ![baseAmount, wasteAmount, adjustedAmount, purchasedAmount].every(
-          Number.isFinite,
+        if (!group) diagnostics.push('Assignment group is missing');
+        if (group?.geometryIds.length && !sources.length)
+          diagnostics.push('No compatible drawing objects in this group');
+        const allowance = assignment.allowances[output.id] ?? output.allowance;
+        const baseAmount = sources.reduce(
+          (sum, entry) => sum + (entry.value ?? 0),
+          0,
+        );
+        const wastePercent = allowance.wastePercent;
+        const validAllowance =
+          Number.isFinite(wastePercent) &&
+          wastePercent >= 0 &&
+          (allowance.packageSize === undefined ||
+            (Number.isFinite(allowance.packageSize) &&
+              allowance.packageSize > 0));
+        if (!validAllowance)
+          diagnostics.push(
+            'Waste must be nonnegative and package size must be positive',
+          );
+        const wasteAmount = validAllowance
+          ? (baseAmount * wastePercent) / 100
+          : 0;
+        const adjustedAmount = baseAmount + wasteAmount;
+        // Compensate only for floating-point noise at an exact package boundary.
+        const ratio =
+          validAllowance && allowance.packageSize
+            ? adjustedAmount / allowance.packageSize
+            : null;
+        const packageCount =
+          ratio === null
+            ? null
+            : Math.max(
+                ratio > 0 ? 1 : 0,
+                Math.ceil(
+                  ratio - Number.EPSILON * Math.max(1, Math.abs(ratio)) * 8,
+                ),
+              );
+        const purchasedAmount =
+          packageCount === null
+            ? output.piece
+              ? Math.ceil(
+                  adjustedAmount -
+                    Number.EPSILON * Math.max(1, adjustedAmount) * 8,
+                )
+              : adjustedAmount
+            : packageCount * (allowance.packageSize ?? 0);
+        if (
+          ![baseAmount, wasteAmount, adjustedAmount, purchasedAmount].every(
+            Number.isFinite,
+          )
         )
-      )
-        diagnostics.push('Quantity aggregation overflowed');
-      const result: CalculationOutput = {
-        groupId: assignment.groupId,
-        assignmentId: assignment.id,
-        recipeId: recipe.id,
-        outputId: output.id,
-        materialId: output.materialId,
-        name: output.name,
-        unit: output.unit,
-        sources,
-        baseAmount,
-        wastePercent,
-        wasteAmount,
-        adjustedAmount,
-        packageCount,
-        purchasedAmount,
-        complete: diagnostics.length === 0,
-        diagnostics,
-      };
-      outputs.push(result);
-      complete &&= result.complete;
+          diagnostics.push('Quantity aggregation overflowed');
+        const commonCutLength = sources.every(
+          (source) =>
+            source.cutLength?.value.toPrecision(12) ===
+            sources[0]?.cutLength?.value.toPrecision(12),
+        )
+          ? sources[0]?.cutLength
+          : undefined;
+        const result: CalculationOutput = {
+          groupId: assignment.groupId,
+          assignmentId: assignment.id,
+          recipeId: recipe.id,
+          outputId: output.id,
+          materialId: output.materialId,
+          name: output.name,
+          unit: output.unit,
+          sources,
+          ...(output.piece ? { role: output.piece.role } : {}),
+          ...(commonCutLength ? { cutLength: commonCutLength } : {}),
+          ...(sources[0]?.stockLength
+            ? { stockLength: sources[0].stockLength }
+            : {}),
+          baseAmount,
+          wastePercent,
+          wasteAmount,
+          adjustedAmount,
+          packageCount,
+          purchasedAmount,
+          complete: diagnostics.length === 0,
+          diagnostics,
+        };
+        outputs.push(result);
+        complete &&= result.complete;
+      }
     }
   }
   const totals = new Map<string, QuantityTotal>();
   for (const output of outputs) {
     const key = JSON.stringify([
       output.materialId,
-      output.outputId,
       output.unit,
+      output.stockLength ? null : output.cutLength?.value.toPrecision(12),
+      output.stockLength?.value.toPrecision(12),
     ]);
     const total = totals.get(key) ?? {
       materialId: output.materialId,
-      outputId: output.outputId,
       unit: output.unit,
+      ...(!output.stockLength && output.cutLength
+        ? { cutLength: output.cutLength }
+        : {}),
+      ...(output.stockLength ? { stockLength: output.stockLength } : {}),
       amount: 0,
       complete: true,
     };
@@ -266,6 +350,9 @@ export function exportQuantities(
       'purchasedAmount',
       'complete',
       'diagnostics',
+      'role',
+      'cutLength_m',
+      'stockLength_m',
     ],
   ];
   for (const output of result.outputs)
@@ -285,6 +372,9 @@ export function exportQuantities(
       output.purchasedAmount,
       output.complete,
       output.diagnostics.join('; '),
+      output.role ?? '',
+      output.cutLength?.value ?? null,
+      output.stockLength?.value ?? null,
     ]);
   return rows
     .map((row) =>
@@ -293,4 +383,59 @@ export function exportQuantities(
         .join(','),
     )
     .join('\r\n');
+}
+
+export function pieceSchedule(
+  project: Project,
+  result: CalculationResult = calculateProject(project),
+) {
+  return result.outputs
+    .filter((output) => output.role !== undefined)
+    .flatMap((output) =>
+      output.sources.map((source) => {
+        const geometry = project.geometries[source.geometryId];
+        return {
+          sheet: project.sheets[geometry?.sheetId ?? '']?.name ?? '',
+          geometryId: source.geometryId,
+          location: geometry?.name ?? source.geometryId,
+          group: project.groups[output.groupId]?.name ?? output.groupId,
+          assignmentId: output.assignmentId,
+          outputId: output.outputId,
+          assembly: project.recipes[output.recipeId]?.name ?? output.recipeId,
+          materialId: output.materialId,
+          role: output.role ?? '',
+          quantity: source.value,
+          cutLength_m: source.cutLength?.value ?? null,
+          stockLength_m: source.stockLength?.value ?? null,
+          complete: source.value !== null && output.complete,
+          diagnostic: source.diagnostic ?? output.diagnostics.join('; '),
+        };
+      }),
+    );
+}
+export function exportPieces(project: Project, format: 'csv' | 'json'): string {
+  const rows = pieceSchedule(project);
+  if (format === 'json') return JSON.stringify(rows, null, 2);
+  const keys = [
+    'sheet',
+    'geometryId',
+    'location',
+    'group',
+    'assignmentId',
+    'assembly',
+    'materialId',
+    'role',
+    'quantity',
+    'cutLength_m',
+    'stockLength_m',
+    'complete',
+    'diagnostic',
+  ] as const;
+  return [keys, ...rows.map((row) => keys.map((key) => row[key]))]
+    .map((row) =>
+      row
+        .map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`)
+        .join(','),
+    )
+    .join('\n');
 }

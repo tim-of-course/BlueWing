@@ -1,7 +1,7 @@
 import { createMemo, createSignal, onCleanup, onSettled } from 'solid-js';
 import { isTauri } from '@tauri-apps/api/core';
-import { calculateProject, exportQuantities } from '../core';
-import type { CommandCall, Project } from '../core/types';
+import { calculateProject, exportQuantities, exportPieces } from '../core';
+import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
 import { Application, type Observation } from './application';
 import { choosePdf, chooseProject, writeOutput } from './files';
 import { connectCli } from './cli';
@@ -14,6 +14,7 @@ import {
 
 export function createWorkspace(): WorkspaceController {
   const app = new Application(isTauri());
+  const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
   const [project, setProject] = createSignal<Project | null>(null, {
     name: 'workspace.acceptedProject',
   });
@@ -113,6 +114,7 @@ export function createWorkspace(): WorkspaceController {
     app.subscribe(() => {
       const current = app.project;
       setProject(current);
+      setLibrary(app.library);
       setCanUndo(app.session?.canUndo ?? false);
       setCanRedo(app.session?.canRedo ?? false);
       if (publishedId !== (current?.id ?? null)) {
@@ -189,6 +191,29 @@ export function createWorkspace(): WorkspaceController {
   }
   return {
     native: app.native,
+    library,
+    refreshLibrary: () => command('library.inspect'),
+    saveLibraryAssembly: (assembly, expectedLibraryRevision) =>
+      command('library.put', { assembly, expectedLibraryRevision }),
+    deleteLibraryAssembly: (id, expectedLibraryRevision) =>
+      command('library.delete', { id, expectedLibraryRevision }),
+    async importAssembly(libraryId) {
+      const id = crypto.randomUUID();
+      await command('assembly.import', { libraryId, id });
+      return id;
+    },
+    saveAssignment: (assignment, expected) =>
+      command('assignment.put', assignment, expected),
+    async exportPieces() {
+      const project = requireProject();
+      await run(() =>
+        writeOutput(
+          app.native,
+          `${project.name}-pieces.csv`,
+          new TextEncoder().encode(exportPieces(project, 'csv')),
+        ),
+      );
+    },
     project,
     quantities,
     activeSheetId,
@@ -428,8 +453,8 @@ export function createWorkspace(): WorkspaceController {
       );
     },
     deleteAssignment: (id) => command('assignment.delete', { id }),
-    saveRecipe: (recipe, expected) => command('recipe.put', recipe, expected),
-    deleteRecipe: (id) => command('recipe.delete', { id }),
+    saveRecipe: (recipe, expected) => command('assembly.put', recipe, expected),
+    deleteRecipe: (id) => command('assembly.delete', { id }),
     renderSheet: (sheet, maxDimension) => app.pdf.render(sheet, maxDimension),
     async exportQuantities(format) {
       const current = requireProject();

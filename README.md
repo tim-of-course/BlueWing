@@ -34,7 +34,7 @@ From PowerShell, with the desktop app running, call the CLI with:
 1. Create a project and import a PDF. Every page becomes a sheet.
 2. Choose Set scale (R) and select the scale printed on the sheet. Architectural and metric presets come first, followed by Custom ratio. For a resized plan or a missing printed scale, choose Two points, then Measure on plan, click a known dimension's endpoints, and enter its physical length. A scale is only saved when you apply it.
 3. Draw a Path, Area, or Count set. Finish a gesture with Enter or Finish; Escape cancels.
-4. Select drawing objects and add a named group. Assign a recipe, edit its inputs, and inspect Quantities.
+4. Select drawing objects and add a named group. Assign an assembly, edit its inputs, and inspect Quantities.
 5. Export CSV or JSON. Each completed edit saves before the UI accepts it. Close and reopen to continue later; undo history lasts for the current project session.
 
 Shortcuts: V select, L path, F area, C count, R scale setup, Q drawing/quantities, Cmd-Z / Shift-Cmd-Z undo/redo, Cmd-D duplicate, Backspace/Delete remove, Cmd-0 fit sheet, and Cmd-1 actual size. Use Ctrl in place of Cmd outside macOS. Scroll zooms toward the pointer; Space-drag or middle-drag pans. Hold B and sweep the pointer to paint-select without clicking; Alt/Option+B removes objects. Release B to return to the current tool. This temporary brush is available when no drawing or inspector edit is unfinished. Shift-click/Shift-drag adds to selection; Alt/Option-click or Alt/Option-drag subtracts. Drag selected objects to move them or a selected point to edit it. Shift bypasses point and angle snapping. Snapping copies coordinates without linking objects.
@@ -45,7 +45,7 @@ Use **Auto-name sheets** (the **Aa** button beside Sheets) to suggest names from
 
 The compact navigator shows each group's length (ft), area (ft²), or marker count (ea), followed by its color and eye button. New groups receive distinct editable colors. Mixed groups show separate totals; uncalibrated lengths/areas show a dash. Search stays above the scrolling list and has a clear button. Sheet and group eyes hide drawing without changing estimate totals; hidden drawing cannot be selected or snapped to. These visibility choices are saved on this device. A center-dot scope cursor replaces the system pointer over the canvas, alongside full-canvas crosshairs. Both disappear during panning or when the pointer leaves the canvas; panning uses a hand cursor.
 
-The recipe editor supports number/boolean inputs, declared units, multiple outputs, and constrained formulas. Starter recipes cover wall area, floor area, counts, and a stud estimate. See the [product brief](docs/restart-brief.md) for calculation rules and deferred features.
+The Assemblies editor manages project definitions and a device-local global library. Definitions support required number/boolean inputs, units, formulas, material outputs, and piece cut/stock lengths. Assignments have group values and individual drawing-object overrides. Starter templates cover drywall, steel framing, header components, acoustical ceilings, FRP/sheathing, blocking, and acoustical panels. See [assemblies and tested examples](docs/assemblies.md). See the [product brief](docs/restart-brief.md) for calculation rules and deferred features.
 
 The CLI operates the running desktop app:
 
@@ -74,6 +74,7 @@ bun run test:native
 cargo build --manifest-path src-tauri/Cargo.toml --locked --bins
 python3 tests/native/smoke.py
 python3 tests/desktop/workflow.py
+python3 tests/desktop/assemblies.py
 ```
 
 Set `BLUEWING_TEST_PLAN` to the local Behavioral Health Group PDF when running the desktop workflow to include its 15-sheet import and rendering check. That source plan is not stored in Git. Independent fixtures establish 384 sq ft wall area, 360 sq ft floor area, three items, and allowance/package arithmetic.

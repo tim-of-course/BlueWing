@@ -69,10 +69,10 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page.getByLabel('New group name', { exact: true }).fill('Walls');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page
-    .getByRole('combobox', { name: 'Recipe to assign', exact: true })
+    .getByRole('combobox', { name: 'Assembly to assign', exact: true })
     .selectOption('wall-area');
   await page
-    .getByRole('button', { name: 'Assign recipe', exact: true })
+    .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
   await page.getByLabel('layers (scalar)', { exact: true }).fill('2');
   await page.getByLabel('layers (scalar)', { exact: true }).press('Tab');
@@ -134,13 +134,13 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page.getByLabel('New group name', { exact: true }).fill('Floor');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page
-    .getByRole('combobox', { name: 'Recipe to assign', exact: true })
+    .getByRole('combobox', { name: 'Assembly to assign', exact: true })
     .selectOption('floor-area');
   await expect(
     page.getByRole('button', { name: 'Floor, 1 drawing objects', exact: true }),
   ).toContainText('ft²');
   await page
-    .getByRole('button', { name: 'Assign recipe', exact: true })
+    .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const floorQuantity = page
@@ -173,7 +173,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page.getByLabel('New group name', { exact: true }).fill('Fixtures');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page
-    .getByRole('combobox', { name: 'Recipe to assign', exact: true })
+    .getByRole('combobox', { name: 'Assembly to assign', exact: true })
     .selectOption('count');
   await expect(
     page.getByRole('button', {
@@ -182,7 +182,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
     }),
   ).toContainText('3 ea');
   await page
-    .getByRole('button', { name: 'Assign recipe', exact: true })
+    .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(

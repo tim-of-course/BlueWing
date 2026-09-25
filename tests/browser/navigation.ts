@@ -76,13 +76,13 @@ export async function navigatorWorkflow(page: Page) {
   await expect(
     page.getByRole('button', { name: 'Save name', exact: true }),
   ).toBeHidden();
-  await page.getByRole('button', { name: 'Recipes', exact: true }).click();
+  await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
   const editor = page.getByRole('dialog', {
-    name: 'Recipe editor',
+    name: 'Assembly editor',
     exact: true,
   });
   await editor
-    .getByLabel('Choose recipe', { exact: true })
+    .getByLabel('Choose assembly', { exact: true })
     .selectOption('wall-area');
   await editor
     .getByText('Preview on selected drawing', { exact: true })

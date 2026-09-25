@@ -1,3 +1,4 @@
+import AssemblyInputs from './AssemblyInputs';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
@@ -297,14 +298,14 @@ export default function GroupInspector(props: Props) {
               </For>
             </section>
             <section class="panel-section stack">
-              <h3>Recipes</h3>
+              <h3>Assemblies</h3>
               <label class="field">
-                Recipe to assign
+                Assembly to assign
                 <select
                   value={recipeId()}
                   onChange={(event) => setRecipeId(event.currentTarget.value)}
                 >
-                  <option value="">Choose recipe</option>
+                  <option value="">Choose assembly</option>
                   <For
                     each={Object.values(
                       props.controller.project()?.recipes ?? {},
@@ -325,7 +326,7 @@ export default function GroupInspector(props: Props) {
                   );
                 }}
               >
-                Assign recipe
+                Assign assembly
               </button>
             </section>
             <For
@@ -343,68 +344,72 @@ export default function GroupInspector(props: Props) {
                     ? props.controller.project()?.recipes[value.recipeId]
                     : undefined;
                 };
+                const [inputTarget, setInputTarget] = createSignal('');
                 return (
                   <section class="panel-section stack">
-                    <h3>{recipe()?.name ?? 'Missing recipe'}</h3>
-                    <For each={recipe()?.inputs ?? []}>
-                      {(input) => (
-                        <Show
-                          when={input.type === 'number'}
-                          fallback={
-                            <label>
-                              <input
-                                type="checkbox"
-                                disabled={pending()}
-                                checked={
-                                  (assignment()?.inputs[input.name] ??
-                                    input.default) === true
-                                }
-                                onChange={(event) => {
-                                  const checked = event.currentTarget.checked;
-                                  editAssignment(id, (value) => ({
-                                    ...value,
-                                    inputs: {
-                                      ...value.inputs,
-                                      [input.name]: checked,
-                                    },
-                                  }));
-                                }}
-                              />{' '}
-                              {input.name}
-                            </label>
-                          }
-                        >
-                          <label class="field">
-                            {input.name} ({input.unit})
-                            <input
-                              type="number"
-                              step="any"
-                              disabled={pending()}
-                              value={Number(
-                                assignment()?.inputs[input.name] ??
-                                  input.default,
-                              )}
-                              onChange={(event) => {
-                                const amount =
-                                  event.currentTarget.valueAsNumber;
-                                editAssignment(id, (value) => ({
-                                  ...value,
-                                  inputs: {
-                                    ...value.inputs,
-                                    [input.name]: amount,
-                                  },
-                                }));
-                              }}
-                            />
-                          </label>
-                        </Show>
-                      )}
-                    </For>
-                    <For each={recipe()?.outputs ?? []}>
+                    <h3>{recipe()?.name ?? 'Missing assembly'}</h3>
+                    <Show when={recipe()?.description}>
+                      <p class="muted">{recipe()?.description}</p>
+                    </Show>
+                    <Show when={recipe()?.reference}>
+                      <p class="muted">Reference: {recipe()?.reference}</p>
+                    </Show>
+                    <label class="field">
+                      Input scope
+                      <select
+                        value={inputTarget()}
+                        disabled={pending()}
+                        onChange={(event) =>
+                          setInputTarget(event.currentTarget.value)
+                        }
+                      >
+                        <option value="">Group values</option>
+                        <For each={current().geometryIds}>
+                          {(geometryId) => (
+                            <option value={geometryId}>
+                              {props.controller.project()?.geometries[
+                                geometryId
+                              ]?.name ?? geometryId}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    </label>
+                    <AssemblyInputs
+                      inputs={recipe()?.inputs ?? []}
+                      values={
+                        inputTarget()
+                          ? (assignment()?.geometryInputs?.[inputTarget()] ??
+                            {})
+                          : (assignment()?.inputs ?? {})
+                      }
+                      inherited={
+                        inputTarget() ? (assignment()?.inputs ?? {}) : {}
+                      }
+                      disabled={pending()}
+                      onChange={(inputs) => {
+                        const target = inputTarget();
+                        editAssignment(id, (value) =>
+                          target
+                            ? {
+                                ...value,
+                                geometryInputs: {
+                                  ...value.geometryInputs,
+                                  [target]: inputs,
+                                },
+                              }
+                            : { ...value, inputs },
+                        );
+                      }}
+                    />
+                    <For
+                      each={recipe()?.outputs ?? []}
+                      keyed={(output) => output.id}
+                    >
                       {(output) => (
                         <fieldset disabled={pending()} class="stack">
                           <legend>
-                            {output.name} ({output.unit})
+                            {output().name} ({output().unit})
                           </legend>
                           <label class="field">
                             Waste %
@@ -413,15 +418,20 @@ export default function GroupInspector(props: Props) {
                               step="any"
                               min="0"
                               value={
-                                assignment()?.allowances[output.id]
+                                assignment()?.allowances[output().id]
                                   ?.wastePercent ??
-                                output.allowance.wastePercent
+                                output().allowance.wastePercent
                               }
                               onChange={(event) => {
-                                setAllowance(id, output.id, output.allowance, {
-                                  wastePercent:
-                                    event.currentTarget.valueAsNumber,
-                                });
+                                setAllowance(
+                                  id,
+                                  output().id,
+                                  output().allowance,
+                                  {
+                                    wastePercent:
+                                      event.currentTarget.valueAsNumber,
+                                  },
+                                );
                               }}
                             />
                           </label>
@@ -433,17 +443,22 @@ export default function GroupInspector(props: Props) {
                               min="0"
                               value={
                                 (
-                                  assignment()?.allowances[output.id] ??
-                                  output.allowance
+                                  assignment()?.allowances[output().id] ??
+                                  output().allowance
                                 ).packageSize ?? ''
                               }
                               onChange={(event) => {
-                                setAllowance(id, output.id, output.allowance, {
-                                  packageSize:
-                                    event.currentTarget.value === ''
-                                      ? undefined
-                                      : event.currentTarget.valueAsNumber,
-                                });
+                                setAllowance(
+                                  id,
+                                  output().id,
+                                  output().allowance,
+                                  {
+                                    packageSize:
+                                      event.currentTarget.value === ''
+                                        ? undefined
+                                        : event.currentTarget.valueAsNumber,
+                                  },
+                                );
                               }}
                             />
                           </label>
@@ -453,14 +468,14 @@ export default function GroupInspector(props: Props) {
                               editAssignment(id, (value) => {
                                 value.allowances = Object.fromEntries(
                                   Object.entries(value.allowances).filter(
-                                    ([key]) => key !== output.id,
+                                    ([key]) => key !== output().id,
                                   ),
                                 );
                                 return value;
                               });
                             }}
                           >
-                            Use recipe allowance
+                            Use assembly allowance
                           </button>
                         </fieldset>
                       )}
@@ -474,10 +489,8 @@ export default function GroupInspector(props: Props) {
                           const value = assignmentDrafts()[id];
                           if (value)
                             run(async () => {
-                              await props.controller.updateAssignment(
-                                id,
-                                value.value.inputs,
-                                value.value.allowances,
+                              await props.controller.saveAssignment(
+                                value.value,
                                 value.expected,
                               );
                               discardAssignment(id);
@@ -503,7 +516,7 @@ export default function GroupInspector(props: Props) {
                           run(() => props.controller.deleteAssignment(id));
                         }}
                       >
-                        Remove recipe
+                        Remove assembly
                       </button>
                     </div>
                   </section>

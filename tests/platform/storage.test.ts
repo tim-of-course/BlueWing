@@ -141,3 +141,53 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   assert.equal(transactions.at(-1)?.length, 1);
   database.close();
 });
+
+void test('legacy projects upgrade to format 2 atomically and retain assembly fields on reopen', async () => {
+  const { storage, database, setFailure } = fixture();
+  await storage.open('legacy', true);
+  const initial = project();
+  await storage.initialize(initial);
+  assert.equal((await storage.load()).formatVersion, 1);
+  const next: Project = {
+    ...initial,
+    revision: 1,
+    formatVersion: 2,
+    recipes: {
+      header: {
+        id: 'header',
+        name: 'Project header',
+        reference: '5/A6.2',
+        category: 'Framing',
+        librarySource: { id: 'global', name: 'Source' },
+        geometryKinds: ['count'],
+        inputs: [{ name: 'width', type: 'number', unit: 'ft' }],
+        outputs: [
+          {
+            id: 'p',
+            name: 'Header',
+            materialId: 'specified-track',
+            unit: 'ea',
+            formula: 'count * 2',
+            allowance: { wastePercent: 0 },
+            piece: {
+              role: 'Header',
+              cutLength: { formula: 'width', unit: 'ft' },
+            },
+          },
+        ],
+      },
+    },
+  };
+  setFailure(true);
+  await assert.rejects(storage.save(initial, next), /disk full/);
+  assert.equal((await storage.load()).formatVersion, 1);
+  setFailure(false);
+  await storage.save(initial, next);
+  assert.deepEqual(await storage.load(), next);
+  assert.equal(
+    database.prepare('SELECT format_version FROM project').get()
+      ?.format_version,
+    2,
+  );
+  database.close();
+});

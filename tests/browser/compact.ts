@@ -18,9 +18,9 @@ export async function compactWorkflow(page: Page) {
     'background-color',
     'rgb(249, 115, 22)',
   );
-  await page.getByLabel('Recipe to assign').selectOption('wall-area');
+  await page.getByLabel('Assembly to assign').selectOption('wall-area');
   await page
-    .getByRole('button', { name: 'Assign recipe', exact: true })
+    .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
   await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
   await page.getByRole('button', { name: /^Hide Walls on/ }).click();

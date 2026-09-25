@@ -131,13 +131,14 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
     // CHECK rejects stale revisions (and missing metadata) inside the same transaction.
     await this.transaction([
       {
-        sql: 'INSERT INTO project(slot,id,name,revision,format_version) VALUES(1,?,?,CASE WHEN EXISTS(SELECT 1 FROM project WHERE slot=1 AND id=? AND revision=?) THEN ? ELSE -1 END,1) ON CONFLICT(slot) DO UPDATE SET name=excluded.name, revision=excluded.revision',
+        sql: 'INSERT INTO project(slot,id,name,revision,format_version) VALUES(1,?,?,CASE WHEN EXISTS(SELECT 1 FROM project WHERE slot=1 AND id=? AND revision=?) THEN ? ELSE -1 END,?) ON CONFLICT(slot) DO UPDATE SET name=excluded.name, revision=excluded.revision, format_version=excluded.format_version',
         params: [
           next.id,
           next.name,
           previous.id,
           previous.revision,
           next.revision,
+          next.formatVersion,
         ],
       },
       ...this.writes(previous, next),

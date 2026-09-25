@@ -241,7 +241,7 @@ export default function App() {
           disabled={!controller.project()}
           onClick={() => setRecipeOpen(true)}
         >
-          Recipes
+          Assemblies
         </button>
         <button type="button" onClick={() => setUpdateOpen(true)}>
           Updates
@@ -673,7 +673,7 @@ export default function App() {
             class="dialog recipe-dialog"
             role="dialog"
             aria-modal="true"
-            aria-label="Recipe editor"
+            aria-label="Assembly editor"
           >
             <RecipeEditor
               controller={controller}

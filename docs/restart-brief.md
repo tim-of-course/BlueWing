@@ -77,7 +77,7 @@ For example, one wall can belong to an assembly group for framing and insulation
 
 A recipe consumes measured metrics and explicit inputs, then returns outputs with units and an explanation. Keep recipe definitions as project data. **The confirmed authoring scope includes editable named inputs and formulas, multiple outputs, units/dimension checks, and source explanations.** Use a constrained evaluator over declared metrics and inputs, with ordinary arithmetic and useful functions such as rounding, minimum/maximum, and conditions.
 
-The MVP calculates material amounts from measurements. It defers figuring out the physical arrangement of individual construction pieces:
+Assemblies calculate material amounts and formula-based piece schedules from measurements and entered detail dimensions. Physical placement of individual construction pieces remains deferred:
 
 | Job           | Included in the MVP                                                                                | Deferred                                                                                                |
 | ------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -94,6 +94,8 @@ Initially evaluate each assignment against each compatible group member, retaini
 For example, 100 sq ft of calculated material plus 10% waste gives 110 sq ft. At 32 sq ft per sheet, the order is 4 sheets covering 128 sq ft. Show the base amount, waste allowance, package count, and purchased coverage separately. Retain each object's base contribution; the extra allowance and package rounding belong to the group result. Advanced scrap formulas and stacked override rules from the old app are not required for this first implementation.
 
 Calculations never mutate authored geometry. A future piece-layout calculation can return quantities or a proposed arrangement. Accepting that arrangement as editable drawing objects would be an explicit command, keeping calculated results separate from user-authored geometry.
+
+Project assemblies extend the recipe records with categories, descriptions, detail references, required inputs, per-object assignment overrides, and optional piece cut/stock lengths. A device-local global library stores reusable definitions; import makes an independent project copy. Saving a project definition to the library is explicit. Global changes do not alter existing project copies or use project Undo. See `docs/assemblies.md` for scope, CLI commands, and test examples. Review tools and automatic wall/opening framing remain deferred.
 
 Project recipes are independent copies of any starter library. Updating the app or starter library does not silently replace a project's recipe definition. Editing a project recipe updates the groups using it through one undoable command; Undo restores the previous recipe. Keep ordinary editable project recipes in the MVP. Defer publishing, archiving, pinned recipe revisions, and choosing which assignments migrate to a newer revision.
 
@@ -113,7 +115,7 @@ Store the current project, not an event-sourced reconstruction of every past ent
 
 SQLite is a reasonable proposed container for current records and imported source assets. Keep SQL mapping and migrations in TypeScript; Rust executes generic, bounded transactions on an opened project connection. Ordinary edits update affected records without copying PDFs or all history. Use one writable application session per project in the MVP. Opening the same project in another writer is outside that scope.
 
-The implementation uses a `.bluewing` SQLite container with format version 1. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
+The implementation uses a `.bluewing` SQLite container with format version 2. Version 1 remains readable and upgrades atomically on the next accepted edit. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
 
 Version the new project format. Importing old project files is a separate need to confirm, not a reason to inherit the old database schema. Add explicit migrations when the new model evolves rather than building representations for unimplemented future features.
 

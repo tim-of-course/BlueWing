@@ -1,5 +1,6 @@
 import {
   commandRegistry,
+  assemblySchema,
   type CommandDefinition,
   type PayloadSchema,
 } from '../core/commands';
@@ -27,6 +28,45 @@ function entry(
   };
 }
 export const applicationCommands = [
+  entry(
+    'library.inspect',
+    'Read this device’s global assembly library, independent of the project.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'library.put',
+    'Save a global assembly. Existing project copies are unchanged; global edits have no project undo.',
+    {
+      assembly: assemblySchema,
+      expectedLibraryRevision: { type: 'number', minimum: 0 },
+    },
+    ['assembly', 'expectedLibraryRevision'],
+    true,
+    {
+      assembly: commandRegistry.find((entry) => entry.name === 'assembly.put')
+        ?.examples[0]?.payload,
+      expectedLibraryRevision: 0,
+    },
+  ),
+  entry(
+    'library.delete',
+    'Delete a global assembly without changing project copies.',
+    { id: string, expectedLibraryRevision: { type: 'number', minimum: 0 } },
+    ['id', 'expectedLibraryRevision'],
+    true,
+    { id: 'assembly-1', expectedLibraryRevision: 0 },
+  ),
+  entry(
+    'assembly.import',
+    'Copy a global assembly into this project with a new id and one undo step.',
+    { libraryId: string, id: string },
+    ['libraryId', 'id'],
+    true,
+    { libraryId: 'drywall-face', id: 'project-drywall' },
+  ),
   entry(
     'project.create',
     'Create a new local project at a new path. Close the current project first.',

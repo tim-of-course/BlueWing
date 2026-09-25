@@ -1,4 +1,11 @@
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Show,
+  onSettled,
+} from 'solid-js';
 import {
   evaluateFormula,
   formulaOutput,
@@ -28,6 +35,8 @@ export default function RecipeEditor(props: {
     name: 'recipe.editorDraft',
   });
   const [dirty, setDirty] = createSignal(false);
+  const [scope, setScope] = createSignal<'project' | 'global'>('project');
+  let libraryRevision = 0;
   const [error, setError] = createSignal('');
   const [saving, setSaving] = createSignal(false);
   const preview = createMemo(
@@ -68,11 +77,14 @@ export default function RecipeEditor(props: {
         for (const output of recipe.outputs) {
           try {
             const values: Record<string, FormulaValue> = {};
-            for (const input of recipe.inputs)
+            for (const input of recipe.inputs) {
+              if (input.default === undefined)
+                throw new Error(`Required input: ${input.name}`);
               values[input.name] =
                 typeof input.default === 'boolean'
                   ? input.default
                   : formulaQuantity({ value: input.default, unit: input.unit });
+            }
             if (kind === 'path')
               values['length'] = formulaQuantity({ value: 1, unit: 'm' });
             if (kind === 'area') {
@@ -103,6 +115,7 @@ export default function RecipeEditor(props: {
   );
   const begin = (recipe: Recipe) => {
     observation = props.controller.observe();
+    libraryRevision = props.controller.library()?.revision ?? 0;
     setDraft(structuredClone(recipe));
     setDirty(false);
     setError('');
@@ -138,11 +151,15 @@ export default function RecipeEditor(props: {
     if (!recipe) return;
     setSaving(true);
     setError('');
-    void props.controller
-      .saveRecipe(recipe, observation)
+    void (
+      scope() === 'project'
+        ? props.controller.saveRecipe(recipe, observation)
+        : props.controller.saveLibraryAssembly(recipe, libraryRevision)
+    )
       .then(() => {
         setDirty(false);
         observation = controller.observe();
+        libraryRevision = controller.library()?.revision ?? 0;
       })
       .catch(report)
       .finally(() => setSaving(false));
@@ -151,8 +168,11 @@ export default function RecipeEditor(props: {
     const recipe = draft();
     if (!recipe) return;
     setSaving(true);
-    void props.controller
-      .deleteRecipe(recipe.id)
+    void (
+      scope() === 'project'
+        ? props.controller.deleteRecipe(recipe.id)
+        : props.controller.deleteLibraryAssembly(recipe.id, libraryRevision)
+    )
       .then(() => {
         setDraft(null);
         setDirty(false);
@@ -160,17 +180,52 @@ export default function RecipeEditor(props: {
       .catch(report)
       .finally(() => setSaving(false));
   };
+  onSettled(() => {
+    void props.controller.refreshLibrary().catch(report);
+  });
+  const definitions = () =>
+    scope() === 'project'
+      ? (props.controller.project()?.recipes ?? {})
+      : (props.controller.library()?.assemblies ?? {});
+  const transfer = () => {
+    const recipe = draft();
+    if (!recipe) return;
+    const controller = props.controller;
+    setSaving(true);
+    void (async () => {
+      if (scope() === 'global') {
+        const id = await controller.importAssembly(recipe.id);
+        setScope('project');
+        begin({
+          ...structuredClone(recipe),
+          id,
+          librarySource: { id: recipe.id, name: recipe.name },
+        });
+      } else {
+        const copy = { ...structuredClone(recipe), id: crypto.randomUUID() };
+        delete copy.librarySource;
+        await controller.saveLibraryAssembly(
+          copy,
+          controller.library()?.revision ?? 0,
+        );
+        setScope('global');
+        begin(copy);
+      }
+    })()
+      .catch(report)
+      .finally(() => setSaving(false));
+  };
   return (
     <div class="stack">
       <div class="button-row">
-        <h2>Project recipes</h2>
+        <h2>Assemblies</h2>
         <button
           type="button"
           disabled={saving() || dirty()}
           onClick={() => {
             begin({
               id: crypto.randomUUID(),
-              name: 'New recipe',
+              name: 'New assembly',
               geometryKinds: ['path'],
               inputs: [],
               outputs: [
@@ -187,7 +242,7 @@ export default function RecipeEditor(props: {
             setDirty(true);
           }}
         >
-          New recipe
+          New assembly
         </button>
         <button
           type="button"
@@ -199,21 +254,59 @@ export default function RecipeEditor(props: {
           Close
         </button>
       </div>
+      <div class="button-row" aria-label="Assembly scope">
+        <button
+          type="button"
+          aria-pressed={scope() === 'project' ? 'true' : 'false'}
+          disabled={dirty() || saving()}
+          onClick={() => {
+            setScope('project');
+            setDraft(null);
+          }}
+        >
+          Project assemblies
+        </button>
+        <button
+          type="button"
+          aria-pressed={scope() === 'global' ? 'true' : 'false'}
+          disabled={dirty() || saving()}
+          onClick={() => {
+            setScope('global');
+            setDraft(null);
+          }}
+        >
+          Global library
+        </button>
+        <button
+          type="button"
+          disabled={dirty() || saving()}
+          onClick={() => {
+            setDraft(null);
+            void props.controller.refreshLibrary().catch(report);
+          }}
+        >
+          Refresh library
+        </button>
+      </div>
+      <p class="muted">
+        {scope() === 'project'
+          ? 'Project assemblies are saved with this file. Editing one updates its assignments and supports Undo.'
+          : 'Global assemblies are saved on this device. Import creates an independent project copy. Global changes do not use project Undo.'}
+      </p>
       <label class="field">
-        Choose recipe
+        Choose assembly
         <select
-          aria-label="Choose recipe"
+          aria-label="Choose assembly"
           value={draft()?.id ?? ''}
           disabled={dirty() || saving()}
           onChange={(event) => {
-            const recipe =
-              props.controller.project()?.recipes[event.currentTarget.value];
+            const recipe = definitions()[event.currentTarget.value];
             if (recipe) begin(recipe);
             else setDraft(null);
           }}
         >
-          <option value="">Select a recipe</option>
-          <For each={Object.values(props.controller.project()?.recipes ?? {})}>
+          <option value="">Select an assembly</option>
+          <For each={Object.values(definitions())}>
             {(recipe) => <option value={recipe.id}>{recipe.name}</option>}
           </For>
         </select>
@@ -222,7 +315,7 @@ export default function RecipeEditor(props: {
         {(recipe) => (
           <>
             <label class="field">
-              Recipe name
+              Assembly name
               <input
                 value={recipe().name}
                 disabled={saving()}
@@ -232,6 +325,75 @@ export default function RecipeEditor(props: {
                     ...current,
                     name,
                   }));
+                }}
+              />
+            </label>
+            <div class="button-row">
+              <button
+                type="button"
+                disabled={
+                  dirty() ||
+                  saving() ||
+                  !definitions()[recipe().id] ||
+                  !props.controller.library()
+                }
+                onClick={transfer}
+              >
+                {scope() === 'project'
+                  ? 'Save a copy to global library'
+                  : 'Import into project'}
+              </button>
+              <button
+                type="button"
+                disabled={dirty() || saving()}
+                onClick={() => {
+                  begin({
+                    ...structuredClone(recipe()),
+                    id: crypto.randomUUID(),
+                    name: `${recipe().name} copy`,
+                  });
+                  setDirty(true);
+                }}
+              >
+                Duplicate assembly
+              </button>
+            </div>
+            <Show when={recipe().librarySource}>
+              <p class="muted">
+                Copied from global library: {recipe().librarySource?.name}. This
+                definition is independent.
+              </p>
+            </Show>
+            <label class="field">
+              Category
+              <input
+                value={recipe().category ?? ''}
+                disabled={saving()}
+                onInput={(event) => {
+                  const category = event.currentTarget.value;
+                  change((current) => ({ ...current, category }));
+                }}
+              />
+            </label>
+            <label class="field">
+              Description
+              <textarea
+                value={recipe().description ?? ''}
+                disabled={saving()}
+                onInput={(event) => {
+                  const description = event.currentTarget.value;
+                  change((current) => ({ ...current, description }));
+                }}
+              />
+            </label>
+            <label class="field">
+              Detail / specification reference
+              <input
+                value={recipe().reference ?? ''}
+                disabled={saving()}
+                onInput={(event) => {
+                  const reference = event.currentTarget.value;
+                  change((current) => ({ ...current, reference }));
                 }}
               />
             </label>
@@ -286,11 +448,20 @@ export default function RecipeEditor(props: {
                             event.currentTarget.value === 'boolean'
                               ? 'boolean'
                               : 'number';
-                          input(index, {
-                            type,
-                            default: type === 'boolean' ? false : 0,
-                            unit: 'scalar',
-                          });
+                          change((current) => ({
+                            ...current,
+                            inputs: current.inputs.map((field, at) => {
+                              if (at !== index) return field;
+                              const next: RecipeInput = {
+                                ...field,
+                                type,
+                                default: type === 'boolean' ? false : 0,
+                                unit: 'scalar' as const,
+                              };
+                              delete next.minimum;
+                              return next;
+                            }),
+                          }));
                         }}
                       >
                         <option value="number">Number</option>
@@ -335,11 +506,64 @@ export default function RecipeEditor(props: {
                         <input
                           type="number"
                           step="any"
-                          value={Number(item().default)}
+                          value={
+                            item().default === undefined
+                              ? ''
+                              : Number(item().default)
+                          }
+                          disabled={item().default === undefined}
                           onChange={(event) => {
                             input(index, {
                               default: event.currentTarget.valueAsNumber,
                             });
+                          }}
+                        />
+                      </label>
+                    </Show>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={item().default === undefined}
+                        onChange={(event) => {
+                          const required = event.currentTarget.checked;
+                          change((current) => ({
+                            ...current,
+                            inputs: current.inputs.map((field, at) => {
+                              if (at !== index) return field;
+                              const next = { ...field };
+                              if (required) delete next.default;
+                              else
+                                next.default =
+                                  field.type === 'boolean' ? false : 0;
+                              return next;
+                            }),
+                          }));
+                        }}
+                      />{' '}
+                      Required input (no default)
+                    </label>
+                    <Show when={item().type === 'number'}>
+                      <label class="field">
+                        Minimum (optional)
+                        <input
+                          type="number"
+                          step="any"
+                          value={item().minimum ?? ''}
+                          onChange={(event) => {
+                            const minimum =
+                              event.currentTarget.value === ''
+                                ? undefined
+                                : event.currentTarget.valueAsNumber;
+                            change((current) => ({
+                              ...current,
+                              inputs: current.inputs.map((field, at) => {
+                                if (at !== index) return field;
+                                const next = { ...field };
+                                if (minimum === undefined) delete next.minimum;
+                                else next.minimum = minimum;
+                                return next;
+                              }),
+                            }));
                           }}
                         />
                       </label>
@@ -396,7 +620,7 @@ export default function RecipeEditor(props: {
                 measurements available for the drawing type can be used.
               </p>
               <p>
-                Inputs in this recipe:{' '}
+                Inputs in this assembly:{' '}
                 {recipe()
                   .inputs.map((input) => `${input.name} (${input.unit})`)
                   .join(', ') || 'None'}
@@ -420,9 +644,9 @@ export default function RecipeEditor(props: {
                 <details class="formula-reference">
                   <summary>Preview on selected drawing</summary>
                   <p>
-                    Base quantities using this recipe's default inputs, before
+                    Base quantities using this assembly's default inputs, before
                     waste and package rounding. Preview does not save or assign
-                    the recipe.
+                    the assembly.
                   </p>
                   <For each={result().outputs}>
                     {(output) => (
@@ -457,7 +681,7 @@ export default function RecipeEditor(props: {
                       />
                     </label>
                     <label class="field">
-                      Material ID
+                      Material / product
                       <input
                         value={item().materialId}
                         onInput={(event) => {
@@ -492,6 +716,90 @@ export default function RecipeEditor(props: {
                       }}
                     />
                   </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!!item().piece}
+                      onChange={(event) => {
+                        const enabled = event.currentTarget.checked;
+                        change((current) => ({
+                          ...current,
+                          outputs: current.outputs.map((entry, at) => {
+                            if (at !== index) return entry;
+                            const next = { ...entry };
+                            if (enabled) {
+                              next.unit = 'ea';
+                              next.piece = {
+                                role: entry.name,
+                                cutLength: { formula: 'height', unit: 'ft' },
+                              };
+                            } else delete next.piece;
+                            return next;
+                          }),
+                        }));
+                      }}
+                    />{' '}
+                    Schedule pieces with cut lengths
+                  </label>
+                  <Show when={item().piece}>
+                    {(piece) => (
+                      <div class="stack">
+                        <label class="field">
+                          Piece role
+                          <input
+                            value={piece().role}
+                            onInput={(event) => {
+                              output(index, {
+                                piece: {
+                                  ...piece(),
+                                  role: event.currentTarget.value,
+                                },
+                              });
+                            }}
+                          />
+                        </label>
+                        <label class="field">
+                          Cut length formula
+                          <input
+                            value={piece().cutLength.formula}
+                            onInput={(event) => {
+                              output(index, {
+                                piece: {
+                                  ...piece(),
+                                  cutLength: {
+                                    ...piece().cutLength,
+                                    formula: event.currentTarget.value,
+                                  },
+                                },
+                              });
+                            }}
+                          />
+                        </label>
+                        <label class="field">
+                          Stock length formula (optional)
+                          <input
+                            value={piece().stockLength?.formula ?? ''}
+                            onInput={(event) => {
+                              const next = { ...piece() };
+                              if (event.currentTarget.value)
+                                next.stockLength = {
+                                  formula: event.currentTarget.value,
+                                  unit: 'ft',
+                                };
+                              else delete next.stockLength;
+                              output(index, { piece: next });
+                            }}
+                          />
+                        </label>
+                        <p class="muted">
+                          Length formulas use declared length inputs. Pieces
+                          require whole-number quantities in ea. Stock length
+                          must cover the cut length; cutting several pieces from
+                          one stock length is not optimized.
+                        </p>
+                      </div>
+                    )}
+                  </Show>
                   <div class="button-row">
                     <label class="field">
                       Waste %
@@ -588,7 +896,7 @@ export default function RecipeEditor(props: {
                 disabled={saving() || !dirty()}
                 onClick={save}
               >
-                {saving() ? 'Saving…' : 'Save recipe'}
+                {saving() ? 'Saving…' : 'Save assembly'}
               </button>
               <button
                 type="button"
@@ -604,14 +912,10 @@ export default function RecipeEditor(props: {
               <button
                 type="button"
                 class="danger"
-                disabled={
-                  saving() ||
-                  dirty() ||
-                  !props.controller.project()?.recipes[recipe().id]
-                }
+                disabled={saving() || dirty() || !definitions()[recipe().id]}
                 onClick={remove}
               >
-                Delete recipe
+                Delete assembly
               </button>
             </div>
           </>

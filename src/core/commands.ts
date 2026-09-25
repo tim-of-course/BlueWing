@@ -8,7 +8,12 @@ import type {
   Sheet,
 } from './types';
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
-import { calculateProject, exportQuantities } from './calculations';
+import {
+  calculateProject,
+  exportQuantities,
+  pieceSchedule,
+  exportPieces,
+} from './calculations';
 import { calibrationFromRatio, type PaperScale } from './scale';
 
 export interface PayloadSchema {
@@ -82,36 +87,71 @@ const group = object(
   { id: string, name: string, geometryIds: array(string), color: string },
   ['id', 'name', 'geometryIds'],
 );
-const recipe = object({
-  id: string,
-  name: string,
-  geometryKinds: array({ type: 'string', enum: ['path', 'area', 'count'] }),
-  inputs: array(
-    object({
-      name: string,
-      type: { type: 'string', enum: ['number', 'boolean'] },
-      unit,
-      default: value,
-    }),
-  ),
-  outputs: array(
-    object({
-      id: string,
-      name: string,
-      materialId: string,
-      unit,
-      formula: string,
-      allowance,
-    }),
-  ),
+const lengthFormula = object({
+  formula: string,
+  unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
 });
-const assignment = object({
-  id: string,
-  groupId: string,
-  recipeId: string,
-  inputs: { type: 'object', additionalProperties: value },
-  allowances: { type: 'object', additionalProperties: allowance },
-});
+export const assemblySchema = object(
+  {
+    id: string,
+    name: string,
+    category: string,
+    description: string,
+    reference: string,
+    librarySource: object({ id: string, name: string }),
+    geometryKinds: array({ type: 'string', enum: ['path', 'area', 'count'] }),
+    inputs: array(
+      object(
+        {
+          name: string,
+          type: { type: 'string', enum: ['number', 'boolean'] },
+          unit,
+          default: value,
+          minimum: number,
+        },
+        ['name', 'type', 'unit'],
+      ),
+    ),
+    outputs: array(
+      object(
+        {
+          id: string,
+          name: string,
+          materialId: string,
+          unit,
+          formula: string,
+          allowance,
+          piece: object(
+            {
+              role: string,
+              cutLength: lengthFormula,
+              stockLength: lengthFormula,
+            },
+            ['role', 'cutLength'],
+          ),
+        },
+        ['id', 'name', 'materialId', 'unit', 'formula', 'allowance'],
+      ),
+    ),
+  },
+  ['id', 'name', 'geometryKinds', 'inputs', 'outputs'],
+);
+const recipe = assemblySchema;
+const inputValues: PayloadSchema = {
+  type: 'object',
+  additionalProperties: value,
+};
+const assignment = object(
+  {
+    id: string,
+    groupId: string,
+    recipeId: string,
+    inputs: inputValues,
+    allowances: { type: 'object', additionalProperties: allowance },
+    geometryInputs: { type: 'object', additionalProperties: inputValues },
+  },
+  ['id', 'groupId', 'recipeId', 'inputs', 'allowances'],
+);
 const id = object({ id: string });
 const commands = object({
   commands: array(
@@ -322,6 +362,20 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     { format: 'csv' },
   ],
   [
+    'pieces.inspect',
+    'Read required pieces by drawing location, excluding purchasing waste.',
+    object({}),
+    false,
+    {},
+  ],
+  [
+    'pieces.export',
+    'Export required pieces and cut/stock lengths by location as CSV or JSON.',
+    object({ format: { type: 'string', enum: ['csv', 'json'] } }),
+    false,
+    { format: 'csv' },
+  ],
+  [
     'history.undo',
     'Undo a session edit and save a new revision.',
     object({}),
@@ -350,6 +404,21 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     { commands: [{ name: 'quantities.inspect' }] },
   ],
 ];
+// Existing recipe commands remain compatible with saved scripts.
+for (const [name, original] of [
+  ['assembly.put', 'recipe.put'],
+  ['assembly.delete', 'recipe.delete'],
+] as const) {
+  const entry = definitions.find(([command]) => command === original);
+  if (entry)
+    definitions.push([
+      name,
+      entry[1].replaceAll('recipe', 'assembly'),
+      entry[2],
+      entry[3],
+      entry[4],
+    ]);
+}
 export const commandRegistry: readonly CommandDefinition[] = definitions.map(
   ([name, description, schema, mutates, payload]) => ({
     name,
@@ -443,10 +512,86 @@ function removeGeometry(project: Project, geometryId: string): void {
       (member) => member !== geometryId,
     );
 }
+export function validateAssembly(input: unknown): asserts input is Recipe {
+  validatePayload(assemblySchema, input);
+  const entry = input as Recipe;
+  if (
+    !entry.id ||
+    ['__proto__', 'constructor', 'prototype'].includes(entry.id) ||
+    !entry.name.trim()
+  )
+    throw new Error('Assembly needs an id and name');
+  if (
+    !entry.geometryKinds.length ||
+    new Set(entry.geometryKinds).size !== entry.geometryKinds.length
+  )
+    throw new Error('Assembly needs unique compatible geometry kinds');
+  const names = new Set<string>();
+  for (const field of entry.inputs) {
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(field.name) ||
+      names.has(field.name) ||
+      ['length', 'area', 'perimeter', 'count', 'true', 'false'].includes(
+        field.name,
+      )
+    )
+      throw new Error(
+        'Recipe input names must be unique identifiers distinct from metrics',
+      );
+    names.add(field.name);
+    if (
+      (field.default !== undefined && typeof field.default !== field.type) ||
+      (typeof field.default === 'number' && !Number.isFinite(field.default)) ||
+      (field.type === 'boolean' &&
+        (field.unit !== 'scalar' || field.minimum !== undefined)) ||
+      (typeof field.default === 'number' &&
+        field.minimum !== undefined &&
+        field.default < field.minimum)
+    )
+      throw new Error(`Invalid default for ${field.name}`);
+  }
+  if (
+    entry.outputs.length === 0 ||
+    new Set(entry.outputs.map((output) => output.id)).size !==
+      entry.outputs.length
+  )
+    throw new Error('Recipe needs outputs with unique ids');
+  for (const output of entry.outputs) {
+    if (!output.id || !output.name.trim() || !output.materialId.trim())
+      throw new Error('Output needs an id, name and material');
+    if (
+      output.piece &&
+      output.allowance.packageSize !== undefined &&
+      !Number.isInteger(output.allowance.packageSize)
+    )
+      throw new Error('Piece package size must be a whole number');
+    if (output.piece && output.unit !== 'ea')
+      throw new Error('Piece outputs must use ea');
+  }
+}
+export function validateAssemblyInputs(
+  definition: Recipe,
+  inputs: Record<string, number | boolean>,
+): void {
+  for (const [name, item] of Object.entries(inputs)) {
+    const field = definition.inputs.find(
+      (candidate) => candidate.name === name,
+    );
+    if (
+      !field ||
+      typeof item !== field.type ||
+      (typeof item === 'number' &&
+        (!Number.isFinite(item) ||
+          (field.minimum !== undefined && item < field.minimum)))
+    )
+      throw new Error(`Invalid assignment input: ${name}`);
+  }
+}
+
 export function validateProject(input: unknown): asserts input is Project {
   validatePayload(
     object({
-      formatVersion: { type: 'number', enum: [1] },
+      formatVersion: { type: 'number', enum: [1, 2] },
       id: string,
       name: string,
       revision: { type: 'number', minimum: 0 },
@@ -496,50 +641,30 @@ export function validateProject(input: unknown): asserts input is Project {
       requireEntity(project.geometries, member, 'Geometry'),
     );
   }
-  for (const entry of Object.values(project.recipes)) {
-    const names = new Set<string>();
-    for (const field of entry.inputs) {
-      if (
-        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(field.name) ||
-        names.has(field.name) ||
-        ['length', 'area', 'perimeter', 'count'].includes(field.name)
-      )
-        throw new Error(
-          'Recipe input names must be unique identifiers distinct from metrics',
-        );
-      names.add(field.name);
-      if (
-        typeof field.default !== field.type ||
-        (typeof field.default === 'number' &&
-          !Number.isFinite(field.default)) ||
-        (field.type === 'boolean' && field.unit !== 'scalar')
-      )
-        throw new Error(`Invalid default for ${field.name}`);
-    }
-    if (
-      entry.outputs.length === 0 ||
-      new Set(entry.outputs.map((output) => output.id)).size !==
-        entry.outputs.length
-    )
-      throw new Error('Recipe needs outputs with unique ids');
-  }
+  for (const entry of Object.values(project.recipes)) validateAssembly(entry);
   for (const entry of Object.values(project.assignments)) {
     requireEntity(project.groups, entry.groupId, 'Group');
     const definition = requireEntity(project.recipes, entry.recipeId, 'Recipe');
-    for (const [name, item] of Object.entries(entry.inputs)) {
-      const field = definition.inputs.find(
-        (candidate) => candidate.name === name,
-      );
-      if (
-        !field ||
-        typeof item !== field.type ||
-        (typeof item === 'number' && !Number.isFinite(item))
-      )
-        throw new Error(`Invalid assignment input: ${name}`);
+    validateAssemblyInputs(definition, entry.inputs);
+    for (const [geometryId, inputs] of Object.entries(
+      entry.geometryInputs ?? {},
+    )) {
+      if (!project.groups[entry.groupId]?.geometryIds.includes(geometryId))
+        throw new Error('Object inputs must belong to the assigned group');
+      validateAssemblyInputs(definition, inputs);
     }
-    for (const outputId of Object.keys(entry.allowances))
-      if (!definition.outputs.some((output) => output.id === outputId))
-        throw new Error(`Unknown allowance output: ${outputId}`);
+    for (const [outputId, allowance] of Object.entries(entry.allowances)) {
+      const output = definition.outputs.find(
+        (output) => output.id === outputId,
+      );
+      if (!output) throw new Error(`Unknown allowance output: ${outputId}`);
+      if (
+        output.piece &&
+        allowance.packageSize !== undefined &&
+        !Number.isInteger(allowance.packageSize)
+      )
+        throw new Error('Piece package size must be a whole number');
+    }
   }
 }
 export function executeCommand(
@@ -562,6 +687,12 @@ export function executeCommand(
       break;
     case 'project.inspect':
       data = next;
+      break;
+    case 'pieces.inspect':
+      data = pieceSchedule(next);
+      break;
+    case 'pieces.export':
+      data = exportPieces(next, payload.format as 'csv' | 'json');
       break;
     case 'quantities.inspect':
       data = calculateProject(next);
@@ -661,9 +792,11 @@ export function executeCommand(
         if (entry.groupId === entityId)
           Reflect.deleteProperty(next.assignments, entry.id);
       break;
+    case 'assembly.put':
     case 'recipe.put':
       next.recipes[entityId] = structuredClone(payload) as unknown as Recipe;
       break;
+    case 'assembly.delete':
     case 'recipe.delete':
       requireEntity(next.recipes, entityId, 'Recipe');
       if (
@@ -688,6 +821,30 @@ export function executeCommand(
     default:
       throw new Error(`Unknown command: ${call.name}`);
   }
+  if (definition.mutates) {
+    next.formatVersion = 2;
+    if (
+      [
+        'geometry.delete',
+        'sheet.delete',
+        'group.members',
+        'group.put',
+      ].includes(call.name)
+    )
+      pruneObjectInputs(next);
+  }
   if (definition.mutates && validateResult) validateProject(next);
   return { project: next, data, changed: definition.mutates };
+}
+
+function pruneObjectInputs(project: Project): void {
+  for (const assignment of Object.values(project.assignments)) {
+    if (!assignment.geometryInputs) continue;
+    const members = project.groups[assignment.groupId]?.geometryIds ?? [];
+    assignment.geometryInputs = Object.fromEntries(
+      Object.entries(assignment.geometryInputs).filter(([id]) =>
+        members.includes(id),
+      ),
+    );
+  }
 }

@@ -5,7 +5,18 @@ import {
   ProjectConflictError,
   validatePayload,
 } from '../core';
-import type { CommandCall, Project, Sheet } from '../core/types';
+import { copyAssembly } from '../core/assemblies';
+import {
+  AssemblyLibraryStore,
+  libraryStorage,
+} from '../platform/assembly-library';
+import type {
+  Assembly,
+  AssemblyLibrary,
+  CommandCall,
+  Project,
+  Sheet,
+} from '../core/types';
 import { createStorage } from '../platform/storage';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
@@ -31,6 +42,8 @@ export interface ApplicationResult {
 export class Application {
   readonly storage;
   readonly pdf;
+  readonly libraryStore;
+  library: AssemblyLibrary | null = null;
   session: ProjectSession | null = null;
   draftPending = false;
   private queue: Promise<unknown> = Promise.resolve();
@@ -38,6 +51,7 @@ export class Application {
 
   constructor(readonly native: boolean) {
     this.storage = createStorage(native);
+    this.libraryStore = new AssemblyLibraryStore(libraryStorage(native));
     this.pdf = new PdfDocuments((id) => this.storage.readAsset(id));
   }
   get project(): Project | null {
@@ -88,7 +102,12 @@ export class Application {
       const isApplication = applicationCommands.some(
         (entry) => entry.name === request.name,
       );
-      if (definition.mutates && this.project) this.check(request);
+      if (
+        definition.mutates &&
+        this.project &&
+        !request.name.startsWith('library.')
+      )
+        this.check(request);
       let data: unknown;
       const payload = (request.payload ?? {}) as Record<string, unknown>;
       if (request.name === 'commands.list')
@@ -123,6 +142,40 @@ export class Application {
           : result.data;
       } else
         switch (request.name) {
+          case 'library.inspect':
+            this.library = await this.libraryStore.read();
+            data = structuredClone(this.library);
+            this.publish();
+            break;
+          case 'library.put':
+          case 'library.delete':
+            this.library = await this.libraryStore.save(
+              payload.expectedLibraryRevision as number,
+              request.name === 'library.put'
+                ? (payload.assembly as Assembly)
+                : (payload.id as string),
+            );
+            data = structuredClone(this.library);
+            this.publish();
+            break;
+          case 'assembly.import': {
+            if (!this.session) throw new Error('Open a project first');
+            const library = await this.libraryStore.read();
+            const original = library.assemblies[payload.libraryId as string];
+            if (!original) throw new Error('Library assembly not found');
+            const id = payload.id as string;
+            if (this.project?.recipes[id])
+              throw new Error('Project assembly id already exists');
+            const assembly = copyAssembly(original, id);
+            await this.session.dispatch({
+              ...request,
+              name: 'assembly.put',
+              payload: assembly,
+              ...this.observe(),
+            });
+            data = assembly;
+            break;
+          }
           case 'project.create':
           case 'project.open': {
             if (this.session)

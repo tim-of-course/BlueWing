@@ -4,6 +4,8 @@ import type { PaperScale } from '../core/scale';
 import type { SheetNameSuggestion } from '../pdf/sheet-names';
 import type {
   CalculationResult,
+  AssemblyLibrary,
+  Assignment,
   GeometryKind,
   Point,
   Project,
@@ -16,6 +18,19 @@ export type DrawingTool = 'select' | 'path' | 'area' | 'count' | 'calibrate';
 export interface WorkspaceController {
   project: Accessor<Project | null>;
   quantities: Accessor<CalculationResult | null>;
+  library: Accessor<AssemblyLibrary | null>;
+  refreshLibrary(): Promise<void>;
+  saveLibraryAssembly(
+    assembly: Recipe,
+    expectedLibraryRevision: number,
+  ): Promise<void>;
+  deleteLibraryAssembly(
+    id: string,
+    expectedLibraryRevision: number,
+  ): Promise<void>;
+  importAssembly(libraryId: string): Promise<string>;
+  saveAssignment(assignment: Assignment, expected?: Observation): Promise<void>;
+  exportPieces(): Promise<void>;
   activeSheetId: Accessor<string | null>;
   setActiveSheetId(id: string | null): void;
   selection: Accessor<string[]>;
