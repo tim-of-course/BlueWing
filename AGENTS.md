@@ -7,3 +7,5 @@ Read [docs/restart-brief.md](docs/restart-brief.md) for product decisions. Consu
 For Solid components, reactive state, Solid dependencies, or frontend verification, read [.agents/skills/solidjs-2/SKILL.md](.agents/skills/solidjs-2/SKILL.md) before editing. Use the installed Solid 2 APIs and preserve the pinned package set during unrelated work.
 
 Use [README.md](README.md) for setup and verification. Keep geometry, measurement, and calculation logic independent of Solid and native adapters.
+
+Run browser tests, native builds, and desktop tests through the guarded commands in [README.md](README.md#verify). Keep the resource guard enabled and browser tests at one worker. On a resource refusal or stop, continue lightweight work and report which checks did not run; retry heavy work only after resources recover.

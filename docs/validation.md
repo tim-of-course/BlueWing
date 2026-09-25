@@ -18,7 +18,7 @@ Pulled the navigation, scale, and compact-workspace changes through `8dce026` an
 
 Verification passed: static checks, 29 core tests, six platform tests, 14 development and 10 production browser scenarios, six Rust tests, native smoke, and the release desktop workflow. The release workflow also downloaded `0.1.1-windows-0918`, activated it, stopped its local server, restarted offline, reopened the project, and rendered its PDF. The Windows NSIS installer was rebuilt with both executables.
 
-The first browser run used 14 workers alongside native builds and hit Solid compute-time diagnostics. All development scenarios passed with two workers and the original diagnostic budgets; Playwright now defaults to two workers to reduce contention. No application code or diagnostic assertions changed.
+The first browser run used 14 workers alongside native builds and hit Solid compute-time diagnostics. All development scenarios passed with two workers and the original diagnostic budgets; At that checkpoint Playwright defaulted to two workers. The September 25 resource guard now requires one worker; see README.md for current execution rules. No application code or diagnostic assertions changed.
 
 The shared Tauri configuration still targets a macOS app with minimum macOS 15.4. The installed Tauri configuration loader selects `tauri.windows.conf.json` only for Windows; Rust source, dependency pins, and lockfiles are unchanged from upstream. A native macOS build was not rerun on this Windows machine.
 
@@ -78,3 +78,11 @@ Runtime diagnostics recorded seven managed tool rejections, five formal revision
 | Interface             | `wf_01663db5-476d-4648-917e-8c915f97e43b` | `agt_53dd1ce4-6828-448e-95a6-f46902bc10c8` | Canvas: `agt_9ca2b268-9b2b-46bb-b666-63fe3f8d2a7d`; editors: `agt_03d1e8e0-d00f-453e-a9b1-9cfbcf2690d3`                                                             |
 | Platform verification | `wf_ae9ee224-3ae6-4d9b-aced-52eb1b3cf9cf` | `agt_7cc34b6a-d3ac-463c-acb5-25d3e4af4973` | None                                                                                                                                                                |
 | Application review    | `wf_b51fcbb3-9a39-4153-9f00-a0b81f1f4736` | `agt_4e8cec68-f4d3-471b-8df0-1f5fac8f1fa4` | None                                                                                                                                                                |
+
+## Resource guard, September 25, 2026
+
+The September 24 browser run coincided with macOS compressed-memory exhaustion on the 8 GiB laptop. Heavy Bluewing commands now share a host-wide slot across checkouts and require one browser worker; native builds use one Cargo job. Startup and runtime memory checks, cancellation behavior, supported entry points, and limits are documented in [README.md](../README.md#verify).
+
+Nine tooling tests passed using small dummy jobs and injected resource readings. They cover a competing process in a different working directory, live/stale parent credentials, Python entry-point authorization, nested commands, low-memory refusal before child launch, exit-code preservation, memory-triggered and user-triggered cancellation (including detached descendants), release after a killed slot holder, and rejection of unguarded or multi-worker browser runs. All 58 core tests and static TypeScript/lint/format checks passed. The Python helper and changed entry points compile.
+
+The actual `test:dev` entry point and a direct `python3 tests/native/smoke.py` invocation both refused with exit code 75 while macOS reported warning memory pressure. They launched no test browser or native app. This verifies refusal in the real environment; it is not a fresh browser/native suite pass. No native rebuild or memory-exhaustion stress test was run. Windows process-tree cancellation remains unverified locally.

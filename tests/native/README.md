@@ -3,8 +3,8 @@
 Build the web app first (`bun run build`), then:
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml --locked
-cargo build --manifest-path src-tauri/Cargo.toml --locked --bins
+bun run test:native
+bun run native:build
 python3 tests/native/smoke.py
 ```
 
@@ -13,7 +13,7 @@ The smoke test opens a real desktop webview with an isolated `BLUEWING_DATA_DIR`
 To verify a local macOS app bundle after building both debug binaries:
 
 ```sh
-bunx --no-install tauri bundle --debug --bundles app --no-sign
+bun scripts/heavy.ts -- bun x --no-install tauri bundle --debug --bundles app --no-sign
 BLUEWING_NATIVE_BIN_DIR="$PWD/src-tauri/target/debug/bundle/macos/Bluewing.app/Contents/MacOS" python3 tests/native/smoke.py
 ```
 
@@ -28,3 +28,5 @@ Generic database/file commands use camelCase payloads. SQLite query results retu
 Verified on macOS and Windows: both binary builds, six Rust tests, and the real webview smoke test. On Windows, use `python` instead of `python3`; the binaries have an `.exe` extension, resolved automatically by the test launcher. Linux builds have not been run. Tauri bundles a macOS app or a Windows NSIS installer; distribution signing is not configured. Development uses `http://127.0.0.1:1420`; Tauri starts Vite on that port, and builds the web frontend before production builds.
 
 `app_data_read({key})` returns UTF-8 text or null; `app_data_write({key,data})` atomically replaces a UTF-8 file under the native app data directory. Keys are simple filenames, not paths. Product/library validation stays in TypeScript.
+
+Build commands and direct Python test invocations use the shared resource guard described in [README.md](../../README.md#verify). Run them sequentially; resource-blocked runs are unverified.

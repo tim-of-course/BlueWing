@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { chromium, webkit } from '@playwright/test';
+import { requireResourceGuard } from '../../scripts/resources';
 import type * as StorageModule from '../../src/platform/browser-storage';
+
+await requireResourceGuard();
 
 for (const browserType of [chromium, webkit]) {
   void test(`${browserType.name()}: IndexedDB reopen, conflicts, and atomic asset failure`, async () => {

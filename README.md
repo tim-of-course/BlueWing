@@ -6,7 +6,7 @@ Projects save locally as `.bluewing` SQLite files. UI and CLI edits share one Ty
 
 ## Run
 
-Use Bun (the project pins 1.3.14), Node from `.node-version`, and Rust. Windows development requires Visual Studio Build Tools with Desktop development with C++ and the Windows SDK, the MSVC Rust toolchain, and Microsoft Edge WebView2. macOS requires 15.4 or newer and Xcode command-line tools.
+Use Bun (the project pins 1.3.14), Node from `.node-version`, Rust, and Python 3 for verification. Windows development requires Visual Studio Build Tools with Desktop development with C++ and the Windows SDK, the MSVC Rust toolchain, and Microsoft Edge WebView2. macOS requires 15.4 or newer and Xcode command-line tools.
 
 ```sh
 bun install --frozen-lockfile
@@ -64,6 +64,16 @@ bunx --no-install playwright install chromium webkit
 bun run verify
 ```
 
+Heavy commands use a shared resource guard across Bluewing checkouts on the same computer. Browser tests run with one worker; native builds default to one Cargo job. A second heavy command exits immediately with the active command and PID. Nested build steps share the parent's guard, so `desktop:build` can build its web assets without blocking itself.
+
+Before starting, the guard requires at least 2 GiB available memory, normal macOS memory pressure, and system load no higher than twice the CPU count. Every three seconds it checks memory again and stops its process tree if macOS reports warning/critical pressure or available memory falls below 1 GiB. A resource refusal or stop exits with code 75, not a test pass. Run `bun run resources:check` for the current readings and active job. Continue lightweight checks while resources recover; keep the guard enabled when retrying.
+
+Use the `bun run` scripts for browser tests and builds, including focused runs such as `bun run test:dev tests/browser/assemblies.dev.spec.ts`. Direct Playwright test execution and worker-count overrides are rejected before tests run. The Python native/desktop scripts automatically enter the same guard even when called directly. Extra Cargo commands should use `bun scripts/heavy.ts -- cargo ...`. Raw external commands and other applications do not participate in the lock, so this reduces contention rather than imposing a machine-wide memory limit.
+
+The slot uses loopback port 47631. The OS releases it when the guard exits, so there is no stale lock file to delete. Keep the guard process alive for the duration of its job; use ordinary Ctrl-C to cancel, which cleans up the supervised process tree. macOS reads system memory pressure; Linux reads `MemAvailable`, and Windows uses available physical memory. Process-tree cancellation is tested on macOS; Windows uses `taskkill /T` and still needs native verification.
+
+`bun run test:tooling` checks mutual exclusion across checkouts, nested commands, startup refusal, cancellation of detached descendants, exit codes, worker enforcement, and release after a killed guard. These tests use tiny dummy jobs and injected readings, without exhausting real memory. No desktop rebuild is needed for changes confined to this guard or test configuration.
+
 On Linux, add `--with-deps` to the browser install. Verification runs type checking, lint, formatting, core/storage tests, development diagnostics, the production build, and production browser workflows. The platform test command uses Bun to bundle its tests and Node's SQLite implementation to execute SQL; Chromium and WebKit exercise actual IndexedDB transactions.
 
 Native checks:
@@ -71,7 +81,7 @@ Native checks:
 ```sh
 bun run build
 bun run test:native
-cargo build --manifest-path src-tauri/Cargo.toml --locked --bins
+bun run native:build
 python3 tests/native/smoke.py
 python3 tests/desktop/workflow.py
 python3 tests/desktop/assemblies.py

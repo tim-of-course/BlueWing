@@ -4,10 +4,14 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tests'))
+from resource_guard import ensure_resource_guard
+ensure_resource_guard()
 BIN = Path(os.environ.get('BLUEWING_NATIVE_BIN_DIR', ROOT / 'src-tauri/target/debug'))
 EVIDENCE = ROOT / 'tmp/assembly-workflow'
 EVIDENCE.mkdir(parents=True, exist_ok=True)
