@@ -12,6 +12,7 @@ import {
   calculateProject,
   pieceSchedule,
   exportPieces,
+  exportQuantities,
 } from '../../src/core/calculations';
 import { copyAssembly, starterAssemblies } from '../../src/core/assemblies';
 import { registry } from '../../src/app/registry';
@@ -272,6 +273,171 @@ void test('FRP, acoustical ceilings, blocking and acoustical panels have indepen
   assignment(panels).inputs = { width: 2, height: 4 };
   near(calculateProject(panels).outputs[0]?.baseAmount, 3);
   near(calculateProject(panels).outputs[1]?.baseAmount, 24);
+});
+function ceilingAmounts(project: Project, purchased = true) {
+  const result = calculateProject(project);
+  assert.equal(result.complete, true, JSON.stringify(result.outputs));
+  return Object.fromEntries(
+    result.outputs.map((row) => [
+      row.outputId,
+      purchased ? row.purchasedAmount : row.baseAmount,
+    ]),
+  );
+}
+void test('2x2 and 2x4 ceilings separate tees, main stock and wall angle stock', () => {
+  // 24 x 15 ft = 360 SF, perimeter 78 LF. Standard factors:
+  // each tee: 1 per 8 SF; mains: 1 LF per 4 SF; 12 ft stock.
+  const square = fixture('ceiling-grid-2x2', 'area');
+  assert.deepEqual(ceilingAmounts(square), {
+    'ceiling-area': 360,
+    'tee-2ft': 45,
+    'tee-4ft': 45,
+    mains: 8,
+    'wall-angle': 7,
+  });
+  near(ceilingAmounts(square, false).mains, 7.5);
+  near(ceilingAmounts(square, false)['wall-angle'], 6.5);
+  const rectangular = fixture('ceiling-grid-2x4', 'area');
+  assert.deepEqual(ceilingAmounts(rectangular), {
+    'ceiling-area': 360,
+    'tee-2ft': 0,
+    'tee-4ft': 45,
+    mains: 8,
+    'wall-angle': 7,
+  });
+  assignment(rectangular).inputs.extraTwoFootTees = 6;
+  near(ceilingAmounts(rectangular)['tee-2ft'], 6);
+  // Stock estimates must not masquerade as placed-piece cut schedules.
+  assert.deepEqual(pieceSchedule(square), []);
+  const csv = exportQuantities(square, 'csv');
+  for (const name of [
+    '2 ft cross tees',
+    '4 ft cross tees',
+    'Main runner stock lengths',
+    'Wall angle stock lengths',
+  ])
+    assert.ok(csv.includes(name));
+});
+void test('ceiling tile deductions leave grid intact; grid and perimeter adjustments are explicit', () => {
+  const project = fixture('ceiling-grid-2x2', 'area');
+  assignment(project).inputs = { tileDeduction: 40 };
+  assert.deepEqual(ceilingAmounts(project), {
+    'ceiling-area': 320,
+    'tee-2ft': 45,
+    'tee-4ft': 45,
+    mains: 8,
+    'wall-angle': 7,
+  });
+  assignment(project).inputs = {
+    tileDeduction: 40,
+    gridDeduction: 40,
+    extraWallAngle: 18,
+    wallAngleDeduction: 6,
+    wallAngleStockLength: 10,
+  };
+  assert.deepEqual(ceilingAmounts(project), {
+    'ceiling-area': 320,
+    'tee-2ft': 40,
+    'tee-4ft': 40,
+    mains: 7,
+    'wall-angle': 9,
+  });
+  // The stock length forms part of the product identity supplied by the estimator.
+  const angle = assembly(project).outputs.find(
+    (row) => row.id === 'wall-angle',
+  );
+  assert.ok(angle);
+  angle.materialId = 'wall-angle-10ft';
+  assert.ok(
+    calculateProject(project).totals.some(
+      (row) => row.materialId === 'wall-angle-10ft' && row.amount === 9,
+    ),
+  );
+});
+void test('ceiling stock and carton rounding follows aggregate quantities and independent waste', () => {
+  const project = fixture('ceiling-grid-2x2', 'area');
+  const a = project.geometries.a;
+  assert.ok(a);
+  project.geometries.b = { ...structuredClone(a), id: 'b', name: 'Room B' };
+  const group = project.groups.g;
+  assert.ok(group);
+  group.geometryIds.push('b');
+  // Round 7.5 + 7.5 main lengths together, rather than eight for each room.
+  near(ceilingAmounts(project).mains, 15);
+  near(ceilingAmounts(project)['wall-angle'], 13);
+  assignment(project).geometryInputs = {
+    b: { tileDeduction: 40, gridDeduction: 40 },
+  };
+  assignment(project).allowances = {
+    'tee-2ft': { wastePercent: 10, packageSize: 60 },
+    'tee-4ft': { wastePercent: 5, packageSize: 60 },
+    mains: { wastePercent: 10, packageSize: 1 },
+    'wall-angle': { wastePercent: 10, packageSize: 1 },
+  };
+  assert.deepEqual(ceilingAmounts(project), {
+    'ceiling-area': 680,
+    'tee-2ft': 120,
+    'tee-4ft': 120,
+    mains: 16,
+    'wall-angle': 15,
+  });
+  near(ceilingAmounts(project, false)['tee-2ft'], 85);
+});
+void test('ceiling estimates handle metric calibration, irregular perimeters, zero grid and invalid deductions', () => {
+  const project = fixture('ceiling-grid-2x2', 'area');
+  const sheet = project.sheets.s;
+  const room = project.geometries.a;
+  assert.ok(sheet && room);
+  // Same physical room, authored in millimetres rather than feet.
+  sheet.calibration = { metresPerUnit: 0.001 };
+  room.points = [
+    { x: 0, y: 0 },
+    { x: 7315.2, y: 0 },
+    { x: 7315.2, y: 4572 },
+    { x: 0, y: 4572 },
+  ];
+  near(ceilingAmounts(project)['tee-4ft'], 45);
+  near(ceilingAmounts(project).mains, 8);
+  sheet.calibration = { metresPerUnit: 0.3048 };
+  // L-shaped area: 24*15 - 12*5 = 300 SF; perimeter still 78 LF.
+  room.points = [
+    { x: 0, y: 0 },
+    { x: 24, y: 0 },
+    { x: 24, y: 10 },
+    { x: 12, y: 10 },
+    { x: 12, y: 15 },
+    { x: 0, y: 15 },
+  ];
+  assert.deepEqual(ceilingAmounts(project), {
+    'ceiling-area': 300,
+    'tee-2ft': 38,
+    'tee-4ft': 38,
+    mains: 7,
+    'wall-angle': 7,
+  });
+  assignment(project).inputs = {
+    tileDeduction: 300,
+    gridDeduction: 300,
+    wallAngleDeduction: 78,
+  };
+  assert.ok(
+    Object.values(ceilingAmounts(project)).every((amount) => amount === 0),
+  );
+  for (const inputs of [
+    { tileDeduction: 301 },
+    { gridDeduction: 301 },
+    { wallAngleDeduction: 79 },
+    { mainSpacing: 0 },
+    { mainStockLength: 0 },
+    { wallAngleStockLength: 0 },
+  ]) {
+    assignment(project).inputs = inputs;
+    assert.equal(
+      calculateProject(project).complete,
+      false,
+      JSON.stringify(inputs),
+    );
+  }
 });
 void test('metric inputs and imperial inputs produce matching piece lengths', () => {
   const project = fixture('steel-straight-run');

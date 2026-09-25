@@ -33,6 +33,74 @@ const output = (
   formula,
   allowance: { wastePercent: 0 },
 });
+function ceilingGrid(square: boolean): Assembly {
+  const size = square ? '2x2' : '2x4';
+  const counted = (
+    id: string,
+    name: string,
+    materialId: string,
+    formula: string,
+  ): RecipeOutput => ({
+    ...output(id, name, materialId, 'ea', formula),
+    allowance: { wastePercent: 0, packageSize: 1 },
+  });
+  return {
+    id: `ceiling-grid-${size}`,
+    name: `Acoustical ceiling ${size} grid estimate`,
+    category: 'Acoustical ceilings',
+    description:
+      'Area/perimeter estimate with mains at 4 ft and cross tees at 2 ft centers. Tile and grid deductions are independent totals. Wall angle uses perimeter plus added edges less excluded edges. Counts round after group totals and waste. Set actual product IDs, including main/angle stock lengths. Border cuts, grid orientation, hangers and offcut reuse are not calculated.',
+    reference:
+      'Standard 4 ft main / 2 ft cross-tee module; verify specified system and border allowances. https://www.armstrongceilings.com/content/dam/armstrongceilings/commercial/north-america/technical-guides/installing-suspended-ceilings-guide.pdf',
+    geometryKinds: ['area'],
+    inputs: [
+      number('tileDeduction', 'ft2', 0),
+      number('gridDeduction', 'ft2', 0),
+      number('mainSpacing', 'ft', 4, Number.MIN_VALUE),
+      number('crossTeeSpacing', 'ft', 2, Number.MIN_VALUE),
+      number('mainStockLength', 'ft', 12, Number.MIN_VALUE),
+      number('wallAngleStockLength', 'ft', 12, Number.MIN_VALUE),
+      number('extraTwoFootTees', 'ea', 0),
+      number('extraWallAngle', 'ft', 0),
+      number('wallAngleDeduction', 'ft', 0),
+    ],
+    outputs: [
+      output(
+        'ceiling-area',
+        'Ceiling tile area',
+        `ceiling-tile-${size}-unspecified`,
+        'ft2',
+        'area - tileDeduction',
+      ),
+      counted(
+        'tee-2ft',
+        '2 ft cross tees',
+        'ceiling-tee-2ft-unspecified',
+        square
+          ? '(area - gridDeduction) / (mainSpacing * crossTeeSpacing) + extraTwoFootTees'
+          : 'extraTwoFootTees',
+      ),
+      counted(
+        'tee-4ft',
+        '4 ft cross tees',
+        'ceiling-tee-4ft-unspecified',
+        '(area - gridDeduction) / (mainSpacing * crossTeeSpacing)',
+      ),
+      counted(
+        'mains',
+        'Main runner stock lengths',
+        'ceiling-main-12ft-unspecified',
+        '(area - gridDeduction) / (mainSpacing * mainStockLength)',
+      ),
+      counted(
+        'wall-angle',
+        'Wall angle stock lengths',
+        'ceiling-wall-angle-12ft-unspecified',
+        '(perimeter + extraWallAngle - wallAngleDeduction) / wallAngleStockLength',
+      ),
+    ],
+  };
+}
 /** Editable estimating templates. Project detail dimensions are deliberately required. */
 export function starterAssemblies(): Record<string, Assembly> {
   const assemblies: Assembly[] = [
@@ -147,6 +215,8 @@ export function starterAssemblies(): Record<string, Assembly> {
         ),
       ],
     },
+    ceilingGrid(true),
+    ceilingGrid(false),
     {
       id: 'frp-face',
       name: 'FRP / wall sheathing face',

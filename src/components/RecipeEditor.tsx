@@ -287,6 +287,26 @@ export default function RecipeEditor(props: {
         >
           Refresh library
         </button>
+        <Show when={scope() === 'global'}>
+          <button
+            type="button"
+            disabled={dirty() || saving() || !props.controller.library()}
+            title="Add missing starters, including deleted starters. Existing definitions stay unchanged."
+            onClick={() => {
+              const controller = props.controller;
+              setSaving(true);
+              void controller
+                .addLibraryStarters(controller.library()?.revision ?? 0)
+                .then(() => {
+                  libraryRevision = controller.library()?.revision ?? 0;
+                })
+                .catch(report)
+                .finally(() => setSaving(false));
+            }}
+          >
+            Add missing starters
+          </button>
+        </Show>
       </div>
       <p class="muted">
         {scope() === 'project'

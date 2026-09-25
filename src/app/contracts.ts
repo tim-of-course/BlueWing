@@ -20,6 +20,7 @@ export interface WorkspaceController {
   quantities: Accessor<CalculationResult | null>;
   library: Accessor<AssemblyLibrary | null>;
   refreshLibrary(): Promise<void>;
+  addLibraryStarters(expectedLibraryRevision: number): Promise<void>;
   saveLibraryAssembly(
     assembly: Recipe,
     expectedLibraryRevision: number,

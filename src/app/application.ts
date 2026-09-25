@@ -158,6 +158,13 @@ export class Application {
             data = structuredClone(this.library);
             this.publish();
             break;
+          case 'library.addStarters':
+            this.library = await this.libraryStore.addStarters(
+              payload.expectedLibraryRevision as number,
+            );
+            data = structuredClone(this.library);
+            this.publish();
+            break;
           case 'assembly.import': {
             if (!this.session) throw new Error('Open a project first');
             const library = await this.libraryStore.read();

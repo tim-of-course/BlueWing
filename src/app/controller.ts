@@ -193,6 +193,8 @@ export function createWorkspace(): WorkspaceController {
     native: app.native,
     library,
     refreshLibrary: () => command('library.inspect'),
+    addLibraryStarters: (expectedLibraryRevision) =>
+      command('library.addStarters', { expectedLibraryRevision }),
     saveLibraryAssembly: (assembly, expectedLibraryRevision) =>
       command('library.put', { assembly, expectedLibraryRevision }),
     deleteLibraryAssembly: (id, expectedLibraryRevision) =>

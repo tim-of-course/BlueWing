@@ -60,6 +60,14 @@ export const applicationCommands = [
     { id: 'assembly-1', expectedLibraryRevision: 0 },
   ),
   entry(
+    'library.addStarters',
+    'Add missing starter assemblies, including previously deleted starters. Preserve existing definitions and project copies.',
+    { expectedLibraryRevision: { type: 'number', minimum: 0 } },
+    ['expectedLibraryRevision'],
+    true,
+    { expectedLibraryRevision: 0 },
+  ),
+  entry(
     'assembly.import',
     'Copy a global assembly into this project with a new id and one undo step.',
     { libraryId: string, id: string },

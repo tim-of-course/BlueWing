@@ -79,11 +79,11 @@ A recipe consumes measured metrics and explicit inputs, then returns outputs wit
 
 Assemblies calculate material amounts and formula-based piece schedules from measurements and entered detail dimensions. Physical placement of individual construction pieces remains deferred:
 
-| Job           | Included in the MVP                                                                                | Deferred                                                                                                |
-| ------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Drywall       | Calculate wall area and material layers, allow for waste, and round the amount up to whole sheets. | Place individual sheets, work out cuts and seams, or reuse offcuts.                                     |
-| Wall framing  | Estimate stud quantities with a formula using wall length and spacing.                             | Place individual studs and resolve their arrangement around corners, intersections, doors, and windows. |
-| Ceiling tiles | Calculate area, estimate tile quantity, allow for waste, and round to whole packages.              | Lay out a grid and derive full/cut tiles, rails, and hangers from that layout.                          |
+| Job           | Included in the MVP                                                                                                          | Deferred                                                                                                |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Drywall       | Calculate wall area and material layers, allow for waste, and round the amount up to whole sheets.                           | Place individual sheets, work out cuts and seams, or reuse offcuts.                                     |
+| Wall framing  | Estimate stud quantities with a formula using wall length and spacing.                                                       | Place individual studs and resolve their arrangement around corners, intersections, doors, and windows. |
+| Ceiling tiles | Calculate tile area and estimate 2 ft/4 ft tees, mains and wall angle from area/perimeter; allow waste and package rounding. | Lay out a grid and derive full/cut tiles, rails, and hangers from that layout.                          |
 
 A formula estimate does not claim the same accuracy or detail as a piece layout. The old code calls the deferred layout algorithms "generators."
 

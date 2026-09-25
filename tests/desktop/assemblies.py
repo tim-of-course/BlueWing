@@ -63,6 +63,13 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         start()
         library = call('library.inspect')
         assert 'drywall-face' in library['assemblies']
+        # Simulate a saved library predating the new ceiling starters.
+        for ident in ['ceiling-grid-2x2', 'ceiling-grid-2x4']:
+            library = call('library.delete', {'id': ident, 'expectedLibraryRevision': library['revision']})
+        old_revision = library['revision']
+        library = call('library.addStarters', {'expectedLibraryRevision': old_revision})
+        assert 'ceiling-grid-2x2' in library['assemblies'] and 'ceiling-grid-2x4' in library['assemblies']
+        call('library.addStarters', {'expectedLibraryRevision': old_revision}, succeeds=False)
         project_path = str(data / 'first.bluewing')
         call('project.create', {'name': 'Detailed job', 'path': project_path})
         sheets = call('project.import', {'path': str(ROOT / 'tests/fixtures/assessment-plan.pdf')}, True)
@@ -127,6 +134,23 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         call('project.open', {'path': project_path})
         assert quantities() == totals
         assert schedule() == pieces
+        # Both ceiling systems use the same measured 24 x 15 ft / 78 LF room.
+        call('geometry.put', {'id': 'ceiling', 'name': 'Ceiling room', 'sheetId': sheet, 'kind': 'area', 'points': [{'x': 72, 'y': 144}, {'x': 360, 'y': 144}, {'x': 360, 'y': 324}, {'x': 72, 'y': 324}]}, True)
+        call('group.put', {'id': 'ceilings', 'name': 'Ceilings', 'geometryIds': ['ceiling']}, True)
+        for size in ['2x2', '2x4']:
+            call('assembly.import', {'libraryId': 'ceiling-grid-' + size, 'id': size}, True)
+            call('assignment.put', {'id': size, 'groupId': 'ceilings', 'recipeId': size, 'inputs': {'tileDeduction': 40}, 'allowances': {}}, True)
+            rows = {row['outputId']: row['purchasedAmount'] for row in quantities()['outputs'] if row['assignmentId'] == size}
+            assert abs(rows.pop('ceiling-area') - 320) < 1e-8
+            assert rows == {'tee-2ft': 45 if size == '2x2' else 0, 'tee-4ft': 45, 'mains': 8, 'wall-angle': 7}, rows
+        csv = call('quantities.export', {'format': 'csv'})
+        for name in ['2 ft cross tees', '4 ft cross tees', 'Main runner stock lengths', 'Wall angle stock lengths']:
+            assert name in csv
+        (EVIDENCE / 'ceilings.csv').write_text(csv)
+        ceiling_totals = quantities()
+        call('project.close', mutates=True)
+        call('project.open', {'path': project_path})
+        assert quantities() == ceiling_totals
         call('sheet.render', {'sheetId': sheet, 'path': str(EVIDENCE / 'assemblies.png'), 'maxDimension': 1224})
         call('project.close', mutates=True)
     finally:
@@ -135,4 +159,4 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             desktop.terminate()
             desktop.wait(timeout=10)
         log.close()
-print('PASS: native assemblies, object overrides, piece CSV, global/project independence, conflicts, Undo, restart and two-project reuse')
+print('PASS: native assemblies, object overrides, piece CSV, global/project independence, conflicts, Undo, restart, two-project reuse, ceiling grid estimates and library starter upgrades')

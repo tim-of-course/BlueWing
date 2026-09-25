@@ -35,3 +35,37 @@ void test('global library persists independently, rejects stale edits and surviv
   saved = 'broken';
   await assert.rejects(store.read());
 });
+
+void test('adding missing starters upgrades a saved library without replacing company definitions', async () => {
+  let saved: string | null = null;
+  let fail = false;
+  const store = new AssemblyLibraryStore({
+    read: () => Promise.resolve(saved),
+    write: (data) => {
+      if (fail) return Promise.reject(new Error('disk full'));
+      saved = data;
+      return Promise.resolve();
+    },
+  });
+  const old = await store.read();
+  delete old.assemblies['ceiling-grid-2x2'];
+  delete old.assemblies['ceiling-grid-2x4'];
+  const finish = old.assemblies['ceiling-finish'];
+  assert.ok(finish);
+  finish.name = 'Company finish';
+  saved = JSON.stringify(old);
+  fail = true;
+  await assert.rejects(store.addStarters(0), /disk full/);
+  assert.equal((await store.read()).assemblies['ceiling-grid-2x2'], undefined);
+  fail = false;
+  const upgraded = await store.addStarters(0);
+  assert.equal(upgraded.revision, 1);
+  assert.equal(upgraded.assemblies['ceiling-finish']?.name, 'Company finish');
+  assert.ok(upgraded.assemblies['ceiling-grid-2x2']);
+  assert.ok(upgraded.assemblies['ceiling-grid-2x4']);
+  await assert.rejects(store.addStarters(0), /changed/);
+  assert.equal((await store.addStarters(1)).revision, 1);
+  await store.save(1, 'ceiling-grid-2x2');
+  assert.equal((await store.read()).assemblies['ceiling-grid-2x2'], undefined);
+  assert.ok((await store.addStarters(2)).assemblies['ceiling-grid-2x2']);
+});

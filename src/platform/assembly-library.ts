@@ -1,5 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
-import { createLibrary, validateLibrary } from '../core/assemblies';
+import {
+  createLibrary,
+  starterAssemblies,
+  validateLibrary,
+} from '../core/assemblies';
 import { validateAssembly } from '../core/commands';
 import type { Assembly, AssemblyLibrary } from '../core/types';
 
@@ -50,6 +54,21 @@ export class AssemblyLibraryStore {
       validateAssembly(assembly);
       library.assemblies[assembly.id] = structuredClone(assembly);
     }
+    library.revision++;
+    await this.storage.write(JSON.stringify(library));
+    return library;
+  }
+  async addStarters(expectedRevision: number): Promise<AssemblyLibrary> {
+    const library = await this.read();
+    if (library.revision !== expectedRevision)
+      throw new Error(
+        'Assembly library changed. Refresh the library and retry.',
+      );
+    const missing = Object.values(starterAssemblies()).filter(
+      (assembly) => !Object.hasOwn(library.assemblies, assembly.id),
+    );
+    if (!missing.length) return library;
+    for (const assembly of missing) library.assemblies[assembly.id] = assembly;
     library.revision++;
     await this.storage.write(JSON.stringify(library));
     return library;
