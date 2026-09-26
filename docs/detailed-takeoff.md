@@ -27,28 +27,31 @@ The user supplied a private link to a Bingham Elementary School conformed set. T
 
 ## Validation results
 
-Native integration, real-plan verification and all development browser scenarios pass. Final production verification and packaging remain in progress. Resource refusals and stops are recorded as unrun checks, never passes.
+The approved detailed-takeoff scope is implemented and verified on macOS. Desktop and CLI share authored construction, calculations, review and exports. The next product check is a representative section of the real job, comparing entered dimensions/details and resulting counts with a manual takeoff. Resource refusals and stops are recorded as unrun checks, never passes.
 
-| Check                                               | Actual result                                                                  |
-| --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| TypeScript, ESLint, Prettier                        | Pass                                                                           |
-| Core                                                | 110 pass                                                                       |
-| Resource guard/tooling                              | 9 pass                                                                         |
-| Platform storage, SQLite and IndexedDB              | 9 pass                                                                         |
-| Rust/native unit tests                              | 9 pass                                                                         |
-| Native debug binaries                               | Build passes                                                                   |
-| Web production build                                | Pass; existing large-bundle advisory remains                                   |
-| New development workflows, Chromium                 | 2 pass, including nonempty Solid attribution, no diagnostics or silent holds   |
-| New production workflows, Chromium                  | 2 passed before final PDF-worker and 3D-display refinements; final run pending |
-| Full development and production suites              | Stopped by memory-pressure guard; pending                                      |
-| Native detailed CLI workflow and private large plan | Pending                                                                        |
-| Final desktop bundle                                | Pending                                                                        |
+| Check                                                | Actual result                                                                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| TypeScript, ESLint, Prettier and Rust formatting     | Pass                                                                                                                     |
+| Core                                                 | 110 pass                                                                                                                 |
+| Resource guard/tooling                               | 9 pass                                                                                                                   |
+| Platform storage, SQLite and IndexedDB               | 9 pass                                                                                                                   |
+| Rust/native unit tests                               | 9 pass                                                                                                                   |
+| Native debug binaries                                | Build passes                                                                                                             |
+| Web production build                                 | Pass; existing large-bundle advisory remains                                                                             |
+| Development browser suite                            | 26 pass across Chromium and WebKit; strengthened direct 3D picking checks also pass in both                              |
+| Production browser suite                             | 24 pass across Chromium and WebKit; strengthened reopened-canvas paint checks also pass in both                          |
+| Native smoke and existing desktop/assembly workflows | All three pass                                                                                                           |
+| Native detailed CLI workflow                         | Pass: pieces, surfaces, preview, Undo, review, snippets, exports, systems/templates, restart and backups                 |
+| Private large plan                                   | Pass: 164 pages, 349,354,454 bytes, import 3.39 seconds; first/middle/last rendered, reopened last-page pixels identical |
+| Final desktop bundle                                 | Release build and macOS app bundle pass; packaged native smoke and detailed CLI workflows both pass                      |
 
 Core scenarios include independent project/global copies; shared typed inputs; imperial/metric conversion; exact flat, sloped and stepped cuts; allowances; rotated component headers and extensions; rough opening widths; off-module jamb replacement; sill and cripple clipping; explicit shared junction ownership; bent wall finishes; partial-height finishes and layers; stock segmentation, waste and packages; 2x2/2x4 ceiling estimates; reference ceiling exclusion; generation limits; atomic rollback; Undo/Redo; geometry duplication; template reapplication preserving local context; relevant review invalidation; and quantity previews that never save.
 
+The existing browser tests caught canvas overflow/focus scrolling and pending-save timing regressions. Those were fixed in product code without relaxing drawing accuracy or diagnostic assertions.
+
 The 3D tests cover section orientation, surface thickness, sheet/level transforms, filtering before the display limit, camera projection and nearest-piece picking. A dedicated byte-reader test covers sequential bounded chunks, native array-buffer and fallback-array responses, empty assets, and short reads.
 
-The browser workflows author a 24 ft wall with 19 studs and 240 ft² of board, preview a height change, reapply its template, inspect a filtered split view, click a stud to inspect its exact cut, create/export highlighted evidence, review it and reopen. A second workflow builds a steel-and-board system, copies it through the global library, edits shared height and verifies both quantities and cuts after reopening. A new malformed-PDF test checks actual worker termination after repeated rejection.
+The browser workflows author a 24 ft wall with 19 studs and 240 ft² of board, preview a height change, reapply its template, inspect a filtered split view, click a stud to inspect its exact cut, create/export highlighted evidence, review it and reopen. A second workflow builds a steel-and-board system, copies it through the global library, edits shared height and verifies both quantities and cuts after reopening. A malformed-PDF test checks actual worker termination after repeated rejection. Production screenshots wait for the reopened 3D canvas to paint, rather than capturing its initial CSS background.
 
 Native coverage checks immutable temporary snapshots, bounded reads, incremental SQLite BLOB writes, transactional rollback, format-3 recovery backups, and independent persistence. The integrated CLI script additionally checks malformed-import rollback, inspect/preview/Undo, box-header components, rendered evidence, CSV/JSON, global copies, close/restart equality and backup reopening. Its optional large-plan run imports all 164 pages, renders first/middle/last and compares the reopened last-page pixels.
 
@@ -71,6 +74,7 @@ Native coverage checks immutable temporary snapshots, bounded reads, incremental
 - `6996d28`: format-3 persistence, recovery backups and initial bounded encoding.
 - `5f504db`: LGMF cut semantics, reusable wall templates and review dependencies.
 - `9022350`: desktop authoring, 3D/review, bounded native transport and integration coverage.
+- `4e11039`: canvas focus/save timing fixes and real-plan/native verification.
 
 Older app versions should use the automatic pre-upgrade backup, not a format-3 project with unsupported data. The private 349,354,454-byte Bingham PDF and verification images remain in ignored `tmp/`. Native snippets, 3D images, cover and middle-sheet renders were inspected visually. The CLI export test compares numeric fields with tolerance because embedded JSON strings bypass Rust’s float serialization.
 
@@ -100,5 +104,4 @@ Host integration corrected a reviewer’s solid-track deduction assumption for L
 | wf_d269cbed-1665-47e7-9705-5cbe0a284c22 | agt_c9bb3e2a-0650-454c-b2f3-9e6c9f4f15dd | completed         |
 | wf_534bdcc0-f7e6-40dc-98d1-e5a583d403a5 | agt_1bc883d1-e49c-4c53-b0c5-7055a00e82ab | completed         |
 | wf_361d5287-8e76-49bb-9297-ee598331758b | agt_05365048-1a10-42d2-84b4-fbbb07a0fd8b | completed         |
-
-| wf_5769b2dd-7d85-4b94-8998-0a3405c9612a | agt_49bf6aea-9197-48de-9aa0-f4d2008ae2e4 | completed |
+| wf_5769b2dd-7d85-4b94-8998-0a3405c9612a | agt_49bf6aea-9197-48de-9aa0-f4d2008ae2e4 | completed         |
