@@ -1,4 +1,5 @@
 import { constructionOutputs } from './construction-calculations';
+import type { ConstructionResult } from './construction-types';
 import type {
   Assignment,
   AssemblyComponent,
@@ -193,7 +194,10 @@ function source(
     return { geometryId, inputs, value: null, diagnostic: message(error) };
   }
 }
-export function calculateProject(project: Project): CalculationResult {
+export function calculateProject(
+  project: Project,
+  construction?: ConstructionResult,
+): CalculationResult {
   const outputs: CalculationOutput[] = [];
   let complete = true;
   for (const assignment of Object.values(project.assignments)) {
@@ -318,7 +322,7 @@ export function calculateProject(project: Project): CalculationResult {
       }
     }
   }
-  const positioned = constructionOutputs(project);
+  const positioned = constructionOutputs(project, construction);
   for (const output of outputs) {
     if (
       positioned.outputs.some(

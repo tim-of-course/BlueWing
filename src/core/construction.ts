@@ -14,6 +14,9 @@ import type {
 } from './construction-types';
 export type * from './construction-types';
 const EPS = 1e-8;
+// Do not buy an extra piece for multiplication noise such as 100 * 1.1.
+const wholeQuantity = (value: number) =>
+  Math.ceil(value - Number.EPSILON * Math.max(1, Math.abs(value)) * 4);
 export const CONSTRUCTION_GENERATION_BUDGET = 50000;
 export function emptyConstruction(): ConstructionData {
   return {
@@ -84,19 +87,6 @@ function validateOffsets(offsets: MemberOffset[] | undefined, count: number) {
     'member offsets cannot coincide',
   );
 }
-function wallLength(project: Project, wall: Wall) {
-  const geometry = project.geometries[wall.geometryId];
-  const scale =
-    geometry && project.sheets[geometry.sheetId]?.calibration?.metresPerUnit;
-  if (!geometry || !scale) return undefined;
-  let length = 0;
-  for (let i = 1; i < geometry.points.length; i++) {
-    const a = present(geometry.points[i - 1]);
-    const b = present(geometry.points[i]);
-    length += Math.hypot(b.x - a.x, b.y - a.y) * scale;
-  }
-  return length;
-}
 /** Throws on invalid authored data. Missing height/calibration is resolved by generation diagnostics. */
 export function validateConstruction(
   project: Project,
@@ -153,7 +143,13 @@ export function validateConstruction(
     numeric(p.worldOffset.z, 'world z');
     numeric(p.rotation, 'rotation');
   }
+  const wallGeometries = new Set<string>();
   for (const w of Object.values(data.walls)) {
+    requireValue(
+      !wallGeometries.has(w.geometryId),
+      'only one wall per geometry',
+    );
+    wallGeometries.add(w.geometryId);
     geometryFor(w.geometryId, 'path');
     level(w.levelId);
     numeric(w.baseElevation, 'base elevation');
@@ -164,7 +160,6 @@ export function validateConstruction(
     numeric(w.topAllowance ?? 0, 'top allowance', 0);
     member(w.stud);
     member(w.track);
-    const length = wallLength(project, w);
     if (w.topProfile) {
       requireValue(
         ['linear', 'step'].includes(w.topProfile.mode),
@@ -185,11 +180,6 @@ export function validateConstruction(
         present(w.topProfile.points[0]).distance === 0,
         'profile must start at zero',
       );
-      if (length !== undefined)
-        requireValue(
-          Math.abs(previous - length) < EPS,
-          'profile must end at wall length',
-        );
     }
     uniqueIds(w.conditions ?? [], 'condition');
     uniqueIds(w.finishes ?? [], 'finish');
@@ -208,8 +198,6 @@ export function validateConstruction(
         'conditions cannot duplicate stations',
       );
       stations.add(c.distance);
-      if (length !== undefined)
-        requireValue(c.distance <= length + EPS, 'condition outside wall');
       if (c.ownerWallId) {
         const owner = data.walls[c.ownerWallId];
         requireValue(owner, 'shared member owner is missing');
@@ -275,12 +263,6 @@ export function validateConstruction(
     validateOffsets(o.jambOffsets, o.jambCount);
     if (o.headerId)
       requireValue(data.headers[o.headerId], 'header detail is missing');
-    const length = wallLength(project, w);
-    if (length !== undefined)
-      requireValue(
-        o.distance + o.width <= length + EPS,
-        'opening outside wall',
-      );
     for (const other of openings)
       if (other.id < o.id && other.wallId === o.wallId) {
         requireValue(
@@ -581,6 +563,21 @@ export function generateConstruction(
       const openings = ordered(data.openings).filter(
         (o) => o.wallId === wall.id,
       );
+      if (
+        (wall.topProfile &&
+          Math.abs(
+            present(wall.topProfile.points.at(-1)).distance - line.length,
+          ) > EPS) ||
+        wall.conditions?.some((c) => c.distance > line.length + EPS) ||
+        openings.some((o) => o.distance + o.width > line.length + EPS)
+      ) {
+        diagnostic(
+          source,
+          'wall-stations-outside-profile',
+          'Wall length changed or authored stations exceed the wall; revise profile, openings and conditions',
+        );
+        continue;
+      }
       const estimated =
         line.length / wall.studSpacing +
         openings.reduce((n, o) => n + 2 * o.jambCount, 0) +
@@ -635,12 +632,18 @@ export function generateConstruction(
           Math.abs(
             heightAt(wall, condition.distance) -
               heightAt(owner, ownerCondition.distance),
-          ) > EPS
+          ) > EPS ||
+          wall.stud.materialId !== owner.stud.materialId ||
+          Math.abs(wall.stud.width - owner.stud.width) > EPS ||
+          Math.abs(wall.stud.depth - owner.stud.depth) > EPS ||
+          Math.abs((wall.bottomAllowance ?? 0) - (owner.bottomAllowance ?? 0)) >
+            EPS ||
+          Math.abs((wall.topAllowance ?? 0) - (owner.topAllowance ?? 0)) > EPS
         )
           diagnostic(
             source,
             'shared-member-mismatch',
-            `Shared condition ${condition.id} must align with its owner in position and height`,
+            `Shared condition ${condition.id} must align with its owner in position, height, section, material and allowances`,
           );
       }
       const breaks = sorted([
@@ -662,9 +665,10 @@ export function generateConstruction(
         const midpoint = (a + b) / 2;
         const origin = at(midpoint, 0);
         const normal = at(midpoint, 0, 1);
+        const vertical = Math.abs(a - b) < EPS;
         const sectionAxis = {
-          x: normal.x - origin.x,
-          y: normal.y - origin.y,
+          x: vertical ? normal.y - origin.y : normal.x - origin.x,
+          y: vertical ? origin.x - normal.x : normal.y - origin.y,
           z: 0,
         };
         const start = at(a, za, offset, midpoint);
@@ -740,8 +744,71 @@ export function generateConstruction(
             rotation,
           );
       };
+      // Channel envelopes include empty space between flanges. Only authored
+      // vertical allowances reduce stud/jamb cuts, including on slopes. Sample
+      // height at the member centre; no bevel or flange deduction is inferred.
       const bottom = wall.bottomAllowance ?? 0;
-      const top = wall.topAllowance ?? 0;
+      const topAt = (station: number) =>
+        Math.min(heightAt(wall, station, true), heightAt(wall, station)) -
+        (wall.topAllowance ?? 0);
+      const headerHalfHeight = (spec: MemberSpec, rotation = 0) =>
+        (Math.abs(Math.sin(rotation)) * spec.width +
+          Math.abs(Math.cos(rotation)) * spec.depth) /
+        2;
+      // Sill channel flange envelopes do not shorten lower cripples: the rough
+      // sill is their top datum. Explicit headers are rectangular physical
+      // approximations whose rotated depths bound adjacent cripple cuts.
+      // This does not resolve connection design or general material collisions.
+      const physicalCuts = (
+        station: number,
+        face: number,
+        rotation: number,
+      ): [number, number][] => {
+        const cuts: [number, number][] = [];
+        const studHalfFace =
+          (Math.abs(Math.cos(rotation)) * wall.stud.depth +
+            Math.abs(Math.sin(rotation)) * wall.stud.width) /
+          2;
+        const studHalfAlong =
+          (Math.abs(Math.cos(rotation)) * wall.stud.width +
+            Math.abs(Math.sin(rotation)) * wall.stud.depth) /
+          2;
+        for (const opening of openings) {
+          const a = opening.distance;
+          const b = a + opening.width;
+          const head = opening.sill + opening.height;
+          if (station >= a - EPS && station <= b + EPS) {
+            cuts.push([opening.sill, head]);
+          }
+          for (const c of opening.headerId
+            ? present(data.headers[opening.headerId]).components
+            : []) {
+            const angle = c.sectionRotation ?? 0;
+            const halfFace =
+              (Math.abs(Math.cos(angle)) * c.member.width +
+                Math.abs(Math.sin(angle)) * c.member.depth) /
+              2;
+            if (
+              station + studHalfAlong <= a - c.startExtension + EPS ||
+              station - studHalfAlong >= b + c.endExtension - EPS ||
+              Math.abs(face - c.faceOffset) >= studHalfFace + halfFace - EPS
+            )
+              continue;
+            const halfHeight = headerHalfHeight(c.member, angle);
+            cuts.push([
+              head + c.verticalOffset - halfHeight,
+              head + c.verticalOffset + halfHeight,
+            ]);
+          }
+        }
+        return cuts;
+      };
+      if (line.stations.length > 2 || wall.topProfile?.mode === 'step')
+        diagnostic(
+          source,
+          'unresolved-track-joint',
+          'Bent or stepped tracks need explicit joint and end-cut details; displayed centreline lengths do not resolve joint overlaps',
+        );
       const stations = [
         0,
         line.length,
@@ -769,8 +836,9 @@ export function generateConstruction(
         if (
           openings.some(
             (o) =>
-              Math.abs(o.distance - s) < EPS ||
-              Math.abs(o.distance + o.width - s) < EPS,
+              o.jambCount > 0 &&
+              (Math.abs(o.distance - s) < EPS ||
+                Math.abs(o.distance + o.width - s) < EPS),
           )
         )
           continue;
@@ -785,8 +853,8 @@ export function generateConstruction(
             );
             continue;
           }
-          const height = heightAt(wall, station);
-          if (height - top <= bottom) {
+          const studTop = topAt(station);
+          if (studTop <= bottom) {
             diagnostic(
               source,
               'invalid-cut',
@@ -794,14 +862,12 @@ export function generateConstruction(
             );
             continue;
           }
-          const cuts: [number, number][] = openings
-            .filter(
-              (o) =>
-                station > o.distance - EPS &&
-                station < o.distance + o.width + EPS,
-            )
-            .map((o) => [o.sill, o.sill + o.height]);
-          const spans = subtract(bottom, height - top, cuts);
+          const cuts = physicalCuts(
+            station,
+            memberOffset?.face ?? 0,
+            memberOffset?.rotation ?? 0,
+          );
+          const spans = subtract(bottom, studTop, cuts);
           for (let k = 0; k < spans.length; k++) {
             const span = present(spans[k]);
             piece(
@@ -864,6 +930,12 @@ export function generateConstruction(
         const a = o.distance;
         const b = a + o.width;
         const head = o.sill + o.height;
+        if (line.stations.some((s) => s > a + EPS && s < b - EPS))
+          diagnostic(
+            { ...source, openingId: o.id },
+            'opening-crosses-bend',
+            'Opening crosses a path vertex and requires separate framing details',
+          );
         const minTop = Math.min(
           heightAt(wall, a),
           heightAt(wall, b, true),
@@ -890,7 +962,22 @@ export function generateConstruction(
           ] as const)
             for (let n = 0; n < o.jambCount; n++) {
               const offset = o.jambOffsets?.[n];
-              const station = s + (offset?.along ?? 0);
+              const jamb = o.jamb ?? wall.stud;
+              const rotation = offset?.rotation ?? 0;
+              const halfAlong =
+                (Math.abs(Math.cos(rotation)) * jamb.width +
+                  Math.abs(Math.sin(rotation)) * jamb.depth) /
+                2;
+              // Positive offsets move into framing on both sides of the rough opening.
+              const station =
+                s +
+                (side === 'left' ? -1 : 1) * (halfAlong + (offset?.along ?? 0));
+              if ((offset?.along ?? 0) < -EPS)
+                diagnostic(
+                  { ...source, openingId: o.id },
+                  'jamb-in-opening',
+                  'Jamb offset consumes the specified rough opening width',
+                );
               const key = `${String(station)}/${String(offset?.face ?? 0)}`;
               if (jambStations.has(key)) {
                 diagnostic(
@@ -901,7 +988,7 @@ export function generateConstruction(
                 continue;
               }
               jambStations.add(key);
-              if (heightAt(wall, station) - top <= bottom) {
+              if (topAt(station) <= bottom) {
                 diagnostic(
                   { ...source, openingId: o.id },
                   'invalid-cut',
@@ -924,7 +1011,7 @@ export function generateConstruction(
                 station,
                 bottom,
                 station,
-                heightAt(wall, station) - top,
+                topAt(station),
                 o,
                 offset?.face ?? 0,
                 offset?.rotation ?? 0,
@@ -959,6 +1046,32 @@ export function generateConstruction(
               );
               continue;
             }
+            const headerStart = a - c.startExtension;
+            const headerEnd = b + c.endExtension;
+            const topStations = sorted([
+              headerStart,
+              headerEnd,
+              ...breaks.filter((s) => s > headerStart && s < headerEnd),
+            ]);
+            const envelopeTop =
+              head +
+              c.verticalOffset +
+              headerHalfHeight(c.member, c.sectionRotation);
+            if (
+              c.verticalOffset - headerHalfHeight(c.member, c.sectionRotation) <
+              -EPS
+            )
+              diagnostic(
+                { ...source, openingId: o.id },
+                'header-in-opening',
+                'Header section extends below the rough opening head; revise its centreline offset',
+              );
+            if (topStations.some((s) => envelopeTop > topAt(s) + EPS))
+              diagnostic(
+                { ...source, openingId: o.id },
+                'header-above-top',
+                'Header section exceeds the wall top after the authored top allowance; revise the detail',
+              );
             horizontal(
               `opening/${o.id}/header/${c.id}`,
               c.role,
@@ -1145,7 +1258,7 @@ export function generateConstruction(
   for (const { spec, length, count, pieceIds } of purchase.values()) {
     const adjusted = count * (1 + (spec.wastePercent ?? 0) / 100);
     const packageCount = spec.packageSize
-      ? Math.ceil(adjusted / spec.packageSize)
+      ? wholeQuantity(adjusted / spec.packageSize)
       : null;
     result.purchases.push({
       materialId: spec.materialId,
@@ -1156,7 +1269,7 @@ export function generateConstruction(
       pieceIds,
       purchasedCount:
         packageCount === null
-          ? Math.ceil(adjusted)
+          ? wholeQuantity(adjusted)
           : packageCount * present(spec.packageSize),
       packageCount,
     });
@@ -1192,7 +1305,7 @@ export function generateConstruction(
       const packageCount =
         finish.packageSize === undefined
           ? null
-          : Math.ceil(adjusted / finish.packageSize);
+          : wholeQuantity(adjusted / finish.packageSize);
       present(result.surfacePurchases).push({
         ...source,
         materialId: finish.materialId,

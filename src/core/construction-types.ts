@@ -6,9 +6,12 @@ export interface Vec3 {
   y: number;
   z: number;
 }
+/** Rectangular display envelopes do not imply solid material in channel tracks. */
 export interface MemberSpec {
   materialId: string;
+  /** Rectangular rendered section: along-wall for verticals, face-normal for horizontals. */
   width: number;
+  /** Rectangular rendered section: face-normal for verticals, vertical for horizontals. */
   depth: number;
   stockLength?: number;
   wastePercent?: number;
@@ -68,7 +71,9 @@ export interface Wall {
   studOffset?: number;
   stud: MemberSpec;
   track: MemberSpec;
+  /** Exact vertical offset above wall base for stud/jamb bottoms; defaults to zero. */
   bottomAllowance?: number;
+  /** Exact vertical deduction from local top height, also on slopes; defaults to zero. */
   topAllowance?: number;
   conditions?: WallCondition[];
   finishes?: WallFinish[];
@@ -79,16 +84,21 @@ export interface Opening {
   wallId: string;
   distance: number;
   width: number;
+  /** Rough sill above wall base: sill channel centreline and lower cripple top. */
   sill: number;
   height: number;
   jambCount: number;
   jamb?: MemberSpec;
   sillMember?: MemberSpec;
   headerId?: string;
-  /** Explicit offsets at each jamb station, required for multiple jamb members. */
+  /** Offsets from nominal centres half the rotated section outside each rough edge.
+   * Positive along moves into framing, mirrored left/right; face follows the wall
+   * normal on both sides. Required for multiple jamb members. */
   jambOffsets?: MemberOffset[];
 }
-/** Components span the opening plus extensions. Offsets are relative to the opening head. */
+/** Exact cuts span rough width plus extensions. Offsets place section centrelines
+ * relative to the rough head. Rectangular physical approximations, including
+ * rotated depth, bound cripple cuts. Member counts do not imply structural design. */
 export interface HeaderComponent {
   id: string;
   role: string;
@@ -152,6 +162,7 @@ export interface ConstructionPiece extends ConstructionSource {
   role: string;
   start: Vec3;
   end: Vec3;
+  /** Length of the displayed piece. Unresolved connection diagnostics make schedules provisional. */
   cutLength: number;
   stockLength?: number;
   width: number;

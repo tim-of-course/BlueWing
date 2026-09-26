@@ -16,8 +16,10 @@ import {
 } from './calculations';
 import { calibrationFromRatio, type PaperScale } from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
+import { validateWallTemplate } from './wall-template';
 import {
   detailedCommands,
+  wallTemplateSchema,
   constructionSchema,
   reviewSchema,
   executeDetailed,
@@ -150,6 +152,7 @@ export const assemblySchema: PayloadSchema = {
   ...leafAssemblySchema,
   properties: {
     ...leafAssemblySchema.properties,
+    wallTemplate: wallTemplateSchema,
     components: array(
       object({
         id: string,
@@ -550,6 +553,20 @@ export function validateAssembly(input: unknown): asserts input is Recipe {
     new Set(entry.geometryKinds).size !== entry.geometryKinds.length
   )
     throw new Error('Assembly needs unique compatible geometry kinds');
+  if (entry.wallTemplate) {
+    if (
+      entry.components ||
+      entry.inputs.length ||
+      entry.outputs.length ||
+      entry.geometryKinds.length !== 1 ||
+      entry.geometryKinds[0] !== 'path'
+    )
+      throw new Error(
+        'Wall templates require path geometry, empty inputs and outputs, and no system components',
+      );
+    validateWallTemplate(entry.wallTemplate);
+    return;
+  }
   const names = new Set<string>();
   for (const field of entry.inputs) {
     if (
@@ -688,6 +705,8 @@ export function validateProject(input: unknown): asserts input is Project {
   for (const entry of Object.values(project.assignments)) {
     requireEntity(project.groups, entry.groupId, 'Group');
     const definition = requireEntity(project.recipes, entry.recipeId, 'Recipe');
+    if (definition.wallTemplate)
+      throw new Error('Use wall.fromAssembly to apply a wall template');
     validateAssemblyInputs(definition, entry.inputs);
     for (const [geometryId, inputs] of Object.entries(
       entry.geometryInputs ?? {},
@@ -870,7 +889,9 @@ export function executeCommand(
       next.formatVersion === 3 ||
       next.construction ||
       next.review ||
-      Object.values(next.recipes).some((recipe) => recipe.components)
+      Object.values(next.recipes).some(
+        (recipe) => recipe.components || recipe.wallTemplate,
+      )
         ? 3
         : 2;
     if (call.name.endsWith('.delete')) pruneDetailed(next);

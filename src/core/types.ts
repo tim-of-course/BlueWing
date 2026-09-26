@@ -1,4 +1,4 @@
-import type { ConstructionData } from './construction-types';
+import type { ConstructionData, Wall } from './construction-types';
 import type { ReviewData } from './review';
 
 /** Coordinates are unzoomed PDF viewport units (72/in), origin top-left, +y down. */
@@ -70,6 +70,11 @@ export interface RecipeOutput {
     stockLength?: LengthFormula;
   };
 }
+export type WallTemplate = Omit<
+  Wall,
+  'id' | 'geometryId' | 'levelId' | 'topProfile' | 'conditions'
+>;
+
 export interface Recipe {
   id: string;
   name: string;
@@ -82,6 +87,8 @@ export interface Recipe {
   outputs: RecipeOutput[];
   /** Systems have components and no direct outputs. Nested systems are unsupported. */
   components?: AssemblyComponent[];
+  /** Independent construction snapshot, applied explicitly with wall.fromAssembly. */
+  wallTemplate?: WallTemplate;
 }
 export interface AssemblyComponent {
   /** Stable identity within the system, independent of the snapshot's recipe id. */

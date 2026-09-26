@@ -167,6 +167,23 @@ export const constructionSchemas = {
     ['id', 'geometryId', 'elevation', 'materialId', 'layers'],
   ),
 } satisfies Record<keyof ConstructionData, PayloadSchema>;
+const wallInstanceFields = new Set([
+  'id',
+  'geometryId',
+  'levelId',
+  'topProfile',
+  'conditions',
+]);
+export const wallTemplateSchema: PayloadSchema = object(
+  Object.fromEntries(
+    Object.entries(constructionSchemas.walls.properties ?? {}).filter(
+      ([key]) => !wallInstanceFields.has(key),
+    ),
+  ),
+  (constructionSchemas.walls.required ?? []).filter(
+    (key) => !wallInstanceFields.has(key),
+  ),
+);
 export const sourceSchema = object({
   kind: {
     type: 'string',
@@ -252,6 +269,16 @@ const kinds: Record<string, keyof ConstructionData> = {
   ceiling: 'ceilings',
 };
 export const detailedCommands: CommandDefinition[] = [
+  definition(
+    'wall.fromAssembly',
+    'Create or replace an authored wall with an independent wall-template snapshot. Lengths use metres.',
+    object({ assemblyId: text, geometryId: text, id: text, height: positive }, [
+      'assemblyId',
+      'geometryId',
+      'id',
+    ]),
+    true,
+  ),
   ...Object.entries(kinds).flatMap(([kind, collection]) => [
     definition(
       `${kind}.put`,
@@ -320,6 +347,30 @@ export function validateDetailed(project: Project): void {
 export function executeDetailed(project: Project, call: CommandCall): unknown {
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const id = payload.id as string;
+  if (call.name === 'wall.fromAssembly') {
+    const template =
+      project.recipes[payload.assemblyId as string]?.wallTemplate;
+    if (!template) throw new Error('Wall template assembly not found');
+    const data = (project.construction ??= emptyConstruction());
+    const previous = data.walls[id];
+    const wall = {
+      ...structuredClone(template),
+      ...(previous?.levelId === undefined ? {} : { levelId: previous.levelId }),
+      ...(previous?.topProfile === undefined || payload.height !== undefined
+        ? {}
+        : { topProfile: structuredClone(previous.topProfile) }),
+      ...(previous?.conditions === undefined
+        ? {}
+        : { conditions: structuredClone(previous.conditions) }),
+      id,
+      geometryId: payload.geometryId as string,
+      ...(payload.height === undefined
+        ? {}
+        : { height: payload.height as number }),
+    };
+    data.walls[id] = wall;
+    return wall;
+  }
   const [kind, action] = call.name.split('.');
   const collection = kinds[kind ?? ''];
   if (collection) {
@@ -488,12 +539,6 @@ export function exportConstruction(
       2,
     );
   if (schedule === 'materials') {
-    const areas = new Map<string, number>();
-    for (const surface of result.surfaces)
-      areas.set(
-        surface.materialId,
-        (areas.get(surface.materialId) ?? 0) + surface.area,
-      );
     return csv([
       [
         'material',
@@ -513,13 +558,13 @@ export function exportConstruction(
         p.packageCount,
         result.complete,
       ]),
-      ...[...areas].map(([material, area]) => [
-        material,
+      ...(result.surfacePurchases ?? []).map((purchase) => [
+        purchase.materialId,
         'm2',
         '',
-        area,
-        area,
-        '',
+        purchase.requiredArea,
+        purchase.purchasedArea,
+        purchase.packageCount,
         result.complete,
       ]),
     ]);

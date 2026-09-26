@@ -57,6 +57,9 @@ function canonical(value: unknown): string {
       .join(',')}}`;
   return value === undefined ? 'null' : JSON.stringify(value);
 }
+const byId = <T extends { id: string }>(
+  records: Record<string, T> | undefined,
+): T[] => Object.values(records ?? {}).sort((a, b) => a.id.localeCompare(b.id));
 
 export function reviewFingerprint(
   project: Project,
@@ -66,17 +69,27 @@ export function reviewFingerprint(
   if (!entity) throw new Error('Review source no longer exists');
   const construction = project.construction;
   const geometryIds = new Set<string>();
+  const sources: SourceReference[] = [target];
+  const levels = new Set<string>();
   const related: unknown[] = [entity];
   const includeWall = (id: string) => {
     const wall = construction?.walls[id];
     if (!wall) return;
     related.push(wall);
+    sources.push({ kind: 'wall', id });
+    if (wall.levelId) levels.add(wall.levelId);
+    for (const condition of wall.conditions ?? [])
+      if (condition.ownerWallId && condition.ownerWallId !== id)
+        related.push(construction.walls[condition.ownerWallId]);
     geometryIds.add(wall.geometryId);
-    for (const opening of Object.values(construction.openings)) {
+    for (const opening of byId(construction.openings)) {
       if (opening.wallId !== id) continue;
       related.push(opening);
-      if (opening.headerId)
+      sources.push({ kind: 'opening', id: opening.id });
+      if (opening.headerId) {
         related.push(construction.headers[opening.headerId]);
+        sources.push({ kind: 'header', id: opening.headerId });
+      }
     }
   };
   if (target.kind === 'wall') includeWall(target.id);
@@ -98,7 +111,11 @@ export function reviewFingerprint(
     const ceiling = construction?.ceilings[target.id];
     if (ceiling) geometryIds.add(ceiling.geometryId);
   }
+  for (const ceiling of Object.values(construction?.ceilings ?? {}))
+    if (geometryIds.has(ceiling.geometryId) && ceiling.levelId)
+      levels.add(ceiling.levelId);
   for (const geometryId of [...geometryIds].sort()) {
+    sources.push({ kind: 'geometry', id: geometryId });
     const geometry = project.geometries[geometryId];
     related.push(geometry);
     if (geometry) {
@@ -110,18 +127,27 @@ export function reviewFingerprint(
         ),
       );
     }
-    for (const assignment of Object.values(project.assignments)) {
+    for (const assignment of byId(project.assignments)) {
       if (!project.groups[assignment.groupId]?.geometryIds.includes(geometryId))
         continue;
-      related.push(assignment, project.recipes[assignment.recipeId]);
+      related.push(
+        {
+          ...assignment,
+          geometryInputs: assignment.geometryInputs?.[geometryId],
+        },
+        project.recipes[assignment.recipeId],
+      );
+      sources.push({ kind: 'assembly', id: assignment.recipeId });
     }
   }
   // Elevations affect member position even when wall dimensions are unchanged.
-  if (geometryIds.size) related.push(construction?.levels);
+  for (const id of [...levels].sort()) related.push(construction?.levels[id]);
   related.push(
-    ...Object.values(project.review?.snippets ?? {}).filter((snippet) =>
-      snippet.sources.some(
-        (source) => source.kind === target.kind && source.id === target.id,
+    ...byId(project.review?.snippets).filter((snippet) =>
+      snippet.sources.some((source) =>
+        sources.some(
+          (related) => source.kind === related.kind && source.id === related.id,
+        ),
       ),
     ),
   );

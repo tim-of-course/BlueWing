@@ -38,7 +38,7 @@ function fixture(length = 24 * ft, height = 10 * ft) {
     height,
     studSpacing: (16 / 12) * ft,
     stud: { ...spec },
-    track: { ...spec, materialId: 'track-92' },
+    track: { ...spec, width: 0.092075, depth: 0.03175, materialId: 'track-92' },
     finishes: [{ id: 'front', face: 'front', materialId: 'board', layers: 2 }],
   };
   return { project, data, wall: data.walls.wall };
@@ -78,7 +78,7 @@ function addHeader(data: ReturnType<typeof emptyConstruction>) {
         member: spec,
         startExtension: 0,
         endExtension: 0,
-        verticalOffset: 0,
+        verticalOffset: 0.046,
         faceOffset: 0,
       },
     ],
@@ -96,7 +96,7 @@ void test('24 ft wall: 19 studs, exact endpoints, net face layers and determinis
   const studs = result.pieces.filter((p) => p.role === 'stud');
   assert.equal(studs.length, 19);
   close(present(studs[18]).start.x, 24 * ft);
-  close(present(studs[0]).cutLength, 10 * ft - (0.5 / 12) * ft);
+  close(present(studs[0]).cutLength, 10 * ft - 0.0127);
   close(
     result.surfaces.reduce((sum, s) => sum + s.area, 0),
     480 * ft ** 2,
@@ -141,10 +141,10 @@ void test('sloping and stepped wall cuts, top track lengths, and area', () => {
     ],
   };
   let result = generateConstruction(project, data);
-  assert.deepEqual(
-    result.pieces.filter((p) => p.role === 'stud').map((p) => p.cutLength),
-    [2, 2.5, 3, 3.5, 4],
-  );
+  for (const [i, stud] of result.pieces
+    .filter((p) => p.role === 'stud')
+    .entries())
+    close(stud.cutLength, 2 + i * 0.5);
   close(
     present(result.pieces.find((p) => p.role === 'top-track')).cutLength,
     Math.sqrt(20),
@@ -195,17 +195,17 @@ void test('door and window clip ordinary studs, generate jambs/sills, split thre
   assert.deepEqual(
     result.pieces
       .filter((p) => p.role === 'cripple' && p.start.x === 4.5)
-      .map((p) => [p.start.z, p.end.z]),
+      .map((p) => [Number(p.start.z.toFixed(6)), p.end.z]),
     [
       [0, 1],
-      [2, 3],
+      [2.092, 3],
     ],
   );
   assert.deepEqual(
     result.pieces
       .filter((p) => p.role === 'cripple' && p.start.x === 1.5)
-      .map((p) => [p.start.z, p.end.z]),
-    [[2, 3]],
+      .map((p) => [Number(p.start.z.toFixed(6)), p.end.z]),
+    [[2.092, 3]],
   );
 });
 void test('slope clips opening deduction exactly at sill/head crossing', () => {
@@ -360,6 +360,211 @@ function present<T>(value: T | undefined): T {
   return value;
 }
 
+void test('rotated physical headers bound cripple cuts; sill channel envelopes permit nesting', () => {
+  const { project, data, wall } = fixture(4, 3);
+  wall.studSpacing = 0.5;
+  wall.track.depth = 0.1;
+  addHeader(data);
+  const component = present(present(data.headers.header).components[0]);
+  component.member = { ...spec, width: 0.4, depth: 0.2 };
+  component.sectionRotation = Math.PI / 2;
+  component.verticalOffset = 0.2;
+  component.startExtension = 0.4;
+  const window = opening('window', 0.8, 1.4, 1, 1);
+  window.jambCount = 0;
+  window.sillMember = { ...spec, depth: 0.2 };
+  data.openings.window = window;
+  let result = generateConstruction(project, data);
+  const inside = result.pieces.filter(
+    (p) => p.role === 'cripple' && p.start.x === 1,
+  );
+  assert.equal(inside.length, 2);
+  close(present(inside[0]).start.z, 0);
+  close(present(inside[0]).end.z, 1);
+  const sill = present(result.pieces.find((p) => p.role === 'sill'));
+  close(sill.start.z, 1);
+  close(present(inside[1]).start.z, 2.4);
+  close(present(inside[1]).end.z, 3);
+  const extension = result.pieces.filter(
+    (p) => p.role === 'cripple' && p.start.x === 0.5,
+  );
+  assert.equal(extension.length, 2);
+  close(present(extension[0]).end.z, 2);
+  close(present(extension[1]).start.z, 2.4);
+  for (const piece of [...inside, ...extension])
+    close(
+      piece.cutLength,
+      Math.hypot(
+        piece.end.x - piece.start.x,
+        piece.end.y - piece.start.y,
+        piece.end.z - piece.start.z,
+      ),
+    );
+  // A face-offset header that misses the stud must not shorten that stud.
+  component.faceOffset = 0.5;
+  result = generateConstruction(project, data);
+  close(
+    present(
+      result.pieces.find(
+        (p) => p.role === 'cripple' && p.start.x === 1 && p.start.z > 1,
+      ),
+    ).start.z,
+    2,
+  );
+  assert.equal(
+    result.pieces.filter((p) => p.role === 'stud' && p.start.x === 0.5).length,
+    1,
+  );
+});
+
+void test('calibration and path edits preserve authored dimensions and report stations needing repair', () => {
+  const { project, data, wall } = fixture(4, 3);
+  wall.topProfile = {
+    mode: 'linear',
+    points: [
+      { distance: 0, height: 3 },
+      { distance: 4, height: 3 },
+    ],
+  };
+  addHeader(data);
+  data.openings.door = opening('door', 3, 1, 0, 2);
+  present(project.sheets.plan).calibration = { metresPerUnit: 0.5 };
+  assert.doesNotThrow(() => {
+    validateConstruction(project, data);
+  });
+  const result = generateConstruction(project, data);
+  assert.equal(result.complete, false);
+  assert.equal(result.pieces.length, 0);
+  assert.equal(
+    present(result.diagnostics[0]).code,
+    'wall-stations-outside-profile',
+  );
+  assert.equal(data.openings.door.distance, 3);
+  data.walls.duplicate = { ...wall, id: 'duplicate' };
+  assert.throws(() => {
+    validateConstruction(project, data);
+  }, /one wall per geometry/);
+});
+
+void test('header physical top and opening bends remain unresolved even when rough head fits', () => {
+  const { project, data } = fixture(4, 3);
+  addHeader(data);
+  present(present(data.headers.header).components[0]).verticalOffset = 0.15;
+  data.openings.door = opening('door', 1, 2, 0, 2.9);
+  let result = generateConstruction(project, data);
+  assert.ok(result.diagnostics.some((d) => d.code === 'header-above-top'));
+  assert.ok(!result.diagnostics.some((d) => d.code === 'opening-above-top'));
+  present(project.geometries.path).points = [
+    { x: 0, y: 0 },
+    { x: 2, y: 0 },
+    { x: 2, y: 2 },
+  ];
+  result = generateConstruction(project, data);
+  assert.ok(result.diagnostics.some((d) => d.code === 'opening-crosses-bend'));
+  assert.ok(
+    result.diagnostics.some((d) => d.code === 'unresolved-track-joint'),
+  );
+});
+
+void test('authored allowances alone determine vertical cuts', () => {
+  const { project, data, wall } = fixture(4, 3);
+  wall.bottomAllowance = 0.1;
+  wall.topAllowance = 0.2;
+  const stud = present(
+    generateConstruction(project, data).pieces.find((p) => p.role === 'stud'),
+  );
+  close(stud.start.z, 0.1);
+  close(stud.end.z, 2.8);
+  close(stud.cutLength, 2.7);
+  close(present(stud.widthAxis).x, 1);
+});
+
+void test('channel flange depth does not alter authored slope cuts or backing completeness', () => {
+  const { project, data, wall } = fixture(4, 3);
+  wall.studSpacing = 1;
+  wall.bottomAllowance = 0.005;
+  wall.topAllowance = 0.01;
+  wall.topProfile = {
+    mode: 'linear',
+    points: [
+      { distance: 0, height: 2 },
+      { distance: 4, height: 4 },
+    ],
+  };
+  wall.backing = [{ id: 'rail', height: 1, member: spec }];
+  for (const flangeDepth of [0.03175, 0.1]) {
+    wall.track.depth = flangeDepth;
+    const result = generateConstruction(project, data);
+    assert.equal(result.complete, true);
+    const middle = present(
+      result.pieces.find((p) => p.role === 'stud' && p.start.x === 2),
+    );
+    close(middle.start.z, 0.005);
+    close(middle.end.z, 2.99);
+    close(middle.cutLength, 2.985);
+  }
+});
+
+void test('jambs preserve rough width and multiple offsets mirror into adjacent framing', () => {
+  const { project, data } = fixture(5, 3);
+  addHeader(data);
+  const window = opening('window', 1, 2, 1, 1);
+  data.openings.window = window;
+  let result = generateConstruction(project, data);
+  assert.equal(result.complete, true);
+  let jambs = result.pieces.filter((p) => p.role === 'jamb');
+  close(present(jambs[0]).start.x, 0.98);
+  close(present(jambs[1]).start.x, 3.02);
+  close(
+    present(jambs[1]).start.x - 0.02 - (present(jambs[0]).start.x + 0.02),
+    2,
+  );
+  const sill = present(result.pieces.find((p) => p.role === 'sill'));
+  close(sill.start.x, 1);
+  close(sill.end.x, 3);
+  close(sill.cutLength, 2);
+  window.jambCount = 2;
+  window.jambOffsets = [
+    { along: 0, face: 0 },
+    { along: 0.04, face: 0 },
+  ];
+  result = generateConstruction(project, data);
+  assert.equal(result.complete, true);
+  jambs = result.pieces.filter((p) => p.role === 'jamb');
+  for (const [i, expected] of [0.98, 0.94, 3.02, 3.06].entries()) {
+    close(present(jambs[i]).start.x, expected);
+    close(present(jambs[i]).cutLength, 3);
+  }
+  present(window.jambOffsets[1]).along = -0.01;
+  assert.ok(
+    generateConstruction(project, data).diagnostics.some(
+      (d) => d.code === 'jamb-in-opening',
+    ),
+  );
+});
+
+void test('whole purchases do not round floating-point waste noise into an extra piece or package', () => {
+  const { project, data, wall } = fixture(99, 3);
+  wall.studSpacing = 1;
+  wall.stud.stockLength = 3;
+  wall.stud.wastePercent = 10;
+  let purchase = present(
+    generateConstruction(project, data).purchases.find(
+      (p) => p.materialId === spec.materialId,
+    ),
+  );
+  assert.equal(purchase.requiredCount, 100);
+  assert.equal(purchase.purchasedCount, 110);
+  wall.stud.packageSize = 10;
+  purchase = present(
+    generateConstruction(project, data).purchases.find(
+      (p) => p.materialId === spec.materialId,
+    ),
+  );
+  assert.equal(purchase.packageCount, 11);
+  assert.equal(purchase.purchasedCount, 110);
+});
+
 void test('shared junction has one owner; mismatched locations remain incomplete', () => {
   const { project, data, wall } = fixture(4, 3);
   wall.studSpacing = 1;
@@ -405,6 +610,16 @@ void test('shared junction has one owner; mismatched locations remain incomplete
       .length,
     3,
   );
+  present(data.walls.branch).stud = {
+    ...spec,
+    materialId: 'different-section',
+  };
+  assert.ok(
+    generateConstruction(project, data).diagnostics.some(
+      (d) => d.code === 'shared-member-mismatch',
+    ),
+  );
+  present(data.walls.branch).stud = { ...spec };
   present(project.geometries.branch).points[0] = { x: 5, y: 0 };
   result = generateConstruction(project, data);
   assert.ok(
@@ -476,7 +691,7 @@ void test('multiple members require explicit offsets; offset members use local s
     (p) => p.role === 'corner',
   );
   close(present(pieces[1]).cutLength, 2.05);
-  close(present(present(pieces[1]).widthAxis).y, 1);
+  close(present(present(pieces[1]).widthAxis).x, 1);
 });
 
 void test('partial-height finishes deduct only covered openings, apply layers and round packages once', () => {

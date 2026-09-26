@@ -1,13 +1,18 @@
 import type { CalculationOutput, CalculationResult, Project } from './types';
 import { generateConstruction } from './construction';
+import type { ConstructionResult } from './construction-types';
 
 /** Adapts the one positioned-piece calculation into the ordinary quantity/export pipeline. */
-export function constructionOutputs(project: Project): {
+export function constructionOutputs(
+  project: Project,
+  generated?: ConstructionResult,
+): {
   outputs: CalculationOutput[];
   complete: boolean;
 } {
   if (!project.construction) return { outputs: [], complete: true };
-  const result = generateConstruction(project, project.construction);
+  const result =
+    generated ?? generateConstruction(project, project.construction);
   const outputs: CalculationOutput[] = [];
   const pieces = new Map(result.pieces.map((piece) => [piece.id, piece]));
   for (const [index, purchase] of result.purchases.entries()) {
