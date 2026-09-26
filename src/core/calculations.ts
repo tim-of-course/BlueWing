@@ -1,5 +1,7 @@
+import { constructionOutputs } from './construction-calculations';
 import type {
   Assignment,
+  AssemblyComponent,
   CalculationOutput,
   CalculationResult,
   CalculationSource,
@@ -11,6 +13,7 @@ import type {
 import { measureGeometry } from './geometry';
 import { evaluateFormula, formulaOutput, formulaQuantity } from './formula';
 import type { FormulaValue } from './formula';
+import { assemblyOutputs, componentInputs } from './systems';
 
 export function starterRecipes(): Record<string, Recipe> {
   const output = (
@@ -100,37 +103,47 @@ function source(
   assignment: Assignment,
   output: RecipeOutput,
   geometryId: string,
+  component?: AssemblyComponent,
 ): CalculationSource {
-  const inputs = {
+  let inputs = {
     ...effectiveInputs(recipe, assignment),
     ...assignment.geometryInputs?.[geometryId],
   };
   try {
     const geometry = project.geometries[geometryId];
     if (!geometry) throw new Error('Geometry is missing');
-    const variables: Record<string, FormulaValue> = {};
+    let variables: Record<string, FormulaValue> = {};
     for (const key of Object.keys(assignment.inputs))
       if (!recipe.inputs.some((input) => input.name === key))
         throw new Error(`Undeclared assignment input: ${key}`);
-    for (const input of recipe.inputs) {
-      const value = inputs[input.name];
-      if (value === undefined) throw new Error(`Required input: ${input.name}`);
-      if (typeof value !== input.type)
-        throw new Error(`Input ${input.name} must be ${input.type}`);
-      if (
-        typeof value === 'number' &&
-        input.minimum !== undefined &&
-        value < input.minimum
-      )
-        throw new Error(
-          `Input ${input.name} must be at least ${String(input.minimum)}`,
-        );
-      if (typeof value === 'boolean') {
-        if (input.unit !== 'scalar')
-          throw new Error('Boolean inputs must be dimensionless');
-        variables[input.name] = value;
-      } else if (typeof value === 'number')
-        variables[input.name] = formulaQuantity({ value, unit: input.unit });
+    const addInputs = (definition: Recipe) => {
+      for (const input of definition.inputs) {
+        const value = inputs[input.name];
+        if (value === undefined)
+          throw new Error(`Required input: ${input.name}`);
+        if (typeof value !== input.type)
+          throw new Error(`Input ${input.name} must be ${input.type}`);
+        if (
+          typeof value === 'number' &&
+          input.minimum !== undefined &&
+          value < input.minimum
+        )
+          throw new Error(
+            `Input ${input.name} must be at least ${String(input.minimum)}`,
+          );
+        if (typeof value === 'boolean') {
+          if (input.unit !== 'scalar')
+            throw new Error('Boolean inputs must be dimensionless');
+          variables[input.name] = value;
+        } else if (typeof value === 'number')
+          variables[input.name] = formulaQuantity({ value, unit: input.unit });
+      }
+    };
+    addInputs(recipe);
+    if (component) {
+      inputs = componentInputs(recipe, component, inputs);
+      variables = {};
+      addInputs(component.assembly);
     }
     const measurements = measureGeometry(project, geometry);
     for (const metric of ['length', 'area', 'perimeter', 'count'] as const) {
@@ -190,13 +203,15 @@ export function calculateProject(project: Project): CalculationResult {
       complete = false;
       continue;
     }
-    for (const output of recipe.outputs) {
+    for (const { output, component } of assemblyOutputs(recipe)) {
       const sources = (group?.geometryIds ?? [])
         .filter((id) => {
           const geometry = project.geometries[id];
           return !geometry || recipe.geometryKinds.includes(geometry.kind);
         })
-        .map((id) => source(project, recipe, assignment, output, id));
+        .map((id) =>
+          source(project, recipe, assignment, output, id, component),
+        );
       const buckets = new Map<string, CalculationSource[]>();
       if (!sources.length) buckets.set('', []);
       for (const source of sources) {
@@ -303,6 +318,28 @@ export function calculateProject(project: Project): CalculationResult {
       }
     }
   }
+  const positioned = constructionOutputs(project);
+  for (const output of outputs) {
+    if (
+      positioned.outputs.some(
+        (placed) =>
+          placed.materialId === output.materialId &&
+          placed.sources.some((source) =>
+            output.sources.some(
+              (estimate) => estimate.geometryId === source.geometryId,
+            ),
+          ),
+      )
+    ) {
+      output.diagnostics.push(
+        'This material has both formula and positioned quantities on the same drawing. Review the assignments to avoid counting it twice.',
+      );
+      output.complete = false;
+      complete = false;
+    }
+  }
+  outputs.push(...positioned.outputs);
+  complete &&= positioned.complete;
   const totals = new Map<string, QuantityTotal>();
   for (const output of outputs) {
     const key = JSON.stringify([
@@ -403,7 +440,8 @@ export function pieceSchedule(
           outputId: output.outputId,
           assembly: project.recipes[output.recipeId]?.name ?? output.recipeId,
           materialId: output.materialId,
-          role: output.role ?? '',
+          role: source.pieceRole ?? output.role ?? '',
+          pieceId: source.pieceId ?? '',
           quantity: source.value,
           cutLength_m: source.cutLength?.value ?? null,
           stockLength_m: source.stockLength?.value ?? null,
@@ -422,6 +460,7 @@ export function exportPieces(project: Project, format: 'csv' | 'json'): string {
     'location',
     'group',
     'assignmentId',
+    'outputId',
     'assembly',
     'materialId',
     'role',

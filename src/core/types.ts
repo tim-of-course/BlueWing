@@ -1,3 +1,6 @@
+import type { ConstructionData } from './construction-types';
+import type { ReviewData } from './review';
+
 /** Coordinates are unzoomed PDF viewport units (72/in), origin top-left, +y down. */
 export interface Point {
   x: number;
@@ -77,6 +80,15 @@ export interface Recipe {
   geometryKinds: GeometryKind[];
   inputs: RecipeInput[];
   outputs: RecipeOutput[];
+  /** Systems have components and no direct outputs. Nested systems are unsupported. */
+  components?: AssemblyComponent[];
+}
+export interface AssemblyComponent {
+  /** Stable identity within the system, independent of the snapshot's recipe id. */
+  id: string;
+  assembly: Recipe;
+  /** Component input name -> shared system input name. Unbound inputs use defaults. */
+  bindings: Record<string, string>;
 }
 /** Assemblies extend the existing project recipe records without duplicating calculations. */
 export type Assembly = Recipe;
@@ -94,7 +106,7 @@ export interface Assignment {
   geometryInputs?: Record<string, Record<string, number | boolean>>;
 }
 export interface Project {
-  formatVersion: 1 | 2;
+  formatVersion: 1 | 2 | 3;
   id: string;
   name: string;
   revision: number;
@@ -103,6 +115,8 @@ export interface Project {
   groups: Record<string, Group>;
   recipes: Record<string, Recipe>;
   assignments: Record<string, Assignment>;
+  construction?: ConstructionData;
+  review?: ReviewData;
 }
 export interface Measurement {
   length?: Quantity;
@@ -112,6 +126,8 @@ export interface Measurement {
   diagnostic?: string;
 }
 export interface CalculationSource {
+  pieceId?: string;
+  pieceRole?: string;
   geometryId: string;
   inputs: Record<string, number | boolean>;
   value: number | null;

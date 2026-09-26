@@ -28,6 +28,10 @@ interface HistoryEntry {
   beforeName: string;
   afterName: string;
   records: RecordChange[];
+  beforeConstruction: Project['construction'];
+  afterConstruction: Project['construction'];
+  beforeReview: Project['review'];
+  afterReview: Project['review'];
 }
 export interface HistoryItem {
   label: string;
@@ -76,6 +80,10 @@ function difference(
     beforeName: before.name,
     afterName: after.name,
     records,
+    beforeConstruction: structuredClone(before.construction),
+    afterConstruction: structuredClone(after.construction),
+    beforeReview: structuredClone(before.review),
+    afterReview: structuredClone(after.review),
   };
 }
 
@@ -86,6 +94,14 @@ function restore(
 ): Project {
   const next = structuredClone(project);
   next.name = direction === 'before' ? entry.beforeName : entry.afterName;
+  const construction =
+    direction === 'before' ? entry.beforeConstruction : entry.afterConstruction;
+  const review =
+    direction === 'before' ? entry.beforeReview : entry.afterReview;
+  if (construction) next.construction = structuredClone(construction);
+  else delete next.construction;
+  if (review) next.review = structuredClone(review);
+  else delete next.review;
   for (const change of entry.records) {
     const records: Record<string, Entity> = next[change.collection];
     const entity = change[direction];

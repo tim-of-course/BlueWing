@@ -1,0 +1,244 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createProject } from '../../src/core/geometry';
+import { ProjectSession } from '../../src/core/session';
+import { executeCommand } from '../../src/core/commands';
+import {
+  generateConstruction,
+  emptyConstruction,
+} from '../../src/core/construction';
+import { inspectReview } from '../../src/core/review';
+import type { CommandCall } from '../../src/core/types';
+
+function fixture() {
+  const project = createProject('Detailed');
+  project.sheets.s = {
+    id: 's',
+    name: 'Plan',
+    assetId: 'pdf',
+    pageIndex: 0,
+    width: 100,
+    height: 100,
+    calibration: { metresPerUnit: 1 },
+  };
+  project.geometries.g = {
+    id: 'g',
+    sheetId: 's',
+    name: 'Wall',
+    kind: 'path',
+    points: [
+      { x: 10, y: 10 },
+      { x: 16, y: 10 },
+    ],
+  };
+  const saves: unknown[] = [];
+  const session = new ProjectSession(project, {
+    save: (_, next) => {
+      saves.push(next);
+      return Promise.resolve();
+    },
+  });
+  const call = (command: CommandCall) =>
+    session.dispatch({
+      ...command,
+      projectId: session.project.id,
+      expectedRevision: session.project.revision,
+    });
+  const wall = {
+    id: 'w',
+    geometryId: 'g',
+    baseElevation: 0,
+    height: 3,
+    studSpacing: 0.5,
+    stud: { materialId: 'stud', width: 0.04, depth: 0.09, stockLength: 3 },
+    track: { materialId: 'track', width: 0.04, depth: 0.09, stockLength: 3 },
+    finishes: [{ id: 'board', materialId: 'board', face: 'front', layers: 2 }],
+  };
+  return { session, call, wall, saves };
+}
+
+void test('construction commands save, preview, undo and redo without changing authored plan coordinates', async () => {
+  const { session, call, wall, saves } = fixture();
+  const points = session.project.geometries.g?.points;
+  await call({ name: 'wall.put', payload: wall });
+  assert.equal(session.project.formatVersion, 3);
+  const result = generateConstruction(
+    session.project,
+    session.project.construction ?? emptyConstruction(),
+  );
+  assert.equal(result.pieces.filter((p) => p.role === 'stud').length, 13);
+  assert.equal(
+    result.surfaces.reduce((sum, s) => sum + s.area, 0),
+    36,
+  );
+  const preview = await call({
+    name: 'preview',
+    payload: {
+      commands: [{ name: 'wall.put', payload: { ...wall, height: 2.5 } }],
+    },
+  });
+  assert.equal(preview.preview, true);
+  assert.equal(session.project.construction?.walls.w?.height, 3);
+  assert.equal(saves.length, 1);
+  await call({ name: 'history.undo' });
+  assert.equal(Object.hasOwn(session.project, 'construction'), false);
+  await call({ name: 'history.redo' });
+  assert.equal(session.project.construction?.walls.w?.height, 3);
+  assert.deepEqual(session.project.geometries.g?.points, points);
+});
+
+void test('review remains valid after rename and detects relevant dimension or snippet changes, including undo', async () => {
+  const { session, call, wall } = fixture();
+  await call({ name: 'wall.put', payload: wall });
+  await call({
+    name: 'review.mark',
+    payload: {
+      id: 'r',
+      target: { kind: 'wall', id: 'w' },
+      status: 'reviewed',
+      note: 'Checked detail',
+    },
+  });
+  assert.equal(
+    inspectReview(session.project).marks[0]?.effectiveStatus,
+    'reviewed',
+  );
+  await call({ name: 'project.rename', payload: { name: 'Renamed' } });
+  assert.equal(
+    inspectReview(session.project).marks[0]?.effectiveStatus,
+    'reviewed',
+  );
+  await call({ name: 'wall.put', payload: { ...wall, height: 3.2 } });
+  assert.equal(
+    inspectReview(session.project).marks[0]?.effectiveStatus,
+    'changed',
+  );
+  await call({ name: 'history.undo' });
+  assert.equal(
+    inspectReview(session.project).marks[0]?.effectiveStatus,
+    'reviewed',
+  );
+  await call({
+    name: 'snippet.put',
+    payload: {
+      id: 'detail',
+      name: 'Header',
+      sheetId: 's',
+      bounds: { x: 5, y: 5, width: 20, height: 20 },
+      geometryIds: ['g'],
+      sources: [{ kind: 'wall', id: 'w' }],
+      annotations: [],
+      note: 'Verify bearing',
+    },
+  });
+  assert.equal(
+    inspectReview(session.project).marks[0]?.effectiveStatus,
+    'changed',
+  );
+});
+
+void test('invalid snippets and batched openings roll back, while geometry deletion prunes and undo restores dependents', async () => {
+  const { session, call, wall } = fixture();
+  await call({ name: 'wall.put', payload: wall });
+  await assert.rejects(
+    call({
+      name: 'snippet.put',
+      payload: {
+        id: 'bad',
+        name: 'Bad',
+        sheetId: 's',
+        bounds: { x: 99, y: 0, width: 20, height: 20 },
+        geometryIds: [],
+        sources: [],
+        annotations: [],
+        note: '',
+      },
+    }),
+    /bounds/,
+  );
+  assert.equal(session.project.review, undefined);
+  await assert.rejects(
+    call({
+      name: 'batch',
+      payload: {
+        commands: [
+          { name: 'wall.put', payload: { ...wall, height: 4 } },
+          {
+            name: 'opening.put',
+            payload: {
+              id: 'o',
+              wallId: 'w',
+              distance: 5,
+              width: 2,
+              sill: 0,
+              height: 2,
+              jambCount: 1,
+            },
+          },
+        ],
+      },
+    }),
+    /outside wall/,
+  );
+  assert.equal(session.project.construction?.walls.w?.height, 3);
+  await call({
+    name: 'opening.put',
+    payload: {
+      id: 'o',
+      wallId: 'w',
+      distance: 1,
+      width: 1,
+      sill: 0,
+      height: 2,
+      jambCount: 1,
+    },
+  });
+  await call({ name: 'geometry.delete', payload: { id: 'g' } });
+  assert.deepEqual(session.project.construction?.walls, {});
+  assert.deepEqual(session.project.construction?.openings, {});
+  await call({ name: 'history.undo' });
+  assert.ok(session.project.construction?.openings.o);
+});
+
+void test('duplicating geometry copies its construction and openings as independent unreviewed records', async () => {
+  const { session, call, wall } = fixture();
+  await call({ name: 'wall.put', payload: wall });
+  await call({
+    name: 'opening.put',
+    payload: {
+      id: 'o',
+      wallId: 'w',
+      distance: 1,
+      width: 1,
+      sill: 1,
+      height: 1,
+      jambCount: 1,
+    },
+  });
+  await call({
+    name: 'geometry.copy',
+    payload: { id: 'g', newId: 'g2', dx: 0, dy: 5 },
+  });
+  const copied = Object.values(session.project.construction?.walls ?? {}).find(
+    (w) => w.geometryId === 'g2',
+  );
+  assert.ok(copied);
+  assert.equal(
+    Object.values(session.project.construction?.openings ?? {}).filter(
+      (o) => o.wallId === copied.id,
+    ).length,
+    1,
+  );
+  assert.equal(
+    inspectReview(session.project).unreviewed.filter(
+      (target) => target.kind === 'wall',
+    ).length,
+    2,
+  );
+  const exported = executeCommand(session.project, {
+    name: 'construction.export',
+    payload: { format: 'csv', schedule: 'pieces' },
+  }).data;
+  assert.equal(typeof exported, 'string');
+  assert.match(String(exported), /cutLength_m/);
+});

@@ -15,6 +15,16 @@ import {
   exportPieces,
 } from './calculations';
 import { calibrationFromRatio, type PaperScale } from './scale';
+import { assemblyOutputs, validateSystem } from './systems';
+import {
+  detailedCommands,
+  constructionSchema,
+  reviewSchema,
+  executeDetailed,
+  validateDetailed,
+  pruneDetailed,
+  copyDetailedGeometry,
+} from './detailed-commands';
 
 export interface PayloadSchema {
   type?: 'object' | 'array' | 'string' | 'number' | 'boolean';
@@ -91,7 +101,7 @@ const lengthFormula = object({
   formula: string,
   unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
 });
-export const assemblySchema = object(
+const leafAssemblySchema = object(
   {
     id: string,
     name: string,
@@ -136,6 +146,19 @@ export const assemblySchema = object(
   },
   ['id', 'name', 'geometryKinds', 'inputs', 'outputs'],
 );
+export const assemblySchema: PayloadSchema = {
+  ...leafAssemblySchema,
+  properties: {
+    ...leafAssemblySchema.properties,
+    components: array(
+      object({
+        id: string,
+        assembly: leafAssemblySchema,
+        bindings: { type: 'object', additionalProperties: string },
+      }),
+    ),
+  },
+};
 const recipe = assemblySchema;
 const inputValues: PayloadSchema = {
   type: 'object',
@@ -419,15 +442,16 @@ for (const [name, original] of [
       entry[4],
     ]);
 }
-export const commandRegistry: readonly CommandDefinition[] = definitions.map(
-  ([name, description, schema, mutates, payload]) => ({
+export const commandRegistry: readonly CommandDefinition[] = [
+  ...definitions.map(([name, description, schema, mutates, payload]) => ({
     name,
     description,
     schema,
     mutates,
     examples: [{ name, payload }],
-  }),
-);
+  })),
+  ...detailedCommands,
+];
 function record(item: unknown): item is Record<string, unknown> {
   return typeof item === 'object' && item !== null && !Array.isArray(item);
 }
@@ -551,11 +575,14 @@ export function validateAssembly(input: unknown): asserts input is Recipe {
       throw new Error(`Invalid default for ${field.name}`);
   }
   if (
-    entry.outputs.length === 0 ||
+    (!entry.components && entry.outputs.length === 0) ||
     new Set(entry.outputs.map((output) => output.id)).size !==
       entry.outputs.length
   )
     throw new Error('Recipe needs outputs with unique ids');
+  validateSystem(entry);
+  for (const component of entry.components ?? [])
+    validateAssembly(component.assembly);
   for (const output of entry.outputs) {
     if (!output.id || !output.name.trim() || !output.materialId.trim())
       throw new Error('Output needs an id, name and material');
@@ -590,21 +617,37 @@ export function validateAssemblyInputs(
 
 export function validateProject(input: unknown): asserts input is Project {
   validatePayload(
-    object({
-      formatVersion: { type: 'number', enum: [1, 2] },
-      id: string,
-      name: string,
-      revision: { type: 'number', minimum: 0 },
-      sheets: { type: 'object', additionalProperties: sheet },
-      geometries: { type: 'object', additionalProperties: geometry },
-      groups: { type: 'object', additionalProperties: group },
-      recipes: { type: 'object', additionalProperties: recipe },
-      assignments: { type: 'object', additionalProperties: assignment },
-    }),
+    object(
+      {
+        formatVersion: { type: 'number', enum: [1, 2, 3] },
+        id: string,
+        name: string,
+        revision: { type: 'number', minimum: 0 },
+        sheets: { type: 'object', additionalProperties: sheet },
+        geometries: { type: 'object', additionalProperties: geometry },
+        groups: { type: 'object', additionalProperties: group },
+        recipes: { type: 'object', additionalProperties: recipe },
+        assignments: { type: 'object', additionalProperties: assignment },
+        construction: constructionSchema,
+        review: reviewSchema,
+      },
+      [
+        'formatVersion',
+        'id',
+        'name',
+        'revision',
+        'sheets',
+        'geometries',
+        'groups',
+        'recipes',
+        'assignments',
+      ],
+    ),
     input,
     'project',
   );
   const project = input as Project;
+  validateDetailed(project);
   if (!Number.isInteger(project.revision) || project.revision < 0)
     throw new Error('Unsupported project format or revision');
   for (const [key, entries, schema] of [
@@ -654,9 +697,9 @@ export function validateProject(input: unknown): asserts input is Project {
       validateAssemblyInputs(definition, inputs);
     }
     for (const [outputId, allowance] of Object.entries(entry.allowances)) {
-      const output = definition.outputs.find(
-        (output) => output.id === outputId,
-      );
+      const output = assemblyOutputs(definition).find(
+        ({ output }) => output.id === outputId,
+      )?.output;
       if (!output) throw new Error(`Unknown allowance output: ${outputId}`);
       if (
         output.piece &&
@@ -749,6 +792,7 @@ export function executeCommand(
         p.y += (payload.dy as number | undefined) ?? 0;
       });
       next.geometries[source.id] = source;
+      copyDetailedGeometry(next, entityId, source.id);
       data = source;
       break;
     }
@@ -819,10 +863,17 @@ export function executeCommand(
       Reflect.deleteProperty(next.assignments, entityId);
       break;
     default:
-      throw new Error(`Unknown command: ${call.name}`);
+      data = executeDetailed(next, call);
   }
   if (definition.mutates) {
-    next.formatVersion = 2;
+    next.formatVersion =
+      next.formatVersion === 3 ||
+      next.construction ||
+      next.review ||
+      Object.values(next.recipes).some((recipe) => recipe.components)
+        ? 3
+        : 2;
+    if (call.name.endsWith('.delete')) pruneDetailed(next);
     if (
       [
         'geometry.delete',
