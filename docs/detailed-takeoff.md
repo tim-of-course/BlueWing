@@ -27,7 +27,7 @@ The user supplied a private link to a Bingham Elementary School conformed set. T
 
 ## Validation results
 
-Implementation is complete enough for integrated verification; final native and full browser runs remain in progress. Resource refusals and stops are recorded as unrun checks, never passes.
+Native integration, real-plan verification and all development browser scenarios pass. Final production verification and packaging remain in progress. Resource refusals and stops are recorded as unrun checks, never passes.
 
 | Check                                               | Actual result                                                                  |
 | --------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -48,7 +48,7 @@ Core scenarios include independent project/global copies; shared typed inputs; i
 
 The 3D tests cover section orientation, surface thickness, sheet/level transforms, filtering before the display limit, camera projection and nearest-piece picking. A dedicated byte-reader test covers sequential bounded chunks, native array-buffer and fallback-array responses, empty assets, and short reads.
 
-The browser workflows author a 24 ft wall with 19 studs and 240 ft² of board, preview a height change, reapply its template, inspect a filtered split view, create/export highlighted evidence, review it and reopen. A second workflow builds a steel-and-board system, copies it through the global library, edits shared height and verifies both quantities and cuts after reopening. A new malformed-PDF test checks actual worker termination after repeated rejection.
+The browser workflows author a 24 ft wall with 19 studs and 240 ft² of board, preview a height change, reapply its template, inspect a filtered split view, click a stud to inspect its exact cut, create/export highlighted evidence, review it and reopen. A second workflow builds a steel-and-board system, copies it through the global library, edits shared height and verifies both quantities and cuts after reopening. A new malformed-PDF test checks actual worker termination after repeated rejection.
 
 Native coverage checks immutable temporary snapshots, bounded reads, incremental SQLite BLOB writes, transactional rollback, format-3 recovery backups, and independent persistence. The integrated CLI script additionally checks malformed-import rollback, inspect/preview/Undo, box-header components, rendered evidence, CSV/JSON, global copies, close/restart equality and backup reopening. Its optional large-plan run imports all 164 pages, renders first/middle/last and compares the reopened last-page pixels.
 
@@ -70,17 +70,19 @@ Native coverage checks immutable temporary snapshots, bounded reads, incremental
 - `3b1f715`: component systems, construction model, commands and review.
 - `6996d28`: format-3 persistence, recovery backups and initial bounded encoding.
 - `5f504db`: LGMF cut semantics, reusable wall templates and review dependencies.
-- Next checkpoint: desktop authoring, 3D/review, bounded native transport and integration coverage.
+- `9022350`: desktop authoring, 3D/review, bounded native transport and integration coverage.
 
-Older app versions should use the automatic pre-upgrade backup, not a format-3 project with unsupported data. The private 349,354,454-byte Bingham PDF and verification images remain in ignored `tmp/`.
+Older app versions should use the automatic pre-upgrade backup, not a format-3 project with unsupported data. The private 349,354,454-byte Bingham PDF and verification images remain in ignored `tmp/`. Native snippets, 3D images, cover and middle-sheet renders were inspected visually. The CLI export test compares numeric fields with tolerance because embedded JSON strings bypass Rust’s float serialization.
+
+Memory-pressure stops were resolved after the Android emulator was shut down through its normal ADB command at the user’s request. The resource guard stayed enabled, and all heavy checks ran sequentially.
 
 ## Delegated work record
 
-Banana Split ran 14 distinct root coordinators and zero child subagents. All roots used the configured `gpt-6-astra` model at medium reasoning; no preset override was supplied. The integrating host is GPT-6; its reasoning setting is unavailable.
+Banana Split ran 15 distinct root coordinators and zero child subagents. All roots used the configured `gpt-6-astra` model at medium reasoning; no preset override was supplied. The integrating host is GPT-6; its reasoning setting is unavailable.
 
-Twelve workflows completed with successful bounded results. Two UI workflows failed at startup with HTTP 401, before edits; the host implemented their work. All are mechanically terminal. Runtime diagnostics total one managed tool rejection (`banana_send:not_found`), zero no-disposition turns, zero formal revisions and zero formal acceptances. Host review and follow-up messages are not formal child revisions. Three lightweight command approvals were granted after inspecting their commands; no heavy work was delegated. One later host message reached an already-completed viewer agent and was refused as unavailable.
+Thirteen workflows completed with successful bounded results. Two UI workflows failed at startup with HTTP 401, before edits; the host implemented their work. All are mechanically terminal. Runtime diagnostics total one managed tool rejection (`banana_send:not_found`), zero no-disposition turns, zero formal revisions and zero formal acceptances. Host review and follow-up messages are not formal child revisions. Three lightweight command approvals were granted after inspecting their commands; no heavy work was delegated. One later host message reached an already-completed viewer agent and was refused as unavailable.
 
-Host integration corrected a reviewer’s solid-track deduction assumption for LGMF channel nesting, a Rust API mismatch, empty-system preview validation, excessive toolbar reactive reads, 3D picking/display, off-module jamb collisions and failed-PDF worker cleanup. Only the host ran guarded browser/native/build checks.
+Host integration corrected a reviewer’s solid-track deduction assumption for LGMF channel nesting, a Rust API mismatch, empty-system preview validation, excessive toolbar reactive reads, 3D picking/display, off-module jamb collisions and failed-PDF worker cleanup. A final trace review corrected canvas overflow/focus scrolling and the Finish action’s pending-save label. Only the host ran guarded browser/native/build checks.
 
 | Workflow                                | Root agent                               | Mechanical status |
 | --------------------------------------- | ---------------------------------------- | ----------------- |
@@ -98,3 +100,5 @@ Host integration corrected a reviewer’s solid-track deduction assumption for L
 | wf_d269cbed-1665-47e7-9705-5cbe0a284c22 | agt_c9bb3e2a-0650-454c-b2f3-9e6c9f4f15dd | completed         |
 | wf_534bdcc0-f7e6-40dc-98d1-e5a583d403a5 | agt_1bc883d1-e49c-4c53-b0c5-7055a00e82ab | completed         |
 | wf_361d5287-8e76-49bb-9297-ee598331758b | agt_05365048-1a10-42d2-84b4-fbbb07a0fd8b | completed         |
+
+| wf_5769b2dd-7d85-4b94-8998-0a3405c9612a | agt_49bf6aea-9197-48de-9aa0-f4d2008ae2e4 | completed |

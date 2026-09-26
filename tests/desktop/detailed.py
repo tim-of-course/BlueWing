@@ -33,6 +33,22 @@ def near(actual, expected):
     assert math.isclose(actual, expected, rel_tol=1e-9, abs_tol=1e-8), (actual, expected)
 
 
+def equivalent(actual, expected):
+    """JSON embedded in an export string bypasses Rust's float serialization."""
+    if isinstance(expected, dict):
+        assert actual.keys() == expected.keys()
+        for key in expected:
+            equivalent(actual[key], expected[key])
+    elif isinstance(expected, list):
+        assert len(actual) == len(expected)
+        for left, right in zip(actual, expected):
+            equivalent(left, right)
+    elif isinstance(expected, float):
+        near(actual, expected)
+    else:
+        assert actual == expected, (actual, expected)
+
+
 def database_snapshot(path):
     with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as connection:
         assert connection.execute('PRAGMA integrity_check').fetchone() == ('ok',)
@@ -305,7 +321,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
             assert row['geometryId'] == 'wall-path'
         (EVIDENCE / 'pieces.csv').write_text(piece_csv)
         exported = json.loads(call('construction.export', {'format': 'json'}))
-        assert exported['pieces'] == detailed['pieces'] and exported['surfaces'] == detailed['surfaces']
+        equivalent(exported['pieces'], detailed['pieces'])
+        equivalent(exported['surfaces'], detailed['surfaces'])
 
         # Systems and positioned wall templates retain independent component snapshots.
         library = call('library.inspect')

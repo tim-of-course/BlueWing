@@ -686,7 +686,7 @@ export default function DrawingCanvas(props: {
       return;
     }
     if (event.button !== 0 || edit() || props.interactionDisabled) return;
-    canvas?.focus();
+    canvas?.focus({ preventScroll: true });
     const current = sheet();
     if (!current) return;
     const point = pagePoint(event);
@@ -1295,6 +1295,9 @@ export default function DrawingCanvas(props: {
               {failure()}
             </p>
           </Show>
+          <Show when={saving()}>
+            <span role="status">Saving…</span>
+          </Show>
           <div class="button-row">
             <Show when={draft()?.kind !== 'calibrate' || edit()}>
               <button
@@ -1305,7 +1308,7 @@ export default function DrawingCanvas(props: {
                   void commit();
                 }}
               >
-                {saving() ? 'Saving…' : failure() ? 'Retry save' : 'Finish'}
+                {failure() ? 'Retry save' : 'Finish'}
               </button>
             </Show>
             <button type="button" disabled={saving()} onClick={cancel}>

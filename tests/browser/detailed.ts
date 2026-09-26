@@ -183,6 +183,14 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByRole('combobox', { name: 'Role', exact: true })
     .selectOption('stud');
   await expect(viewer).toContainText('19 objects shown');
+  // The middle of this symmetric, 19-stud wall lies on its middle stud.
+  await viewer.getByRole('img').click();
+  await expect(
+    viewer.getByRole('complementary', { name: 'Selected construction item' }),
+  ).toContainText('362S162-33');
+  await expect(
+    viewer.getByRole('complementary', { name: 'Selected construction item' }),
+  ).toContainText('Cut length: 10 ft 0 in');
   await viewer.getByRole('img').press('ArrowRight');
   await viewer.getByRole('img').press('+');
   await page.getByRole('button', { name: 'Review', exact: true }).click();
