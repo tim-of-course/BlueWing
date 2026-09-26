@@ -86,6 +86,17 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
         }),
       );
     }
+    const extensions = await this.query(
+      'SELECT id,data FROM records WHERE collection=?',
+      ['extensions'],
+    );
+    for (const record of extensions) {
+      if (
+        (record.id === 'construction' || record.id === 'review') &&
+        typeof record.data === 'string'
+      )
+        project[record.id] = JSON.parse(record.data) as unknown;
+    }
     validateProject(project);
     return project;
   }
@@ -128,6 +139,8 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
   }
   async save(previous: Project, next: Project): Promise<void> {
     checkSave(previous, next);
+    if (previous.formatVersion < 3 && next.formatVersion === 3)
+      await this.backup();
     // CHECK rejects stale revisions (and missing metadata) inside the same transaction.
     await this.transaction([
       {
@@ -144,6 +157,9 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
       ...this.writes(previous, next),
     ]);
     this.discardStagedAssets();
+  }
+  async backup(path?: string): Promise<string> {
+    return this.call('database_backup', { path: path ?? null });
   }
   async readAsset(id: string): Promise<Uint8Array> {
     const [row] = await this.query('SELECT data FROM assets WHERE id=?', [id]);

@@ -22,6 +22,34 @@ pub struct Statement {
 }
 
 impl Database {
+    /// Called under the application's database mutex, between committed transactions.
+    /// The DELETE journal and exclusive writer lock make a streaming file copy consistent.
+    pub fn backup(&self, destination: Option<&Path>) -> Result<String, String> {
+        let source = Path::new(self.connection.path().ok_or("Database has no file path")?);
+        let generated = source.with_file_name(format!(
+            "{}.backup-{}.bluewing",
+            source.file_stem().unwrap_or_default().to_string_lossy(),
+            uuid::Uuid::new_v4()
+        ));
+        let destination = destination.unwrap_or(&generated);
+        let parent = destination
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+        let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+        let mut input = File::open(source).map_err(|e| e.to_string())?;
+        std::io::copy(&mut input, temporary.as_file_mut()).map_err(|e| e.to_string())?;
+        temporary.as_file().sync_all().map_err(|e| e.to_string())?;
+        temporary
+            .persist_noclobber(destination)
+            .map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        File::open(parent)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|e| e.to_string())?;
+        Ok(destination.to_string_lossy().into_owned())
+    }
+
     pub fn open(path: &Path, create: bool) -> Result<Self, String> {
         let project_file = OpenOptions::new()
             .read(true)
@@ -243,6 +271,36 @@ mod tests {
             sql: sql.into(),
             params,
         }
+    }
+
+    #[test]
+    fn backup_is_independent_and_never_overwrites_a_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("source.bluewing");
+        let destination = directory.path().join("before-upgrade.bluewing");
+        let mut database = Database::open(&source, true).unwrap();
+        database
+            .transaction(vec![
+                statement("CREATE TABLE items (value TEXT)", vec![]),
+                statement("INSERT INTO items VALUES ('before')", vec![]),
+            ])
+            .unwrap();
+        database.backup(Some(&destination)).unwrap();
+        database
+            .transaction(vec![statement("UPDATE items SET value='after'", vec![])])
+            .unwrap();
+        let backup = Database::open(&destination, false).unwrap();
+        assert_eq!(
+            backup.query("SELECT value FROM items", vec![]).unwrap()[0]["value"],
+            "before"
+        );
+        assert_eq!(
+            database.query("SELECT value FROM items", vec![]).unwrap()[0]["value"],
+            "after"
+        );
+        assert!(database.backup(Some(&destination)).is_err());
+        assert!(database.backup(Some(&source)).is_err());
+        assert!(Path::new(&database.backup(None).unwrap()).exists());
     }
 
     #[test]

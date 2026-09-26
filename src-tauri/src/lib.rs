@@ -28,6 +28,16 @@ fn database_close(state: State<Shared>) {
     state.lock().unwrap().database = None;
 }
 #[tauri::command]
+fn database_backup(state: State<Shared>, path: Option<String>) -> Result<String, String> {
+    state
+        .lock()
+        .unwrap()
+        .database
+        .as_ref()
+        .ok_or("No open database")?
+        .backup(path.as_deref().map(Path::new))
+}
+#[tauri::command]
 fn database_query(
     state: State<Shared>,
     sql: String,
@@ -127,7 +137,7 @@ fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> 
         } else {
             "bluewing"
         });
-    json!({"bridgeVersion":2,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
+    json!({"bridgeVersion":3,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
 }
 #[tauri::command]
 fn cli_respond(
@@ -150,6 +160,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             database_open,
             database_close,
+            database_backup,
             database_query,
             database_transaction,
             app_data_read,

@@ -36,20 +36,25 @@ export function metadata(project: Project) {
   };
 }
 export function recordChanges(previous: Project | undefined, next: Project) {
-  return collections.flatMap((collection) =>
-    [
-      ...new Set([
-        ...Object.keys(previous?.[collection] ?? {}),
-        ...Object.keys(next[collection]),
-      ]),
-    ].flatMap((id) => {
-      const value = next[collection][id];
-      return JSON.stringify(previous?.[collection][id]) ===
-        JSON.stringify(value)
-        ? []
-        : [{ collection, id, value }];
-    }),
-  );
+  const records: { collection: string; id: string; value: unknown }[] =
+    collections.flatMap((collection) =>
+      [
+        ...new Set([
+          ...Object.keys(previous?.[collection] ?? {}),
+          ...Object.keys(next[collection]),
+        ]),
+      ].flatMap((id) => {
+        const value = next[collection][id];
+        return JSON.stringify(previous?.[collection][id]) ===
+          JSON.stringify(value)
+          ? []
+          : [{ collection, id, value }];
+      }),
+    );
+  for (const id of ['construction', 'review'] as const)
+    if (JSON.stringify(previous?.[id]) !== JSON.stringify(next[id]))
+      records.push({ collection: 'extensions', id, value: next[id] });
+  return records;
 }
 export function checkSave(previous: Project, next: Project): void {
   validateProject(next);

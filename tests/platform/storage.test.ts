@@ -10,12 +10,19 @@ function fixture() {
   const database = new DatabaseSync(':memory:');
   const transactions: Statement[][] = [];
   let fail = false;
+  let failBackup = false;
+  const backups: string[] = [];
   const call: NativeInvoke = <T>(
     command: string,
     args?: Record<string, unknown>,
   ): Promise<T> => {
     try {
       let result: unknown;
+      if (command === 'database_backup') {
+        if (failBackup) throw new Error('backup disk full');
+        backups.push('before-format-3.bluewing');
+        result = backups.at(-1);
+      }
       if (command === 'database_query') {
         const { sql, params } = args as { sql: string; params: string[] };
         result = database
@@ -71,6 +78,10 @@ function fixture() {
       fail = value;
     },
     database,
+    backups,
+    setBackupFailure: (value: boolean) => {
+      failBackup = value;
+    },
   };
 }
 const project = (): Project => ({
@@ -189,5 +200,36 @@ void test('legacy projects upgrade to format 2 atomically and retain assembly fi
       ?.format_version,
     2,
   );
+  database.close();
+});
+
+void test('format 3 extensions survive reopen and backup failure prevents an upgrade', async () => {
+  const { storage, database, backups, setBackupFailure } = fixture();
+  await storage.open('detailed', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next: Project = {
+    ...initial,
+    formatVersion: 3,
+    revision: 1,
+    construction: {
+      walls: {},
+      openings: {},
+      headers: {},
+      levels: { level: { id: 'level', name: 'Second floor', elevation: 3.5 } },
+      placements: {},
+      ceilings: {},
+    },
+    review: { snippets: {}, marks: {} },
+  };
+  setBackupFailure(true);
+  await assert.rejects(storage.save(initial, next), /backup disk full/);
+  assert.deepEqual(await storage.load(), initial);
+  setBackupFailure(false);
+  await storage.save(initial, next);
+  assert.equal(backups.length, 1);
+  assert.deepEqual(await storage.load(), next);
+  await storage.save(next, { ...next, revision: 2, name: 'Saved again' });
+  assert.equal(backups.length, 1);
   database.close();
 });

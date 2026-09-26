@@ -103,7 +103,7 @@ impl Cache {
             .collect();
         versions.sort();
         CacheInfo {
-            bridge_version: 2,
+            bridge_version: 3,
             active_version: self.active.clone(),
             cached_versions: versions,
         }
