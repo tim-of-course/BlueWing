@@ -318,7 +318,7 @@ void test('reapplying a wall template preserves floor and authored profile, with
   }).project;
   const instance = next.construction?.walls[wall.id];
   assert.equal(instance?.levelId, 'level');
-  assert.deepEqual(instance?.topProfile, wall.topProfile);
+  assert.deepEqual(instance.topProfile, wall.topProfile);
   next = executeCommand(next, {
     name: 'wall.fromAssembly',
     payload: {
@@ -329,6 +329,6 @@ void test('reapplying a wall template preserves floor and authored profile, with
     },
   }).project;
   assert.equal(next.construction?.walls[wall.id]?.height, 2.5);
-  assert.equal(next.construction?.walls[wall.id]?.topProfile, undefined);
-  assert.equal(next.construction?.walls[wall.id]?.levelId, 'level');
+  assert.equal(next.construction.walls[wall.id]?.topProfile, undefined);
+  assert.equal(next.construction.walls[wall.id]?.levelId, 'level');
 });

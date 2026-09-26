@@ -47,6 +47,14 @@ The compact navigator shows each group's length (ft), area (ft²), or marker cou
 
 The Assemblies editor manages project definitions and a device-local global library. Definitions support required number/boolean inputs, units, formulas, material outputs, and piece cut/stock lengths. Assignments have group values and individual drawing-object overrides. Starter templates cover drywall, steel framing, header components, acoustical ceilings (including separate 2x2/2x4 grid material estimates), FRP/sheathing, blocking, and acoustical panels. See [assemblies and tested examples](docs/assemblies.md). See the [product brief](docs/restart-brief.md) for calculation rules and deferred features.
 
+Project/global libraries also hold component systems with copied assembly definitions and shared inputs. Independent wall templates apply to path geometry through Construction or `wall.fromAssembly`; changing a template later does not change an authored wall. Use the structured **Construction** panel for walls, openings, component headers, levels, sheet placements, finishes, backing, and ceilings. **Preview quantities** shows material changes before saving. Plan, 3D, and split views share generated pieces and linked source selection, with level, material, role, and selection filters. Counts and finish areas appear in ordinary Quantities.
+
+Construction dimensions use metres and rotations use radians internally; drawing and snippet points remain in page coordinates. Cuts follow explicit allowances and project details. Track channel flange envelopes do not impose stud-cut deductions. Header components use entered extensions and offsets; jamb centres sit outside the rough opening width. Shared conditions and multiple-member positions are explicit. The rectangular 3D envelopes do not design connections or describe metal-profile fabrication; bent/stepped track joints still need project details. Existing 2x2/2x4 ceiling estimates are unchanged, and ceiling surfaces default to reference-only to avoid duplicate tile quantities.
+
+Use **Review** for source-linked snippets, geometry highlights, annotations, and review marks. Relevant dependency changes flag previously reviewed sources as changed. Generation shares a 50,000-piece/surface budget and reports incomplete results when exhausted. The 3D scene caps display at 4,000 objects and shows omissions; CSV retains all generated pieces regardless of scene filters or selection.
+
+Formats 1 and 2 remain readable. Construction, review, systems, and wall templates use format 3. Desktop storage automatically creates a sibling backup before an older project first upgrades; `project.backup` also creates an explicit recovery copy without overwriting files. Current web releases require native bridge 4 for backups and bounded PDF transfers. Keep the backup for use with an older app.
+
 The CLI operates the running desktop app:
 
 ```sh
@@ -85,9 +93,12 @@ bun run native:build
 python3 tests/native/smoke.py
 python3 tests/desktop/workflow.py
 python3 tests/desktop/assemblies.py
+python3 tests/desktop/detailed.py
 ```
 
 Set `BLUEWING_TEST_PLAN` to the local Behavioral Health Group PDF when running the desktop workflow to include its 15-sheet import and rendering check. That source plan is not stored in Git. Independent fixtures establish 384 sq ft wall area, 360 sq ft floor area, three items, and allowance/package arithmetic.
+
+The detailed-takeoff desktop/CLI workflow is `tests/desktop/detailed.py`. Optionally set `BLUEWING_TEST_DETAILED_PLAN` to the local path of the private Bingham Elementary School conformed PDF (about 333 MB, 164 pages) for real-plan import/render coverage. The downloaded plan belongs in ignored `tmp/reference-plans/` and is not committed. The command above is a verification instruction, not a claimed pass. See [the current detailed-takeoff report](docs/detailed-takeoff.md) for pending checks and actual results; historical dated assembly and ceiling results remain in [Assemblies](docs/assemblies.md).
 
 On Windows, use `python` in place of `python3`. Set test environment variables with PowerShell syntax, for example `$env:BLUEWING_NATIVE_BIN_DIR = "$PWD/src-tauri/target/release"`. Formatting accepts the checkout's LF or CRLF line endings.
 

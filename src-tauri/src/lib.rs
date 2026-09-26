@@ -11,6 +11,7 @@ use std::{
 use tauri::{Manager, State};
 struct Native {
     database: Option<storage::Database>,
+    snapshots: storage::Snapshots,
     cache: cache::Cache,
 }
 type Shared = Mutex<Native>;
@@ -25,7 +26,9 @@ fn database_open(state: State<Shared>, path: String, create: bool) -> Result<(),
 }
 #[tauri::command]
 fn database_close(state: State<Shared>) {
-    state.lock().unwrap().database = None;
+    let mut s = state.lock().unwrap();
+    s.database = None;
+    s.snapshots.clear();
 }
 #[tauri::command]
 fn database_backup(state: State<Shared>, path: Option<String>) -> Result<String, String> {
@@ -56,13 +59,52 @@ fn database_transaction(
     state: State<Shared>,
     statements: Vec<storage::Statement>,
 ) -> Result<(), String> {
+    let mut s = state.lock().unwrap();
+    let Native {
+        database,
+        snapshots,
+        ..
+    } = &mut *s;
+    database
+        .as_mut()
+        .ok_or("No open database")?
+        .transaction_with_snapshots(statements, snapshots)
+}
+#[tauri::command(rename_all = "camelCase")]
+fn database_read_blob(
+    state: State<Shared>,
+    table: String,
+    column: String,
+    row_id: i64,
+    offset: u64,
+    length: u64,
+) -> Result<tauri::ipc::Response, String> {
     state
         .lock()
         .unwrap()
         .database
-        .as_mut()
+        .as_ref()
         .ok_or("No open database")?
-        .transaction(statements)
+        .read_blob(&table, &column, row_id, offset, length)
+        .map(tauri::ipc::Response::new)
+}
+#[tauri::command]
+fn file_snapshot_open(state: State<Shared>, path: String) -> Result<storage::SnapshotInfo, String> {
+    storage::snapshot_open(&mut state.lock().unwrap().snapshots, Path::new(&path))
+}
+#[tauri::command]
+fn file_snapshot_read(
+    state: State<Shared>,
+    token: String,
+    offset: u64,
+    length: u64,
+) -> Result<tauri::ipc::Response, String> {
+    storage::snapshot_read(&state.lock().unwrap().snapshots, &token, offset, length)
+        .map(tauri::ipc::Response::new)
+}
+#[tauri::command]
+fn file_snapshot_release(state: State<Shared>, token: String) {
+    state.lock().unwrap().snapshots.remove(&token);
 }
 #[tauri::command]
 fn read_file(path: String) -> Result<Value, String> {
@@ -137,7 +179,7 @@ fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> 
         } else {
             "bluewing"
         });
-    json!({"bridgeVersion":3,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
+    json!({"bridgeVersion":4,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
 }
 #[tauri::command]
 fn cli_respond(
@@ -163,6 +205,10 @@ pub fn run() {
             database_backup,
             database_query,
             database_transaction,
+            database_read_blob,
+            file_snapshot_open,
+            file_snapshot_read,
+            file_snapshot_release,
             app_data_read,
             app_data_write,
             read_file,
@@ -177,6 +223,7 @@ pub fn run() {
             let cache = cache::Cache::new(&transport::data_dir()?)?;
             app.manage(Mutex::new(Native {
                 database: None,
+                snapshots: storage::Snapshots::new(),
                 cache,
             }));
             app.manage(transport::Bridge::start(app.handle().clone())?);

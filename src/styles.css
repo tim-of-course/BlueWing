@@ -490,3 +490,57 @@ th {
 .panel-section.stack p {
   margin: 0;
 }
+.plan-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  height: 100%;
+}
+.plan-pane[hidden] {
+  display: none;
+}
+.split-workspace {
+  display: flex;
+}
+.split-workspace > .plan-pane,
+.split-workspace > .construction-view {
+  width: 50%;
+  flex: 1;
+}
+.view-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.detailed-dialog {
+  width: min(1120px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+.review-columns {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(300px, 2fr);
+  gap: 16px;
+}
+.review-list {
+  max-height: 52vh;
+  overflow: auto;
+}
+.review-row {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.snippet-image {
+  max-width: 100%;
+  max-height: 55vh;
+  object-fit: contain;
+}
+.snippet-fields {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}

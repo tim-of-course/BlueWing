@@ -87,6 +87,34 @@ function validateOffsets(offsets: MemberOffset[] | undefined, count: number) {
     'member offsets cannot coincide',
   );
 }
+function jambPosition(
+  wall: Wall,
+  opening: Opening,
+  side: 'left' | 'right',
+  index: number,
+) {
+  const offset = opening.jambOffsets?.[index];
+  const spec = opening.jamb ?? wall.stud;
+  const rotation = offset?.rotation ?? 0;
+  const halfAlong =
+    (Math.abs(Math.cos(rotation)) * spec.width +
+      Math.abs(Math.sin(rotation)) * spec.depth) /
+    2;
+  const halfFace =
+    (Math.abs(Math.cos(rotation)) * spec.depth +
+      Math.abs(Math.sin(rotation)) * spec.width) /
+    2;
+  return {
+    station:
+      opening.distance +
+      (side === 'left'
+        ? -(halfAlong + (offset?.along ?? 0))
+        : opening.width + halfAlong + (offset?.along ?? 0)),
+    face: offset?.face ?? 0,
+    halfAlong,
+    halfFace,
+  };
+}
 /** Throws on invalid authored data. Missing height/calibration is resolved by generation diagnostics. */
 export function validateConstruction(
   project: Project,
@@ -818,6 +846,15 @@ export function generateConstruction(
       const offset = wall.studOffset ?? 0;
       for (let i = 0; offset + i * wall.studSpacing < line.length - EPS; i++)
         stations.push(offset + i * wall.studSpacing);
+      const jambEnvelopes = openings.flatMap((opening) =>
+        opening.jambCount > 1 && !opening.jambOffsets
+          ? []
+          : (['left', 'right'] as const).flatMap((side) =>
+              Array.from({ length: opening.jambCount }, (_, index) =>
+                jambPosition(wall, opening, side, index),
+              ),
+            ),
+      );
       for (const s of sorted(stations)) {
         const condition = wall.conditions?.find(
           (c) => Math.abs(c.distance - s) < EPS,
@@ -839,6 +876,18 @@ export function generateConstruction(
               o.jambCount > 0 &&
               (Math.abs(o.distance - s) < EPS ||
                 Math.abs(o.distance + o.width - s) < EPS),
+          )
+        )
+          continue;
+        // Off-module openings can put an automatic stud beside a jamb rather
+        // than exactly on its rough boundary. The jamb replaces that stud too.
+        if (
+          !condition &&
+          jambEnvelopes.some(
+            (jamb) =>
+              Math.abs(s - jamb.station) <
+                wall.stud.width / 2 + jamb.halfAlong - EPS &&
+              Math.abs(jamb.face) < wall.stud.depth / 2 + jamb.halfFace - EPS,
           )
         )
           continue;
@@ -956,22 +1005,11 @@ export function generateConstruction(
             'Multiple jamb members require explicit positions',
           );
         else
-          for (const [side, s] of [
-            ['left', a],
-            ['right', b],
-          ] as const)
+          for (const side of ['left', 'right'] as const)
             for (let n = 0; n < o.jambCount; n++) {
               const offset = o.jambOffsets?.[n];
-              const jamb = o.jamb ?? wall.stud;
-              const rotation = offset?.rotation ?? 0;
-              const halfAlong =
-                (Math.abs(Math.cos(rotation)) * jamb.width +
-                  Math.abs(Math.sin(rotation)) * jamb.depth) /
-                2;
               // Positive offsets move into framing on both sides of the rough opening.
-              const station =
-                s +
-                (side === 'left' ? -1 : 1) * (halfAlong + (offset?.along ?? 0));
+              const { station } = jambPosition(wall, o, side, n);
               if ((offset?.along ?? 0) < -EPS)
                 diagnostic(
                   { ...source, openingId: o.id },

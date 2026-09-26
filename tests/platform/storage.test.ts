@@ -9,6 +9,7 @@ import type { Project } from '../../src/core/types';
 function fixture() {
   const database = new DatabaseSync(':memory:');
   const transactions: Statement[][] = [];
+  const snapshots = new Map<string, Uint8Array>();
   let fail = false;
   let failBackup = false;
   const backups: string[] = [];
@@ -39,13 +40,26 @@ function fixture() {
             ),
           );
       }
+      if (command === 'database_read_blob') {
+        const { rowId, offset, length } = args as {
+          rowId: number;
+          offset: number;
+          length: number;
+        };
+        const row = database
+          .prepare('SELECT substr(data,?,?) AS chunk FROM assets WHERE rowid=?')
+          .get(offset + 1, length, rowId);
+        if (!(row?.chunk instanceof Uint8Array))
+          throw new Error('Missing blob');
+        result = row.chunk;
+      }
       if (command === 'database_transaction') {
         const { statements } = args as { statements: Statement[] };
         transactions.push(statements);
         database.exec('BEGIN');
         try {
           for (const statement of statements) {
-            database
+            const inserted = database
               .prepare(statement.sql)
               .run(
                 ...statement.params.map((value) =>
@@ -56,6 +70,13 @@ function fixture() {
                       : value,
                 ),
               );
+            if (statement.blob) {
+              const bytes = snapshots.get(statement.blob.token);
+              if (!bytes) throw new Error('Missing snapshot');
+              database
+                .prepare('UPDATE assets SET data=? WHERE rowid=?')
+                .run(bytes, inserted.lastInsertRowid);
+            }
           }
           if (fail) throw new Error('disk full');
           database.exec('COMMIT');
@@ -74,6 +95,7 @@ function fixture() {
   return {
     storage: new NativeStorage(call),
     transactions,
+    snapshots,
     setFailure: (value: boolean) => {
       fail = value;
     },
@@ -231,5 +253,37 @@ void test('format 3 extensions survive reopen and backup failure prevents an upg
   assert.deepEqual(await storage.load(), next);
   await storage.save(next, { ...next, revision: 2, name: 'Saved again' });
   assert.equal(backups.length, 1);
+  database.close();
+});
+
+void test('native snapshots insert with project metadata atomically without base64 payloads', async () => {
+  const { storage, database, snapshots, transactions, setFailure } = fixture();
+  await storage.open('snapshot', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const source = new Uint8Array([1, 2, 3, 255]);
+  snapshots.set('source-token', source.slice());
+  storage.stageAsset({
+    id: 'snapshot-asset',
+    name: 'plan.pdf',
+    data: source,
+    nativeSource: { token: 'source-token', length: 4 },
+  });
+  source.fill(0);
+  const next = { ...initial, revision: 1, name: 'Imported' };
+  setFailure(true);
+  await assert.rejects(storage.save(initial, next), /disk full/);
+  assert.deepEqual(await storage.load(), initial);
+  await assert.rejects(storage.readAsset('snapshot-asset'), /Missing/);
+  setFailure(false);
+  await storage.save(initial, next);
+  assert.deepEqual(
+    await storage.readAsset('snapshot-asset'),
+    new Uint8Array([1, 2, 3, 255]),
+  );
+  const write = transactions.at(-1)?.find((statement) => statement.blob);
+  assert.equal(write?.blob?.token, 'source-token');
+  assert.deepEqual(write.params, ['snapshot-asset', 'plan.pdf', 4]);
+  assert.deepEqual(await storage.load(), next);
   database.close();
 });

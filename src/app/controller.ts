@@ -5,6 +5,10 @@ import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
 import { Application, type Observation } from './application';
 import { choosePdf, chooseProject, writeOutput } from './files';
 import { connectCli } from './cli';
+import { generateConstruction, emptyConstruction } from '../core/construction';
+import { exportConstruction } from '../core/detailed-commands';
+import { renderImage } from './render';
+import { encodeBase64 } from '../platform/base64';
 import type { WorkspaceController } from './contracts';
 import {
   readVisibility,
@@ -98,10 +102,24 @@ export function createWorkspace(): WorkspaceController {
   const [canRedo, setCanRedo] = createSignal(false, {
     name: 'workspace.canRedo',
   });
+  const construction = createMemo(
+    () => {
+      const current = project();
+      return current
+        ? generateConstruction(
+            current,
+            current.construction ?? emptyConstruction(),
+          )
+        : null;
+    },
+    { name: 'workspace.construction' },
+  );
   const quantities = createMemo(
     () => {
       const current = project();
-      return current ? calculateProject(current) : null;
+      return current
+        ? calculateProject(current, construction() ?? undefined)
+        : null;
     },
     { name: 'workspace.quantities' },
   );
@@ -190,6 +208,56 @@ export function createWorkspace(): WorkspaceController {
     return command('batch', { commands }, expected);
   }
   return {
+    construction,
+    execute(call, expected) {
+      return run(
+        async () =>
+          (
+            await app.dispatch({
+              ...call,
+              ...(expected ?? (app.project ? app.observe() : {})),
+              origin: 'ui',
+            })
+          ).data,
+      );
+    },
+    async renderSnippet(id) {
+      const current = requireProject();
+      const snippet =
+        typeof id === 'string' ? current.review?.snippets[id] : id;
+      if (!snippet) throw new Error('Snippet not found');
+      const image = await renderImage(current, app.pdf, {
+        ...snippet,
+        highlightIds: snippet.geometryIds,
+        label: `${current.sheets[snippet.sheetId]?.name ?? ''} · ${snippet.name}`,
+        maxDimension: 1400,
+      });
+      return `data:image/png;base64,${encodeBase64(image.bytes)}`;
+    },
+    async exportSnippet(id) {
+      await run(async () => {
+        const current = requireProject();
+        const snippet = current.review?.snippets[id];
+        if (!snippet) throw new Error('Snippet not found');
+        const image = await renderImage(current, app.pdf, {
+          ...snippet,
+          highlightIds: snippet.geometryIds,
+          label: `${current.sheets[snippet.sheetId]?.name ?? ''} · ${snippet.name}`,
+        });
+        await writeOutput(app.native, `${snippet.name}.png`, image.bytes);
+      });
+    },
+    async exportConstruction(format, schedule) {
+      await run(() =>
+        writeOutput(
+          app.native,
+          `${requireProject().name}-${schedule}.${format}`,
+          new TextEncoder().encode(
+            exportConstruction(requireProject(), format, schedule),
+          ),
+        ),
+      );
+    },
     native: app.native,
     library,
     refreshLibrary: () => command('library.inspect'),
@@ -284,11 +352,13 @@ export function createWorkspace(): WorkspaceController {
     renameProject: (name) => command('project.rename', { name }),
     async importPdf() {
       const expected = app.observe();
-      const file = await choosePdf(app.native);
-      if (file) {
-        const sheets = await run(() => app.importBytes(file, expected));
-        setActiveSheetId(sheets[0]?.id ?? null);
-      }
+      await run(async () => {
+        const file = await choosePdf(app.native);
+        if (file) {
+          const sheets = await app.importBytes(file, expected);
+          setActiveSheetId(sheets[0]?.id ?? null);
+        }
+      });
     },
     undo: () => command('history.undo'),
     renameSheet: (id, name, expected) =>

@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 import { validateProject } from '../core/commands';
 import type { Project } from '../core/types';
-import { decodeBase64, encodeBase64 } from './base64';
+import { encodeBase64 } from './base64';
 import { BrowserStorage } from './browser-storage';
+import { readNativeChunks } from './native-bytes';
 
 import {
   StagedStorage,
@@ -10,7 +11,12 @@ import {
   collections,
   recordChanges,
 } from './storage-model';
-import type { ProjectStorage, SqlValue, Statement } from './storage-model';
+import type {
+  Asset,
+  ProjectStorage,
+  SqlValue,
+  Statement,
+} from './storage-model';
 export type { ProjectStorage, Asset } from './storage-model';
 export type NativeInvoke = <T>(
   command: string,
@@ -20,6 +26,15 @@ export type NativeInvoke = <T>(
 export class NativeStorage extends StagedStorage implements ProjectStorage {
   constructor(private readonly call: NativeInvoke = invoke) {
     super();
+  }
+  override stageAsset(asset: Asset): void {
+    if (!asset.nativeSource) {
+      super.stageAsset(asset);
+      return;
+    }
+    if (!asset.id || asset.data.length !== asset.nativeSource.length)
+      throw new Error('Invalid native asset snapshot');
+    this.staged.set(asset.id, { ...asset, data: new Uint8Array() });
   }
   async open(path: string, create: boolean): Promise<void> {
     await this.call('database_open', { path, create });
@@ -115,10 +130,26 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
     );
     // Source assets are retained for session undo, even when their last sheet is removed.
     for (const asset of this.staged.values())
-      statements.push({
-        sql: 'INSERT INTO assets(id,name,data) VALUES(?,?,?)',
-        params: [asset.id, asset.name, { blob: encodeBase64(asset.data) }],
-      });
+      statements.push(
+        asset.nativeSource
+          ? {
+              sql: 'INSERT INTO assets(id,name,data) VALUES(?,?,zeroblob(?))',
+              params: [asset.id, asset.name, asset.nativeSource.length],
+              blob: {
+                token: asset.nativeSource.token,
+                table: 'assets',
+                column: 'data',
+              },
+            }
+          : {
+              sql: 'INSERT INTO assets(id,name,data) VALUES(?,?,?)',
+              params: [
+                asset.id,
+                asset.name,
+                { blob: encodeBase64(asset.data) },
+              ],
+            },
+      );
     return statements;
   }
   async initialize(project: Project): Promise<void> {
@@ -162,10 +193,25 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
     return this.call('database_backup', { path: path ?? null });
   }
   async readAsset(id: string): Promise<Uint8Array> {
-    const [row] = await this.query('SELECT data FROM assets WHERE id=?', [id]);
-    if (!row || typeof row.data !== 'object' || row.data === null)
+    const [row] = await this.query(
+      'SELECT rowid AS row_id,length(data) AS byte_length FROM assets WHERE id=?',
+      [id],
+    );
+    if (
+      !row ||
+      typeof row.row_id !== 'number' ||
+      typeof row.byte_length !== 'number'
+    )
       throw new Error(`Missing asset: ${id}`);
-    return decodeBase64(row.data.blob);
+    return readNativeChunks(row.byte_length, (offset, length) =>
+      this.call('database_read_blob', {
+        table: 'assets',
+        column: 'data',
+        rowId: row.row_id,
+        offset,
+        length,
+      }),
+    );
   }
   async close(): Promise<void> {
     await this.call('database_close');

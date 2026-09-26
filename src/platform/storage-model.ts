@@ -5,6 +5,8 @@ export interface Asset {
   id: string;
   name: string;
   data: Uint8Array;
+  /** Immutable native tempfile, released by the import owner after save or failure. */
+  nativeSource?: { token: string; length: number };
 }
 export interface ProjectStorage extends PersistencePort {
   open(path: string, create: boolean): Promise<void>;
@@ -26,6 +28,8 @@ export type SqlValue = string | number | boolean | null | { blob: string };
 export interface Statement {
   sql: string;
   params: SqlValue[];
+  /** Stream into the BLOB of the row just inserted, inside the same transaction. */
+  blob?: { token: string; table: string; column: string };
 }
 export function metadata(project: Project) {
   return {

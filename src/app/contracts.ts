@@ -2,6 +2,9 @@ import type { Accessor } from 'solid-js';
 import type { Observation } from './application';
 import type { PaperScale } from '../core/scale';
 import type { SheetNameSuggestion } from '../pdf/sheet-names';
+import type { PlanSnippet } from '../core/review';
+import type { ConstructionResult } from '../core/construction-types';
+import type { CommandCall } from '../core/types';
 import type {
   CalculationResult,
   AssemblyLibrary,
@@ -16,6 +19,14 @@ import type {
 
 export type DrawingTool = 'select' | 'path' | 'area' | 'count' | 'calibrate';
 export interface WorkspaceController {
+  construction: Accessor<ConstructionResult | null>;
+  execute(call: CommandCall, expected?: Observation): Promise<unknown>;
+  renderSnippet(id: string | PlanSnippet): Promise<string>;
+  exportSnippet(id: string): Promise<void>;
+  exportConstruction(
+    format: 'csv' | 'json',
+    schedule: 'pieces' | 'lengths' | 'materials',
+  ): Promise<void>;
   project: Accessor<Project | null>;
   quantities: Accessor<CalculationResult | null>;
   library: Accessor<AssemblyLibrary | null>;

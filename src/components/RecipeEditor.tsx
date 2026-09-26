@@ -1,3 +1,6 @@
+import SystemComponents from './SystemComponents';
+import { ConstructionFields } from './ConstructionEditor';
+import { wallTemplateSchema } from '../core/detailed-commands';
 import {
   createEffect,
   createMemo,
@@ -15,12 +18,14 @@ import type { FormulaValue } from '../core/formula';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import { calculateProject } from '../core/calculations';
+import { validateAssembly } from '../core/commands';
 import type {
   GeometryKind,
   Recipe,
   RecipeInput,
   RecipeOutput,
   Unit,
+  WallTemplate,
 } from '../core/types';
 
 const units: Unit[] = ['scalar', 'ea', 'm', 'mm', 'ft', 'in', 'm2', 'ft2'];
@@ -44,9 +49,18 @@ export default function RecipeEditor(props: {
       const recipe = draft();
       const project = props.controller.project();
       const ids = props.controller.selection();
-      if (!recipe || !project || !ids.length) return null;
+      if (!recipe || recipe.wallTemplate || !project || !ids.length)
+        return null;
+      try {
+        validateAssembly(recipe);
+      } catch {
+        return null;
+      }
+      const previewProject = { ...project };
+      delete previewProject.construction;
+      delete previewProject.review;
       return calculateProject({
-        ...project,
+        ...previewProject,
         recipes: { [recipe.id]: recipe },
         groups: {
           preview: {
@@ -73,6 +87,11 @@ export default function RecipeEditor(props: {
       const recipe = draft();
       if (!recipe) return [];
       const messages: string[] = [];
+      try {
+        validateAssembly(recipe);
+      } catch (cause) {
+        messages.push(cause instanceof Error ? cause.message : String(cause));
+      }
       for (const kind of recipe.geometryKinds) {
         for (const output of recipe.outputs) {
           try {
@@ -248,6 +267,23 @@ export default function RecipeEditor(props: {
           type="button"
           disabled={saving() || dirty()}
           onClick={() => {
+            begin({
+              id: crypto.randomUUID(),
+              name: 'New system',
+              geometryKinds: ['path'],
+              inputs: [],
+              outputs: [],
+              components: [],
+            });
+            setDirty(true);
+          }}
+        >
+          New system
+        </button>
+        <button
+          type="button"
+          disabled={saving() || dirty()}
+          onClick={() => {
             props.onClose();
           }}
         >
@@ -327,7 +363,11 @@ export default function RecipeEditor(props: {
         >
           <option value="">Select an assembly</option>
           <For each={Object.values(definitions())}>
-            {(recipe) => <option value={recipe.id}>{recipe.name}</option>}
+            {(recipe) => (
+              <option value={recipe.id} selected={draft()?.id === recipe.id}>
+                {recipe.name}
+              </option>
+            )}
           </For>
         </select>
       </label>
@@ -417,496 +457,548 @@ export default function RecipeEditor(props: {
                 }}
               />
             </label>
-            <fieldset disabled={saving()}>
-              <legend>Compatible geometry</legend>
-              <div class="button-row">
-                <For each={kinds}>
-                  {(kind) => (
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={recipe().geometryKinds.includes(kind)}
-                        onChange={(event) => {
-                          const checked = event.currentTarget.checked;
-                          change((current) => ({
-                            ...current,
-                            geometryKinds: checked
-                              ? [...current.geometryKinds, kind]
-                              : current.geometryKinds.filter(
-                                  (value) => value !== kind,
-                                ),
-                          }));
-                        }}
-                      />{' '}
-                      {kind}
-                    </label>
-                  )}
-                </For>
-              </div>
-            </fieldset>
-            <h3>Inputs</h3>
-            <For each={recipe().inputs} keyed={false}>
-              {(item, index) => (
-                <fieldset disabled={saving()} class="stack">
-                  <legend>Input {index + 1}</legend>
-                  <div class="button-row">
-                    <label class="field">
-                      Name
-                      <input
-                        value={item().name}
-                        onInput={(event) => {
-                          input(index, { name: event.currentTarget.value });
-                        }}
-                      />
-                    </label>
-                    <label class="field">
-                      Type
-                      <select
-                        value={item().type}
-                        onChange={(event) => {
-                          const type =
-                            event.currentTarget.value === 'boolean'
-                              ? 'boolean'
-                              : 'number';
-                          change((current) => ({
-                            ...current,
-                            inputs: current.inputs.map((field, at) => {
-                              if (at !== index) return field;
-                              const next: RecipeInput = {
-                                ...field,
-                                type,
-                                default: type === 'boolean' ? false : 0,
-                                unit: 'scalar' as const,
-                              };
-                              delete next.minimum;
-                              return next;
-                            }),
-                          }));
-                        }}
-                      >
-                        <option value="number">Number</option>
-                        <option value="boolean">Boolean</option>
-                      </select>
-                    </label>
-                    <label class="field">
-                      Unit
-                      <select
-                        value={item().unit}
-                        disabled={item().type === 'boolean'}
-                        onChange={(event) => {
-                          input(index, {
-                            unit: event.currentTarget.value as Unit,
-                          });
-                        }}
-                      >
-                        <For each={units}>
-                          {(unit) => <option value={unit}>{unit}</option>}
-                        </For>
-                      </select>
-                    </label>
-                    <Show
-                      when={item().type === 'number'}
-                      fallback={
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={item().default === true}
-                            onChange={(event) => {
-                              input(index, {
-                                default: event.currentTarget.checked,
-                              });
-                            }}
-                          />{' '}
-                          Default true
-                        </label>
-                      }
-                    >
-                      <label class="field">
-                        Default
+            <Show when={recipe().wallTemplate}>
+              {(template) => (
+                <fieldset disabled={saving()}>
+                  <legend>Wall template</legend>
+                  <p class="muted">
+                    Apply this template in Construction. Each wall gets an
+                    independent copy; editing this template does not change
+                    existing walls. Dimensions below use metres.
+                  </p>
+                  <ConstructionFields
+                    schema={wallTemplateSchema}
+                    value={template()}
+                    unit="m"
+                    controller={props.controller}
+                    onChange={(next) => {
+                      change((current) => ({
+                        ...current,
+                        wallTemplate: next as unknown as WallTemplate,
+                      }));
+                    }}
+                  />
+                </fieldset>
+              )}
+            </Show>
+            <Show when={!recipe().wallTemplate}>
+              <fieldset disabled={saving()}>
+                <legend>Compatible geometry</legend>
+                <div class="button-row">
+                  <For each={kinds}>
+                    {(kind) => (
+                      <label>
                         <input
-                          type="number"
-                          step="any"
-                          value={
-                            item().default === undefined
-                              ? ''
-                              : Number(item().default)
-                          }
-                          disabled={item().default === undefined}
+                          type="checkbox"
+                          checked={recipe().geometryKinds.includes(kind)}
                           onChange={(event) => {
-                            input(index, {
-                              default: event.currentTarget.valueAsNumber,
-                            });
+                            const checked = event.currentTarget.checked;
+                            change((current) => ({
+                              ...current,
+                              geometryKinds: checked
+                                ? [...current.geometryKinds, kind]
+                                : current.geometryKinds.filter(
+                                    (value) => value !== kind,
+                                  ),
+                            }));
+                          }}
+                        />{' '}
+                        {kind}
+                      </label>
+                    )}
+                  </For>
+                </div>
+              </fieldset>
+              <h3>Inputs</h3>
+              <For each={recipe().inputs} keyed={false}>
+                {(item, index) => (
+                  <fieldset disabled={saving()} class="stack">
+                    <legend>Input {index + 1}</legend>
+                    <div class="button-row">
+                      <label class="field">
+                        Name
+                        <input
+                          value={item().name}
+                          onInput={(event) => {
+                            input(index, { name: event.currentTarget.value });
                           }}
                         />
                       </label>
-                    </Show>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={item().default === undefined}
-                        onChange={(event) => {
-                          const required = event.currentTarget.checked;
-                          change((current) => ({
-                            ...current,
-                            inputs: current.inputs.map((field, at) => {
-                              if (at !== index) return field;
-                              const next = { ...field };
-                              if (required) delete next.default;
-                              else
-                                next.default =
-                                  field.type === 'boolean' ? false : 0;
-                              return next;
-                            }),
-                          }));
-                        }}
-                      />{' '}
-                      Required input (no default)
-                    </label>
-                    <Show when={item().type === 'number'}>
                       <label class="field">
-                        Minimum (optional)
-                        <input
-                          type="number"
-                          step="any"
-                          value={item().minimum ?? ''}
+                        Type
+                        <select
+                          value={item().type}
                           onChange={(event) => {
-                            const minimum =
-                              event.currentTarget.value === ''
-                                ? undefined
-                                : event.currentTarget.valueAsNumber;
+                            const type =
+                              event.currentTarget.value === 'boolean'
+                                ? 'boolean'
+                                : 'number';
+                            change((current) => ({
+                              ...current,
+                              inputs: current.inputs.map((field, at) => {
+                                if (at !== index) return field;
+                                const next: RecipeInput = {
+                                  ...field,
+                                  type,
+                                  default: type === 'boolean' ? false : 0,
+                                  unit: 'scalar' as const,
+                                };
+                                delete next.minimum;
+                                return next;
+                              }),
+                            }));
+                          }}
+                        >
+                          <option value="number">Number</option>
+                          <option value="boolean">Boolean</option>
+                        </select>
+                      </label>
+                      <label class="field">
+                        Unit
+                        <select
+                          value={item().unit}
+                          disabled={item().type === 'boolean'}
+                          onChange={(event) => {
+                            input(index, {
+                              unit: event.currentTarget.value as Unit,
+                            });
+                          }}
+                        >
+                          <For each={units}>
+                            {(unit) => <option value={unit}>{unit}</option>}
+                          </For>
+                        </select>
+                      </label>
+                      <Show
+                        when={item().type === 'number'}
+                        fallback={
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={item().default === true}
+                              onChange={(event) => {
+                                input(index, {
+                                  default: event.currentTarget.checked,
+                                });
+                              }}
+                            />{' '}
+                            Default true
+                          </label>
+                        }
+                      >
+                        <label class="field">
+                          Default
+                          <input
+                            type="number"
+                            step="any"
+                            value={
+                              item().default === undefined
+                                ? ''
+                                : Number(item().default)
+                            }
+                            disabled={item().default === undefined}
+                            onChange={(event) => {
+                              input(index, {
+                                default: event.currentTarget.valueAsNumber,
+                              });
+                            }}
+                          />
+                        </label>
+                      </Show>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={item().default === undefined}
+                          onChange={(event) => {
+                            const required = event.currentTarget.checked;
                             change((current) => ({
                               ...current,
                               inputs: current.inputs.map((field, at) => {
                                 if (at !== index) return field;
                                 const next = { ...field };
-                                if (minimum === undefined) delete next.minimum;
-                                else next.minimum = minimum;
+                                if (required) delete next.default;
+                                else
+                                  next.default =
+                                    field.type === 'boolean' ? false : 0;
                                 return next;
                               }),
                             }));
                           }}
-                        />
+                        />{' '}
+                        Required input (no default)
                       </label>
-                    </Show>
-                    <button
-                      class="danger"
-                      type="button"
-                      onClick={() => {
-                        change((current) => ({
-                          ...current,
-                          inputs: current.inputs.filter(
-                            (_, at) => at !== index,
-                          ),
-                        }));
-                      }}
-                    >
-                      Remove input
-                    </button>
-                  </div>
-                </fieldset>
-              )}
-            </For>
-            <button
-              type="button"
-              disabled={saving()}
-              onClick={() => {
-                change((current) => ({
-                  ...current,
-                  inputs: [
-                    ...current.inputs,
-                    {
-                      name: `input${String(current.inputs.length + 1)}`,
-                      type: 'number',
-                      unit: 'scalar',
-                      default: 1,
-                    },
-                  ],
-                }));
-              }}
-            >
-              Add input
-            </button>
-            <h3>Outputs</h3>
-            <p class="muted">
-              Use length, area, perimeter, count and declared input names.
-              Formulas support arithmetic, ceil, floor, round, min, max and
-              if(condition, yes, no). Output units must match the formula.
-            </p>
-            <details class="formula-reference">
-              <summary>Variables, units and formula reference</summary>
-              <p>
-                Path: <code>length</code>. Area: <code>area</code> and{' '}
-                <code>perimeter</code>. Count: <code>count</code>. Only the
-                measurements available for the drawing type can be used.
-              </p>
-              <p>
-                Inputs in this assembly:{' '}
-                {recipe()
-                  .inputs.map((input) => `${input.name} (${input.unit})`)
-                  .join(', ') || 'None'}
-                .
-              </p>
-              <p>
-                Arithmetic: <code>+ - * / ^</code>. Comparison:{' '}
-                <code>&lt; &lt;= &gt; &gt;= == !=</code>. Conditions:{' '}
-                <code>if(condition, yes, no)</code>. Functions:{' '}
-                <code>ceil, floor, round, min, max</code>.
-              </p>
-              <p>
-                Declared input units supply dimensions. For example,{' '}
-                <code>length * height * layers</code> produces area when height
-                is a length and layers is scalar. Units convert automatically to
-                the output unit. Plain numbers have no length or area unit.
-              </p>
-            </details>
-            <Show when={preview()}>
-              {(result) => (
-                <details class="formula-reference">
-                  <summary>Preview on selected drawing</summary>
-                  <p>
-                    Base quantities using this assembly's default inputs, before
-                    waste and package rounding. Preview does not save or assign
-                    the assembly.
-                  </p>
-                  <For each={result().outputs}>
-                    {(output) => (
-                      <div>
-                        <strong>
-                          {output.name}:{' '}
-                          {output.complete
-                            ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
-                            : 'Unavailable'}
-                        </strong>
-                        <For each={output.diagnostics}>
-                          {(message) => <p class="warning">{message}</p>}
-                        </For>
-                      </div>
-                    )}
-                  </For>
-                </details>
-              )}
-            </Show>
-            <For each={recipe().outputs} keyed={false}>
-              {(item, index) => (
-                <fieldset disabled={saving()} class="stack">
-                  <legend>Output {index + 1}</legend>
-                  <div class="button-row">
-                    <label class="field">
-                      Output name
-                      <input
-                        value={item().name}
-                        onInput={(event) => {
-                          output(index, { name: event.currentTarget.value });
-                        }}
-                      />
-                    </label>
-                    <label class="field">
-                      Material / product
-                      <input
-                        value={item().materialId}
-                        onInput={(event) => {
-                          output(index, {
-                            materialId: event.currentTarget.value,
-                          });
-                        }}
-                      />
-                    </label>
-                    <label class="field">
-                      Unit
-                      <select
-                        value={item().unit}
-                        onChange={(event) => {
-                          output(index, {
-                            unit: event.currentTarget.value as Unit,
-                          });
+                      <Show when={item().type === 'number'}>
+                        <label class="field">
+                          Minimum (optional)
+                          <input
+                            type="number"
+                            step="any"
+                            value={item().minimum ?? ''}
+                            onChange={(event) => {
+                              const minimum =
+                                event.currentTarget.value === ''
+                                  ? undefined
+                                  : event.currentTarget.valueAsNumber;
+                              change((current) => ({
+                                ...current,
+                                inputs: current.inputs.map((field, at) => {
+                                  if (at !== index) return field;
+                                  const next = { ...field };
+                                  if (minimum === undefined)
+                                    delete next.minimum;
+                                  else next.minimum = minimum;
+                                  return next;
+                                }),
+                              }));
+                            }}
+                          />
+                        </label>
+                      </Show>
+                      <button
+                        class="danger"
+                        type="button"
+                        onClick={() => {
+                          change((current) => ({
+                            ...current,
+                            inputs: current.inputs.filter(
+                              (_, at) => at !== index,
+                            ),
+                          }));
                         }}
                       >
-                        <For each={units}>
-                          {(unit) => <option value={unit}>{unit}</option>}
-                        </For>
-                      </select>
-                    </label>
-                  </div>
-                  <label class="field">
-                    Formula
-                    <input
-                      value={item().formula}
-                      onInput={(event) => {
-                        output(index, { formula: event.currentTarget.value });
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={!!item().piece}
-                      onChange={(event) => {
-                        const enabled = event.currentTarget.checked;
-                        change((current) => ({
-                          ...current,
-                          outputs: current.outputs.map((entry, at) => {
-                            if (at !== index) return entry;
-                            const next = { ...entry };
-                            if (enabled) {
-                              next.unit = 'ea';
-                              next.piece = {
-                                role: entry.name,
-                                cutLength: { formula: 'height', unit: 'ft' },
-                              };
-                            } else delete next.piece;
-                            return next;
-                          }),
-                        }));
-                      }}
-                    />{' '}
-                    Schedule pieces with cut lengths
-                  </label>
-                  <Show when={item().piece}>
-                    {(piece) => (
-                      <div class="stack">
+                        Remove input
+                      </button>
+                    </div>
+                  </fieldset>
+                )}
+              </For>
+              <button
+                type="button"
+                disabled={saving()}
+                onClick={() => {
+                  change((current) => ({
+                    ...current,
+                    inputs: [
+                      ...current.inputs,
+                      {
+                        name: `input${String(current.inputs.length + 1)}`,
+                        type: 'number',
+                        unit: 'scalar',
+                        default: 1,
+                      },
+                    ],
+                  }));
+                }}
+              >
+                Add input
+              </button>
+              <h3>Outputs</h3>
+              <p class="muted">
+                Use length, area, perimeter, count and declared input names.
+                Formulas support arithmetic, ceil, floor, round, min, max and
+                if(condition, yes, no). Output units must match the formula.
+              </p>
+              <details class="formula-reference">
+                <summary>Variables, units and formula reference</summary>
+                <p>
+                  Path: <code>length</code>. Area: <code>area</code> and{' '}
+                  <code>perimeter</code>. Count: <code>count</code>. Only the
+                  measurements available for the drawing type can be used.
+                </p>
+                <p>
+                  Inputs in this assembly:{' '}
+                  {recipe()
+                    .inputs.map((input) => `${input.name} (${input.unit})`)
+                    .join(', ') || 'None'}
+                  .
+                </p>
+                <p>
+                  Arithmetic: <code>+ - * / ^</code>. Comparison:{' '}
+                  <code>&lt; &lt;= &gt; &gt;= == !=</code>. Conditions:{' '}
+                  <code>if(condition, yes, no)</code>. Functions:{' '}
+                  <code>ceil, floor, round, min, max</code>.
+                </p>
+                <p>
+                  Declared input units supply dimensions. For example,{' '}
+                  <code>length * height * layers</code> produces area when
+                  height is a length and layers is scalar. Units convert
+                  automatically to the output unit. Plain numbers have no length
+                  or area unit.
+                </p>
+              </details>
+              <Show when={preview()}>
+                {(result) => (
+                  <details class="formula-reference">
+                    <summary>Preview on selected drawing</summary>
+                    <p>
+                      Base quantities using this assembly's default inputs,
+                      before waste and package rounding. Preview does not save
+                      or assign the assembly.
+                    </p>
+                    <For each={result().outputs}>
+                      {(output) => (
+                        <div>
+                          <strong>
+                            {output.name}:{' '}
+                            {output.complete
+                              ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
+                              : 'Unavailable'}
+                          </strong>
+                          <For each={output.diagnostics}>
+                            {(message) => <p class="warning">{message}</p>}
+                          </For>
+                        </div>
+                      )}
+                    </For>
+                  </details>
+                )}
+              </Show>
+              <Show when={recipe().components}>
+                <SystemComponents
+                  recipe={recipe()}
+                  available={[
+                    ...Object.values(props.controller.project()?.recipes ?? {}),
+                    ...Object.values(
+                      props.controller.library()?.assemblies ?? {},
+                    ),
+                  ].filter((assembly) => !assembly.wallTemplate)}
+                  onChange={(next) => {
+                    change(() => next);
+                  }}
+                />
+              </Show>
+              <Show when={!recipe().components}>
+                <For each={recipe().outputs} keyed={false}>
+                  {(item, index) => (
+                    <fieldset disabled={saving()} class="stack">
+                      <legend>Output {index + 1}</legend>
+                      <div class="button-row">
                         <label class="field">
-                          Piece role
+                          Output name
                           <input
-                            value={piece().role}
+                            value={item().name}
                             onInput={(event) => {
                               output(index, {
-                                piece: {
-                                  ...piece(),
-                                  role: event.currentTarget.value,
-                                },
+                                name: event.currentTarget.value,
                               });
                             }}
                           />
                         </label>
                         <label class="field">
-                          Cut length formula
+                          Material / product
                           <input
-                            value={piece().cutLength.formula}
+                            value={item().materialId}
                             onInput={(event) => {
                               output(index, {
-                                piece: {
-                                  ...piece(),
-                                  cutLength: {
-                                    ...piece().cutLength,
-                                    formula: event.currentTarget.value,
-                                  },
-                                },
+                                materialId: event.currentTarget.value,
                               });
                             }}
                           />
                         </label>
                         <label class="field">
-                          Stock length formula (optional)
-                          <input
-                            value={piece().stockLength?.formula ?? ''}
-                            onInput={(event) => {
-                              const next = { ...piece() };
-                              if (event.currentTarget.value)
-                                next.stockLength = {
-                                  formula: event.currentTarget.value,
-                                  unit: 'ft',
-                                };
-                              else delete next.stockLength;
-                              output(index, { piece: next });
+                          Unit
+                          <select
+                            value={item().unit}
+                            onChange={(event) => {
+                              output(index, {
+                                unit: event.currentTarget.value as Unit,
+                              });
                             }}
-                          />
+                          >
+                            <For each={units}>
+                              {(unit) => <option value={unit}>{unit}</option>}
+                            </For>
+                          </select>
                         </label>
-                        <p class="muted">
-                          Length formulas use declared length inputs. Pieces
-                          require whole-number quantities in ea. Stock length
-                          must cover the cut length; cutting several pieces from
-                          one stock length is not optimized.
-                        </p>
                       </div>
-                    )}
-                  </Show>
-                  <div class="button-row">
-                    <label class="field">
-                      Waste %
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        value={item().allowance.wastePercent}
-                        onChange={(event) => {
-                          output(index, {
-                            allowance: {
-                              ...item().allowance,
-                              wastePercent: event.currentTarget.valueAsNumber,
-                            },
-                          });
-                        }}
-                      />
-                    </label>
-                    <label class="field">
-                      Quantity per package (optional)
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        value={item().allowance.packageSize ?? ''}
-                        onChange={(event) => {
-                          output(index, {
-                            allowance: {
-                              wastePercent: item().allowance.wastePercent,
-                              ...(event.currentTarget.value === ''
-                                ? {}
-                                : {
-                                    packageSize:
-                                      event.currentTarget.valueAsNumber,
-                                  }),
-                            },
-                          });
-                        }}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      class="danger"
-                      onClick={() => {
-                        change((current) => ({
-                          ...current,
-                          outputs: current.outputs.filter(
-                            (_, at) => at !== index,
-                          ),
-                        }));
-                      }}
-                    >
-                      Remove output
-                    </button>
-                  </div>
-                </fieldset>
-              )}
-            </For>
-            <button
-              type="button"
-              disabled={saving()}
-              onClick={() => {
-                change((current) => ({
-                  ...current,
-                  outputs: [
-                    ...current.outputs,
-                    {
-                      id: crypto.randomUUID(),
-                      name: 'Output',
-                      materialId: 'material',
-                      unit: 'scalar',
-                      formula: '1',
-                      allowance: { wastePercent: 0 },
-                    },
-                  ],
-                }));
-              }}
-            >
-              Add output
-            </button>
-            <Show when={validation().length > 0}>
-              <div class="warning" role="status">
-                <strong>
-                  Formula check with sample measurements and default inputs
-                </strong>
-                <For each={validation()}>{(message) => <p>{message}</p>}</For>
-              </div>
+                      <label class="field">
+                        Formula
+                        <input
+                          value={item().formula}
+                          onInput={(event) => {
+                            output(index, {
+                              formula: event.currentTarget.value,
+                            });
+                          }}
+                        />
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={!!item().piece}
+                          onChange={(event) => {
+                            const enabled = event.currentTarget.checked;
+                            change((current) => ({
+                              ...current,
+                              outputs: current.outputs.map((entry, at) => {
+                                if (at !== index) return entry;
+                                const next = { ...entry };
+                                if (enabled) {
+                                  next.unit = 'ea';
+                                  next.piece = {
+                                    role: entry.name,
+                                    cutLength: {
+                                      formula: 'height',
+                                      unit: 'ft',
+                                    },
+                                  };
+                                } else delete next.piece;
+                                return next;
+                              }),
+                            }));
+                          }}
+                        />{' '}
+                        Schedule pieces with cut lengths
+                      </label>
+                      <Show when={item().piece}>
+                        {(piece) => (
+                          <div class="stack">
+                            <label class="field">
+                              Piece role
+                              <input
+                                value={piece().role}
+                                onInput={(event) => {
+                                  output(index, {
+                                    piece: {
+                                      ...piece(),
+                                      role: event.currentTarget.value,
+                                    },
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label class="field">
+                              Cut length formula
+                              <input
+                                value={piece().cutLength.formula}
+                                onInput={(event) => {
+                                  output(index, {
+                                    piece: {
+                                      ...piece(),
+                                      cutLength: {
+                                        ...piece().cutLength,
+                                        formula: event.currentTarget.value,
+                                      },
+                                    },
+                                  });
+                                }}
+                              />
+                            </label>
+                            <label class="field">
+                              Stock length formula (optional)
+                              <input
+                                value={piece().stockLength?.formula ?? ''}
+                                onInput={(event) => {
+                                  const next = { ...piece() };
+                                  if (event.currentTarget.value)
+                                    next.stockLength = {
+                                      formula: event.currentTarget.value,
+                                      unit: 'ft',
+                                    };
+                                  else delete next.stockLength;
+                                  output(index, { piece: next });
+                                }}
+                              />
+                            </label>
+                            <p class="muted">
+                              Length formulas use declared length inputs. Pieces
+                              require whole-number quantities in ea. Stock
+                              length must cover the cut length; cutting several
+                              pieces from one stock length is not optimized.
+                            </p>
+                          </div>
+                        )}
+                      </Show>
+                      <div class="button-row">
+                        <label class="field">
+                          Waste %
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={item().allowance.wastePercent}
+                            onChange={(event) => {
+                              output(index, {
+                                allowance: {
+                                  ...item().allowance,
+                                  wastePercent:
+                                    event.currentTarget.valueAsNumber,
+                                },
+                              });
+                            }}
+                          />
+                        </label>
+                        <label class="field">
+                          Quantity per package (optional)
+                          <input
+                            type="number"
+                            step="any"
+                            min="0"
+                            value={item().allowance.packageSize ?? ''}
+                            onChange={(event) => {
+                              output(index, {
+                                allowance: {
+                                  wastePercent: item().allowance.wastePercent,
+                                  ...(event.currentTarget.value === ''
+                                    ? {}
+                                    : {
+                                        packageSize:
+                                          event.currentTarget.valueAsNumber,
+                                      }),
+                                },
+                              });
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          class="danger"
+                          onClick={() => {
+                            change((current) => ({
+                              ...current,
+                              outputs: current.outputs.filter(
+                                (_, at) => at !== index,
+                              ),
+                            }));
+                          }}
+                        >
+                          Remove output
+                        </button>
+                      </div>
+                    </fieldset>
+                  )}
+                </For>
+                <button
+                  type="button"
+                  disabled={saving()}
+                  onClick={() => {
+                    change((current) => ({
+                      ...current,
+                      outputs: [
+                        ...current.outputs,
+                        {
+                          id: crypto.randomUUID(),
+                          name: 'Output',
+                          materialId: 'material',
+                          unit: 'scalar',
+                          formula: '1',
+                          allowance: { wastePercent: 0 },
+                        },
+                      ],
+                    }));
+                  }}
+                >
+                  Add output
+                </button>
+              </Show>
+              <Show when={validation().length > 0}>
+                <div class="warning" role="status">
+                  <strong>
+                    Formula check with sample measurements and default inputs
+                  </strong>
+                  <For each={validation()}>{(message) => <p>{message}</p>}</For>
+                </div>
+              </Show>
             </Show>
             <p role="alert">{error()}</p>
             <div class="button-row">

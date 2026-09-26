@@ -1,5 +1,5 @@
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { PDFDocumentLoadingTask, PDFDocumentProxy } from 'pdfjs-dist';
 import type { Sheet } from '../core/types';
 import { suggestSheetName, type SheetNameSuggestion } from './sheet-names';
 
@@ -8,6 +8,7 @@ GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
 /** Imported coordinates are the rotated, top-left PDF viewport at scale 1. */
 export class PdfDocuments {
   private readonly documents = new Map<string, Promise<PDFDocumentProxy>>();
+  private readonly loadingTasks = new Map<string, PDFDocumentLoadingTask>();
 
   constructor(
     private readonly readAsset: (id: string) => Promise<Uint8Array>,
@@ -16,19 +17,32 @@ export class PdfDocuments {
   private document(id: string, bytes?: Uint8Array): Promise<PDFDocumentProxy> {
     const existing = this.documents.get(id);
     if (existing) return existing;
-    const result = (async () => {
+    const result = Promise.resolve().then(async () => {
       const data = bytes ?? (await this.readAsset(id));
-      return getDocument({
-        // PDF.js transfers this buffer to its worker. Never detach stored bytes.
-        data: data.slice(),
+      if (this.documents.get(id) !== result)
+        throw new Error('PDF loading was cancelled');
+      const task = getDocument({
+        // Imports retain their caller's buffer; loaded assets are fresh owned bytes.
+        // PDF.js transfers the buffer to its worker.
+        data: bytes ? data.slice() : data,
         cMapUrl: '/pdfjs/cmaps/',
         cMapPacked: true,
         standardFontDataUrl: '/pdfjs/standard_fonts/',
         wasmUrl: '/pdfjs/wasm/',
-      }).promise;
-    })();
+      });
+      this.loadingTasks.set(id, task);
+      try {
+        return await task.promise;
+      } catch (error) {
+        if (this.loadingTasks.get(id) === task) this.loadingTasks.delete(id);
+        await task.destroy().catch(() => undefined);
+        throw error;
+      }
+    });
     this.documents.set(id, result);
-    void result.catch(() => this.documents.delete(id));
+    void result.catch(() => {
+      if (this.documents.get(id) === result) this.documents.delete(id);
+    });
     return result;
   }
 
@@ -109,10 +123,15 @@ export class PdfDocuments {
   }
 
   async clear(): Promise<void> {
-    const documents = [...this.documents.values()];
+    const tasks = [...this.loadingTasks.values()];
     this.documents.clear();
-    await Promise.allSettled(
-      documents.map(async (pending) => (await pending).loadingTask.destroy()),
-    );
+    this.loadingTasks.clear();
+    await Promise.allSettled(tasks.map((task) => task.destroy()));
+  }
+  async release(id: string): Promise<void> {
+    const task = this.loadingTasks.get(id);
+    this.documents.delete(id);
+    this.loadingTasks.delete(id);
+    if (task) await task.destroy();
   }
 }

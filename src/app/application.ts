@@ -1,3 +1,5 @@
+import { calculateProject } from '../core/calculations';
+import { quantityChanges } from '../core/construction-calculations';
 import { invoke } from '@tauri-apps/api/core';
 import {
   createProject,
@@ -18,9 +20,18 @@ import type {
   Sheet,
 } from '../core/types';
 import { createStorage } from '../platform/storage';
+import { NativeStorage } from '../platform/storage';
+import { emptyConstruction, generateConstruction } from '../core/construction';
+import {
+  buildConstructionScene,
+  constructionSceneInput,
+  defaultCamera,
+  renderConstruction,
+} from '../three/scene';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
-import { readNativeFile, writeOutput } from './files';
+import { readNativeFile, releaseNativeFile, writeOutput } from './files';
+import type { ImportedFile } from './files';
 import { applicationCommands, registry } from './registry';
 import { renderImage, type RenderOptions } from './render';
 
@@ -127,6 +138,10 @@ export class Application {
         };
       else if (!isApplication) {
         if (!this.session) throw new Error('Open or create a project first');
+        const beforePreview =
+          request.name === 'preview'
+            ? calculateProject(this.session.project)
+            : null;
         const result = await this.session.dispatch({
           ...request,
           ...this.observe(),
@@ -138,10 +153,127 @@ export class Application {
             : { expectedRevision: request.expectedRevision }),
         });
         data = result.preview
-          ? { preview: true, project: result.project, data: result.data }
+          ? {
+              preview: true,
+              project: result.project,
+              data: result.data,
+              quantityChanges: quantityChanges(
+                beforePreview ?? calculateProject(this.session.project),
+                calculateProject(result.project),
+              ),
+            }
           : result.data;
       } else
         switch (request.name) {
+          case 'project.backup':
+            if (!(this.storage instanceof NativeStorage) || !this.project)
+              throw new Error('File backups require an open desktop project');
+            data = {
+              path: await this.storage.backup(
+                payload.path as string | undefined,
+              ),
+            };
+            break;
+          case 'snippet.render': {
+            const project = this.project;
+            const snippet = project?.review?.snippets[payload.id as string];
+            if (!project || !snippet) throw new Error('Snippet not found');
+            const image = await renderImage(project, this.pdf, {
+              ...snippet,
+              highlightIds: snippet.geometryIds,
+              maxDimension:
+                (payload.maxDimension as number | undefined) ?? 2048,
+              label: `${project.sheets[snippet.sheetId]?.name ?? ''} · ${snippet.name}`,
+            });
+            const path = await writeOutput(
+              this.native,
+              `${snippet.name}.png`,
+              image.bytes,
+              payload.path as string,
+            );
+            data = { path, snippetId: snippet.id, ...image.metadata };
+            break;
+          }
+          case 'construction.render': {
+            const project = this.project;
+            if (!project) throw new Error('Open a project first');
+            if (
+              payload.levelId !== undefined &&
+              !project.construction?.levels[payload.levelId as string]
+            )
+              throw new Error('Level not found');
+            const result = generateConstruction(
+              project,
+              project.construction ?? emptyConstruction(),
+            );
+            const scene = buildConstructionScene(
+              constructionSceneInput(result),
+              {
+                ...(payload.levelId === undefined
+                  ? {}
+                  : {
+                      levelGeometryIds: [
+                        ...Object.values(project.construction?.walls ?? {}),
+                        ...Object.values(project.construction?.ceilings ?? {}),
+                      ]
+                        .filter((source) => source.levelId === payload.levelId)
+                        .map((source) => source.geometryId),
+                    }),
+                ...(payload.geometryIds === undefined
+                  ? {}
+                  : { geometryIds: payload.geometryIds as string[] }),
+                ...(payload.materialId === undefined
+                  ? {}
+                  : { materialId: payload.materialId as string }),
+                ...(payload.role === undefined
+                  ? {}
+                  : { role: payload.role as string }),
+              },
+            );
+            const canvas = document.createElement('canvas');
+            renderConstruction(canvas, scene, {
+              width: Math.min(
+                4096,
+                (payload.width as number | undefined) ?? 1600,
+              ),
+              height: Math.min(
+                4096,
+                (payload.height as number | undefined) ?? 1000,
+              ),
+              camera: {
+                ...defaultCamera,
+                ...(payload.azimuth === undefined
+                  ? {}
+                  : { yaw: payload.azimuth as number }),
+                ...(payload.elevation === undefined
+                  ? {}
+                  : { pitch: payload.elevation as number }),
+              },
+            });
+            const blob = await new Promise<Blob>((resolve, reject) => {
+              canvas.toBlob((value) => {
+                if (value) resolve(value);
+                else reject(new Error('PNG encoding failed'));
+              }, 'image/png');
+            });
+            const path = await writeOutput(
+              this.native,
+              'construction.png',
+              new Uint8Array(await blob.arrayBuffer()),
+              payload.path as string,
+            );
+            data = {
+              path,
+              width: canvas.width,
+              height: canvas.height,
+              revision: project.revision,
+              complete: result.complete,
+              diagnostics: result.diagnostics,
+              displayedObjects: scene.count,
+              omittedObjects: scene.omitted,
+            };
+            break;
+          }
           case 'library.inspect':
             this.library = await this.libraryStore.read();
             data = structuredClone(this.library);
@@ -279,10 +411,7 @@ export class Application {
     });
   }
 
-  importBytes(
-    file: { name: string; data: Uint8Array },
-    observation: Observation,
-  ): Promise<Sheet[]> {
+  importBytes(file: ImportedFile, observation: Observation): Promise<Sheet[]> {
     return this.schedule(() =>
       this.importNow(file, {
         name: 'project.import',
@@ -292,26 +421,26 @@ export class Application {
     );
   }
   private async importNow(
-    file: { name: string; data: Uint8Array },
+    file: ImportedFile,
     request: ApplicationRequest,
   ): Promise<Sheet[]> {
-    this.check(request);
-    const session = this.session;
-    if (!session) throw new Error('Open a project first');
     const id = crypto.randomUUID();
-    const sheets = await this.pdf.import(id, file.name, file.data);
-    const firstOrder =
-      Math.max(
-        -1,
-        ...Object.values(session.project.sheets).map(
-          (sheet) => sheet.order ?? sheet.pageIndex,
-        ),
-      ) + 1;
-    sheets.forEach((sheet, index) => {
-      sheet.order = firstOrder + index;
-    });
-    this.storage.stageAsset({ id, ...file });
     try {
+      this.check(request);
+      const session = this.session;
+      if (!session) throw new Error('Open a project first');
+      this.storage.stageAsset({ id, ...file });
+      const sheets = await this.pdf.import(id, file.name, file.data);
+      const firstOrder =
+        Math.max(
+          -1,
+          ...Object.values(session.project.sheets).map(
+            (sheet) => sheet.order ?? sheet.pageIndex,
+          ),
+        ) + 1;
+      sheets.forEach((sheet, index) => {
+        sheet.order = firstOrder + index;
+      });
       await session.dispatch({
         name: 'batch',
         payload: {
@@ -326,7 +455,10 @@ export class Application {
       return sheets;
     } catch (error) {
       this.storage.discardStagedAssets();
+      await this.pdf.release(id).catch(() => undefined);
       throw error;
+    } finally {
+      await releaseNativeFile(file);
     }
   }
 }

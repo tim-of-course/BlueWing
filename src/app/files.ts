@@ -1,13 +1,40 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { decodeBase64, encodeBase64 } from '../platform/base64';
-export async function readNativeFile(
-  path: string,
-): Promise<{ name: string; data: Uint8Array }> {
-  const file = await invoke<{ name: string; data: string }>('read_file', {
-    path,
-  });
-  return { name: file.name, data: decodeBase64(file.data) };
+import { encodeBase64 } from '../platform/base64';
+import { readNativeChunks } from '../platform/native-bytes';
+import type { Asset } from '../platform/storage-model';
+export type ImportedFile = Omit<Asset, 'id'>;
+export async function readNativeFile(path: string): Promise<ImportedFile> {
+  const file = await invoke<{ token: string; name: string; length: number }>(
+    'file_snapshot_open',
+    {
+      path,
+    },
+  );
+  try {
+    const data = await readNativeChunks(file.length, (offset, length) =>
+      invoke('file_snapshot_read', { token: file.token, offset, length }),
+    );
+    return {
+      name: file.name,
+      data,
+      nativeSource: { token: file.token, length: file.length },
+    };
+  } catch (error) {
+    await releaseNativeFile({ nativeSource: file });
+    throw error;
+  }
+}
+export async function releaseNativeFile(
+  file: Pick<ImportedFile, 'nativeSource'>,
+): Promise<void> {
+  if (file.nativeSource) {
+    // Cleanup cannot turn an already committed save into a reported failure.
+    // Closing the native database also releases any remaining temporary files.
+    await invoke('file_snapshot_release', {
+      token: file.nativeSource.token,
+    }).catch(() => undefined);
+  }
 }
 export async function chooseProject(
   create: boolean,
@@ -27,9 +54,7 @@ export async function chooseProject(
     filters,
   });
 }
-export async function choosePdf(
-  native: boolean,
-): Promise<{ name: string; data: Uint8Array } | null> {
+export async function choosePdf(native: boolean): Promise<ImportedFile | null> {
   if (native) {
     const path = await open({
       title: 'Import PDF plans',

@@ -29,6 +29,44 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'project.backup',
+    'Save a separate recovery copy of the open desktop project. Existing files are never overwritten.',
+    { path: string },
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'snippet.render',
+    'Export a saved highlighted snippet with sheet identity and coordinate mapping.',
+    {
+      id: string,
+      path: string,
+      maxDimension: { type: 'number', minimum: 64 },
+    },
+    ['id', 'path'],
+    false,
+    { id: 'snippet-1', path: '/path/detail.png' },
+  ),
+  entry(
+    'construction.render',
+    'Render the positioned construction as a bounded 3D PNG.',
+    {
+      path: string,
+      width: { type: 'number', minimum: 64 },
+      height: { type: 'number', minimum: 64 },
+      geometryIds: { type: 'array', items: string },
+      levelId: string,
+      materialId: string,
+      role: string,
+      azimuth: { type: 'number' },
+      elevation: { type: 'number' },
+    },
+    ['path'],
+    false,
+    { path: '/path/framing.png', width: 1600, height: 1000 },
+  ),
+  entry(
     'library.inspect',
     'Read this device’s global assembly library, independent of the project.',
     {},
@@ -115,6 +153,7 @@ export const applicationCommands = [
       path: string,
       maxDimension: { type: 'number', minimum: 64 },
       mode: { type: 'string', enum: ['plan', 'takeoff', 'combined'] },
+      highlightIds: { type: 'array', items: string },
       bounds: {
         type: 'object',
         properties: {

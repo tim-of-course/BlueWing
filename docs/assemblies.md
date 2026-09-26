@@ -39,7 +39,7 @@ Quantity CSV retains assembly/output totals and adds role and length columns. Pi
 | Acoustical wall panels            | Panel count and coverage from entered dimensions                                             | Separate products/dimensions use distinct assignments or objects.                                                                                                |
 | Acoustical ceiling 2x2 / 2x4 grid | Tile area, separate 2 ft/4 ft tee counts, main runner stock counts, wall angle stock counts  | Area/perimeter factors; no placed grid, border cuts or hangers.                                                                                                  |
 
-These are editable estimating templates, not a complete company catalog. The framework supports additional trades through project or global definitions. System bundles, automatic wall/opening relationships, detail-image references, and richer review tools remain later work.
+These are editable estimating templates, not a complete company catalog. The framework supports additional trades through project or global definitions. Component systems, authored wall/opening relationships, highlighted detail snippets, and review tools are available as described below. Construction details remain explicit project inputs.
 
 ## Acoustical ceiling grid estimates
 
@@ -82,11 +82,43 @@ All parameters go in the usual request `payload`. Library writes use their separ
 
 `assignment.put` accepts optional `geometryInputs`, a map from member geometry IDs to input overrides. Replacing an assignment is a complete-record write. Nonmember overrides are rejected. Removing a member or deleting geometry removes its overrides in the same undoable edit. Duplicating a group copies its assignments and overrides while retaining the geometry references.
 
-Project format 2 supports the extended records. Format 1 projects still open and upgrade on the next accepted edit; the format marker is saved in the same transaction as the records. The SQLite table layout is unchanged. Older app versions cannot open a format 2 project. Global library files use a separate version 1 format and atomic replacement, stored at the native app data directory's `data/assemblies.json`. Browser development stores its separate library in local storage. Nothing is synchronized between devices.
+Formats 1 and 2 remain readable. Formula-only edits use format 2; component systems, wall templates, construction, and review records require format 3. The first desktop save upgrading an older project to format 3 automatically creates a sibling backup before the atomic save. `project.backup` creates an additional recovery copy, optionally at an explicit new path, and never overwrites a file. Older apps cannot open format 3; use the pre-upgrade backup to return to them. The SQLite table layout is unchanged. Global library files retain their separate version 1 format and atomic replacement at the native app data directory's `data/assemblies.json`; browser development uses local storage. Nothing is synchronized between devices.
 
-Native bridge version 2 adds generic `app_data_read` and `app_data_write` operations. Newly built web-release manifests require bridge 2.
+Native bridge version 4 supplies generic database backups, immutable temporary file snapshots, and bounded file/BLOB transfers, alongside the existing app-data operations. Current web releases require bridge 4.
+
+## Component systems and wall templates
+
+Project and global libraries can hold a system whose `components` contain copied assembly definitions. Each component has a stable `id`, an `assembly` snapshot, and `bindings` mapping component input names to shared system input names. Compatible numeric units convert when bound. Unbound inputs use component defaults; required missing inputs remain diagnostics. Systems have no direct outputs and cannot nest systems. Editing a source assembly or a global original does not update an existing component snapshot or project copy. System outputs use the ordinary assignment, per-object override, quantity, and piece-schedule paths.
+
+A wall template is a separate assembly with `wallTemplate`, path geometry, and empty inputs/outputs. It supplies reusable dimensions, member specifications, finishes, and backing. It excludes instance IDs, geometry, level, top profile, and conditions. Apply it in Construction or with `wall.fromAssembly` using `assemblyId`, `geometryId`, `id`, and optional `height`. This copies the template specification into an independent authored wall; subsequent template edits do not update it. Reapplying to an existing wall retains its level, top profile, conditions, and openings. Supplying an explicit `height` removes the existing top profile so the height override takes effect. A new wall starts without those contextual relationships. Wall templates are not formula assignments or system components.
+
+## Authored construction
+
+Open **Construction** to select or create walls, openings, header details, levels, sheet placements, and ceilings. Structured fields edit dimensions, member specifications, conditions, finishes, and backing. **Preview quantities** shows calculated material changes without saving; save applies the edit through the shared command/Undo path. Missing heights and other unresolved inputs remain visible in diagnostics.
+
+Construction lengths are metres, areas are square metres, and rotations are radians. World Z points upward. Drawing geometry and placement `pageOrigin` remain in unzoomed page coordinates; calibration, `worldOffset`, and placement rotation align the sheets. Level elevation and wall base elevation locate walls vertically. Choose Plan, 3D, or split view and filter by level, material, role, or selected geometry. Clicking a member selects its drawing source. Filters and selections change the view, not generated quantities or CSV scope.
+
+Walls follow their path, spacing, offsets, and constant, sloped, or stepped top. Exact stud and jamb lengths use the local top less the explicitly entered `topAllowance` and `bottomAllowance`, both defaulting to zero. Channel flange envelopes do not deduct from stud cuts. End/corner/junction conditions replace regular studs at their station; shared conditions name `ownerWallId`. Multiple members need explicit `memberOffsets`, and multiple jambs need `jambOffsets`. The app does not infer shared framing or engineering from intersecting lines.
+
+An opening's `distance` is its first rough edge along the wall, and `width` is the rough opening width. Nominal jamb centres lie half the rotated section width outside each rough edge. Positive jamb `along` offsets move farther into framing, mirrored on the two sides; face offsets follow the wall normal. Sill and height locate the rough head above the wall base. Each header component specifies its material/section, role, start/end extensions, vertical/face offsets, and optional section rotation. Its cut is rough width plus both extensions; its centreline offsets are relative to the rough head. Enter every component of a box header from its project detail. Header envelopes bound affected cripple cuts.
+
+Members render as rectangular section envelopes, not fabricated metal profiles. Enter structural sizes, gauges, connections, and details from the project; the app does not design them. Bent and stepped tracks show centreline lengths but report unresolved joint/end-cut details. Such diagnostics leave schedules provisional and incomplete.
+
+Finish surfaces subtract openings and account for product, face, layers, height, thickness, additional area deductions, waste, and packages. Quantities and 3D use the same generated pieces and surfaces; construction counts and finish areas appear in ordinary Quantities and its exports. Avoid assigning a formula estimate to duplicate the same construction scope. Ceiling 2x2/2x4 estimates above are unchanged: ceiling surfaces default to `quantityMode: "reference"`, rendering extent/elevation without adding tile quantities. Set `included` only when that surface should contribute area.
+
+Construction generation shares a 50,000-piece/surface budget. Reaching it produces diagnostics and incomplete quantities. The scene separately caps display at 4,000 objects and shows the omitted count. Construction CSV includes all generated pieces, including those outside scene filters or its display cap; generation-budget omissions remain missing and incomplete.
+
+## Snippets and review
+
+Open **Review** to manage source status and saved plan/detail snippets. A snippet stores sheet/page bounds, source references, highlighted geometry IDs, annotations with page-coordinate points, labels/colors, and a note. Sources can reference geometry, walls, openings, assemblies, headers, or ceilings. PNG export retains sheet identity and coordinate mapping for locating the crop on its source page.
+
+Mark a source `needs-review`, `question`, or `reviewed`. Reviewing saves a dependency fingerprint. Relevant changes to geometry, calibration, construction, level/placement, assignments, or linked snippets make the effective status `changed`; review again after resolving them. Review also lists unreviewed sources, while construction diagnostics identify unresolved inputs. Review status records estimator review, not engineering approval.
+
+Use `wall.put`/`delete`, `opening.put`/`delete`, `header.put`/`delete`, `level.put`/`delete`, `placement.put`/`delete`, and `ceiling.put`/`delete` for full records. `construction.inspect`, `construction.export`, and `construction.render` expose derived results. `snippet.put`/`delete`/`render` and `review.mark`/`inspect` use the same records as the UI. See [CLI details](cli.md#detailed-takeoff).
 
 ## Validation and remaining examples to check
+
+The dated results below describe the earlier assembly and ceiling work. Current detailed-takeoff checks and pending results are recorded separately in [the implementation report](detailed-takeoff.md). The new desktop workflow is `tests/desktop/detailed.py`; its existence is not a passing result.
 
 Automated assembly examples are in `tests/core/assemblies.test.ts`; global persistence/failure checks are in `tests/core/assembly-library.test.ts`. Browser workflows are in `tests/browser/assemblies.ts`; the actual desktop/CLI workflow is `tests/desktop/assemblies.py`.
 

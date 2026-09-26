@@ -1,12 +1,12 @@
 # Bluewing restart brief
 
-Restart direction and MVP decisions, September 16, 2026. Implementation recommendations are identified separately from confirmed product choices.
+Restart direction and MVP decisions, September 16, 2026, updated for detailed takeoff on September 25, 2026. Implementation recommendations are identified separately from confirmed product choices.
 
 Build a small, dependable takeoff application whose ordinary features can be developed and delivered as a web application. The first users are a small group working in the desktop app with AI assistance through its CLI. Progress means completing real estimating workflows and being able to change them without breaking unrelated behavior.
 
 The previous PlanVyper application is a reference. **Its code, documentation, tests, and architecture are not authoritative, necessarily correct, or necessarily the best approach.** Use it to recover useful behavior and visual decisions. Resolve disagreements using the new product decisions and independently checked examples.
 
-**Decision status.** Confirmed directions are TypeScript application logic, SolidJS 2 with an exact-pinned toolchain, a small Rust native adapter, web application updates, a desktop-dependent CLI, independent geometry with snapping, flat reusable groups with recipe assignments, session undo/redo with reliable saving, and reuse of the interface design. Calculations include editable formulas, inputs with declared types and units, multiple outputs, source explanations, waste allowances, and whole-package rounding. Layers, nested groups, detailed construction-piece layouts, and recipe publishing/version migration are deferred. Other MVP cuts below are recommendations.
+**Decision status.** Confirmed directions are TypeScript application logic, SolidJS 2 with an exact-pinned toolchain, a small Rust native adapter, web application updates, a desktop-dependent CLI, independent geometry with snapping, flat reusable groups with recipe assignments, session undo/redo with reliable saving, and reuse of the interface design. Calculations include editable formulas, inputs with declared types and units, multiple outputs, source explanations, waste allowances, and whole-package rounding. Authored wall layouts, component systems, snippets, and review status are implemented. Layers, nested groups, and recipe publishing/version migration are deferred. Other MVP cuts below are recommendations.
 
 ## A small useful MVP
 
@@ -22,7 +22,7 @@ Initial scope:
 - One command path for UI and CLI, reliable saving, and session undo/redo.
 - The existing layout adapted to these features, with offline use after the web application has been installed/cached.
 
-Confirmed deferrals include automatic shared junctions, Layers and nested groups, a permanent historical timeline, detailed placement of construction pieces, and recipe publishing/version migration. Also recommended for later are automatic room finding, scale regions, overlays, alternate estimates, collaboration, and cloud project synchronization. Add these when a real workflow requires them, without implementing placeholder systems in advance.
+Confirmed deferrals include automatic shared junctions, Layers and nested groups, a permanent historical timeline, and recipe publishing/version migration. Also recommended for later are automatic room finding, scale regions, overlays, alternate estimates, collaboration, and cloud project synchronization. Add these when a real workflow requires them, without implementing placeholder systems in advance.
 
 ## Ownership and runtime
 
@@ -77,15 +77,15 @@ For example, one wall can belong to an assembly group for framing and insulation
 
 A recipe consumes measured metrics and explicit inputs, then returns outputs with units and an explanation. Keep recipe definitions as project data. **The confirmed authoring scope includes editable named inputs and formulas, multiple outputs, units/dimension checks, and source explanations.** Use a constrained evaluator over declared metrics and inputs, with ordinary arithmetic and useful functions such as rounding, minimum/maximum, and conditions.
 
-Assemblies calculate material amounts and formula-based piece schedules from measurements and entered detail dimensions. Physical placement of individual construction pieces remains deferred:
+Assemblies calculate material amounts and formula-based piece schedules from measurements and entered detail dimensions. Authored construction adds positioned wall framing and finish surfaces from explicit project details. Formula-only estimates remain available.
 
-| Job           | Included in the MVP                                                                                                          | Deferred                                                                                                |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| Drywall       | Calculate wall area and material layers, allow for waste, and round the amount up to whole sheets.                           | Place individual sheets, work out cuts and seams, or reuse offcuts.                                     |
-| Wall framing  | Estimate stud quantities with a formula using wall length and spacing.                                                       | Place individual studs and resolve their arrangement around corners, intersections, doors, and windows. |
-| Ceiling tiles | Calculate tile area and estimate 2 ft/4 ft tees, mains and wall angle from area/perimeter; allow waste and package rounding. | Lay out a grid and derive full/cut tiles, rails, and hangers from that layout.                          |
+| Job           | Implemented                                                                                                                                               | Still outside scope                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Drywall       | Net wall finish area by product, face, and layers, with opening deductions, waste, and packages.                                                          | Individual board placement, seams, cut optimization, and offcut reuse.                                          |
+| Wall framing  | Authored walls/openings, elevations, sloped or stepped tops, positioned members, component headers, backing, and explicit end/corner/junction conditions. | Inferred engineering or automatic shared-junction design; bent/stepped track joints still need project details. |
+| Ceiling tiles | Existing 2x2/2x4 area/perimeter grid estimates, plus reference ceiling extents and elevations in 3D.                                                      | Placed grid, border cuts, rails, and hangers derived from a layout.                                             |
 
-A formula estimate does not claim the same accuracy or detail as a piece layout. The old code calls the deferred layout algorithms "generators."
+Counts, cuts, finish quantities, and 3D views derive from the same generated construction pieces and surfaces. Ordinary Quantities and exports include those results. Assigning a formula estimate for the same material scope adds another contribution.
 
 Initially evaluate each assignment against each compatible group member, retaining the source result before summing compatible outputs. Height, spacing, and similar estimating inputs belong to the recipe assignment rather than the drawing's points.
 
@@ -93,9 +93,9 @@ Initially evaluate each assignment against each compatible group member, retaini
 
 For example, 100 sq ft of calculated material plus 10% waste gives 110 sq ft. At 32 sq ft per sheet, the order is 4 sheets covering 128 sq ft. Show the base amount, waste allowance, package count, and purchased coverage separately. Retain each object's base contribution; the extra allowance and package rounding belong to the group result. Advanced scrap formulas and stacked override rules from the old app are not required for this first implementation.
 
-Calculations never mutate authored geometry. A future piece-layout calculation can return quantities or a proposed arrangement. Accepting that arrangement as editable drawing objects would be an explicit command, keeping calculated results separate from user-authored geometry.
+Calculations never mutate authored geometry. Construction records reference authored geometry and generate derived pieces and surfaces; generated pieces do not become editable drawing objects.
 
-Project assemblies extend the recipe records with categories, descriptions, detail references, required inputs, per-object assignment overrides, and optional piece cut/stock lengths. A device-local global library stores reusable definitions; import makes an independent project copy. Saving a project definition to the library is explicit. Global changes do not alter existing project copies or use project Undo. See `docs/assemblies.md` for scope, CLI commands, and test examples. Review tools and automatic wall/opening framing remain deferred.
+Project assemblies extend the recipe records with categories, descriptions, detail references, required inputs, per-object assignment overrides, and optional piece cut/stock lengths. A device-local global library stores reusable definitions; import makes an independent project copy. Saving a project definition to the library is explicit. Global changes do not alter existing project copies or use project Undo. Component systems store independent assembly snapshots with shared inputs. Wall templates are separate reusable construction snapshots, applied explicitly with `wall.fromAssembly`; later template edits do not change authored walls. See [Assemblies](assemblies.md) for scope, CLI commands, and examples.
 
 Project recipes are independent copies of any starter library. Updating the app or starter library does not silently replace a project's recipe definition. Editing a project recipe updates the groups using it through one undoable command; Undo restores the previous recipe. Keep ordinary editable project recipes in the MVP. Defer publishing, archiving, pinned recipe revisions, and choosing which assignments migrate to a newer revision.
 
@@ -115,7 +115,7 @@ Store the current project, not an event-sourced reconstruction of every past ent
 
 SQLite is a reasonable proposed container for current records and imported source assets. Keep SQL mapping and migrations in TypeScript; Rust executes generic, bounded transactions on an opened project connection. Ordinary edits update affected records without copying PDFs or all history. Use one writable application session per project in the MVP. Opening the same project in another writer is outside that scope.
 
-The implementation uses a `.bluewing` SQLite container with format version 2. Version 1 remains readable and upgrades atomically on the next accepted edit. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
+The implementation uses a `.bluewing` SQLite container. Formats 1 and 2 remain readable; formula-only edits use format 2, while construction, review, component systems, or wall templates require format 3. Before an older desktop project first saves as format 3, an automatic sibling backup preserves its pre-upgrade file. `project.backup` also creates an explicit recovery copy. Generic native bridge 4 supplies backups and bounded file/BLOB transfers. Upgrades save atomically with the edited records; older apps cannot open format 3. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
 
 Version the new project format. Importing old project files is a separate need to confirm, not a reason to inherit the old database schema. Add explicit migrations when the new model evolves rather than building representations for unimplemented future features.
 
@@ -133,7 +133,7 @@ For the simplest first implementation, return an actionable error if the desktop
 
 Use the current SolidJS interface as the visual reference: dark canvas-centered layout, left sheet navigator, right contextual inspector, tool rail at the far right, collapsible panels, and a bottom status bar. Retain its density, spacing, colors, keyboard affordances, and panel behavior where they help the smaller workflow.
 
-Initially expose the drawing and quantities workspaces, with groups accessible from navigation and recipe assignments in the contextual inspector. A session undo stack does not require the existing History workspace. Hide deferred features instead of building inactive navigation around them.
+Expose drawing and quantities workspaces, with groups accessible from navigation and recipe assignments in the contextual inspector. Structured Construction and Review panels author walls, openings, header components, levels, sheet placements, ceilings, source snippets, and review marks. Plan, 3D, and split views link source selection; level, material, role, and selection filters affect the view, not the estimate. A session undo stack does not require the existing History workspace. Hide deferred features instead of building inactive navigation around them.
 
 **Compact functionality takes priority.** The user's PlanSwift reference (`2998.jpg`) calls for a dense sheet/group tree with one-line rows, clear indentation, measured totals, color swatches, visibility controls, and a compact search. Keep the modern styling while making common work available directly in those rows. Full-canvas crosshairs follow the mouse; general navigation help belongs in the status bar, leaving the plan unobstructed.
 
@@ -193,3 +193,13 @@ Use focused domain examples and a few complete workflows to check these boundari
 Use the local Behavioral Health Group permit set dated March 27, 2026 as a real import/rendering reference. It has 15 sheets, including the A2.0 new-work floor plan. The source PDF is in the user's Downloads directory and is not committed to the repository. It supplements the independent wall, area, count, and package-rounding examples; it is not a complete MVP acceptance specification.
 
 Keep the project in Git and save useful working checkpoints after the relevant checks pass. The reference repository remains separate.
+
+## Detailed construction and review
+
+Construction dimensions use metres and rotations use radians, with world Z upward. Drawing points, snippet bounds/annotations, and sheet placement `pageOrigin` stay in page coordinates; calibrated sheet placement maps them into the model. Exact stud/jamb cuts use the local wall top less explicit top and bottom allowances. Track channel flanges are display envelopes and impose no automatic cut deductions. Header component cuts use rough opening width plus entered end extensions; vertical and face offsets and section rotation position each component. Jamb centres sit outside the rough opening width by half their rotated section width, plus explicit offsets.
+
+Shared conditions name their owning wall and multiple members need explicit positions. Sizes, gauges, connections, and engineering come from the project. Rectangular section envelopes support placement and quantities, not metal-profile fabrication. Bent or stepped track joints still need project joint/end-cut details; diagnostics keep schedules incomplete. Reference ceiling surfaces are the default and add no quantities, avoiding duplicate tile area alongside ceiling estimates.
+
+Review stores source references, highlighted snippets, annotations, notes, and status. Relevant source/dependency edits invalidate a reviewed fingerprint and show changed status. Preview quantities calculates material changes without saving. Neither review status nor successful arithmetic establishes engineering adequacy or a complete building takeoff.
+
+Generation shares a 50,000-piece/surface budget and reports incomplete results at the limit. The 3D scene displays at most 4,000 objects and visibly reports omissions. Construction CSV includes all generated pieces regardless of scene filters or selection, but cannot include pieces omitted by the generation budget. Current validation and pending checks belong in [the detailed-takeoff report](detailed-takeoff.md), separate from older verification records.

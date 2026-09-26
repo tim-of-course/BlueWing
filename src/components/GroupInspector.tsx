@@ -1,3 +1,5 @@
+import type { Recipe } from '../core/types';
+import { assemblyOutputs } from '../core/systems';
 import AssemblyInputs from './AssemblyInputs';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
@@ -403,7 +405,13 @@ export default function GroupInspector(props: Props) {
                       }}
                     />
                     <For
-                      each={recipe()?.outputs ?? []}
+                      each={
+                        recipe()
+                          ? assemblyOutputs(recipe() as Recipe).map(
+                              (entry) => entry.output,
+                            )
+                          : []
+                      }
                       keyed={(output) => output.id}
                     >
                       {(output) => (

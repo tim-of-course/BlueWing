@@ -218,8 +218,8 @@ export default function Quantities(props: {
                     </thead>
                     <tbody>
                       <For
-                        each={output().sources}
-                        keyed={(source) => source.geometryId}
+                        each={output().sources.slice(0, 300)}
+                        keyed={(source) => source.pieceId ?? source.geometryId}
                       >
                         {(source) => (
                           <tr>
@@ -262,6 +262,12 @@ export default function Quantities(props: {
                       </For>
                     </tbody>
                   </table>
+                  <Show when={output().sources.length > 300}>
+                    <p class="muted">
+                      Showing 300 of {output().sources.length} contributions.
+                      Exports include every contribution.
+                    </p>
+                  </Show>
                 </details>
               )}
             </For>

@@ -41,9 +41,14 @@ export default function PieceSchedule(props: {
           </thead>
           <tbody>
             <For
-              each={rows()}
+              each={rows().slice(0, 300)}
               keyed={(row) =>
-                JSON.stringify([row.assignmentId, row.outputId, row.geometryId])
+                JSON.stringify([
+                  row.assignmentId,
+                  row.outputId,
+                  row.geometryId,
+                  row.pieceId,
+                ])
               }
             >
               {(row) => (
@@ -63,6 +68,12 @@ export default function PieceSchedule(props: {
             </For>
           </tbody>
         </table>
+        <Show when={rows().length > 300}>
+          <p class="muted">
+            Showing 300 of {rows().length} pieces. CSV and JSON exports include
+            every piece.
+          </p>
+        </Show>
       </details>
     </Show>
   );

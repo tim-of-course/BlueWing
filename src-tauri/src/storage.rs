@@ -5,9 +5,85 @@ use rusqlite::{
     params_from_iter,
     types::{Value as SqlValue, ValueRef},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use std::{fs::File, fs::OpenOptions, io::Write, path::Path};
+use std::{
+    collections::HashMap,
+    fs::File,
+    fs::OpenOptions,
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
+};
+
+pub const MAX_CHUNK_LENGTH: u64 = 1024 * 1024;
+const COPY_BUFFER_LENGTH: usize = 64 * 1024;
+pub type Snapshots = HashMap<String, FileSnapshot>;
+
+pub struct FileSnapshot {
+    file: File,
+    length: u64,
+}
+
+#[derive(Serialize)]
+pub struct SnapshotInfo {
+    pub token: String,
+    pub name: String,
+    pub length: u64,
+}
+
+pub fn snapshot_open(snapshots: &mut Snapshots, path: &Path) -> Result<SnapshotInfo, String> {
+    let name = path
+        .file_name()
+        .ok_or("File has no name")?
+        .to_string_lossy()
+        .into_owned();
+    let mut source = File::open(path).map_err(|e| e.to_string())?;
+    let mut file = tempfile::tempfile().map_err(|e| e.to_string())?;
+    let mut buffer = [0; COPY_BUFFER_LENGTH];
+    let mut length = 0;
+    loop {
+        let count = source.read(&mut buffer).map_err(|e| e.to_string())?;
+        if count == 0 {
+            break;
+        }
+        file.write_all(&buffer[..count])
+            .map_err(|e| e.to_string())?;
+        length += count as u64;
+    }
+    let token = uuid::Uuid::new_v4().to_string();
+    snapshots.insert(token.clone(), FileSnapshot { file, length });
+    Ok(SnapshotInfo {
+        token,
+        name,
+        length,
+    })
+}
+
+fn chunk_length(total: u64, offset: u64, length: u64) -> Result<usize, String> {
+    if length > MAX_CHUNK_LENGTH {
+        return Err("Read length exceeds 1 MiB".into());
+    }
+    if offset.checked_add(length).is_none_or(|end| end > total) {
+        return Err("Read range is outside the data".into());
+    }
+    Ok(length as usize)
+}
+
+pub fn snapshot_read(
+    snapshots: &Snapshots,
+    token: &str,
+    offset: u64,
+    length: u64,
+) -> Result<Vec<u8>, String> {
+    let snapshot = snapshots.get(token).ok_or("Unknown file snapshot token")?;
+    let length = chunk_length(snapshot.length, offset, length)?;
+    let mut file = &snapshot.file;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|e| e.to_string())?;
+    let mut data = vec![0; length];
+    file.read_exact(&mut data).map_err(|e| e.to_string())?;
+    Ok(data)
+}
 
 pub struct Database {
     // Drop SQLite before releasing the application's exclusive writer lock.
@@ -19,6 +95,15 @@ pub struct Database {
 pub struct Statement {
     pub sql: String,
     pub params: Vec<Value>,
+    #[serde(default)]
+    pub blob: Option<BlobSource>,
+}
+
+#[derive(Deserialize)]
+pub struct BlobSource {
+    pub token: String,
+    pub table: String,
+    pub column: String,
 }
 
 impl Database {
@@ -134,7 +219,36 @@ impl Database {
         result
     }
 
+    #[cfg(test)]
     pub fn transaction(&mut self, statements: Vec<Statement>) -> Result<(), String> {
+        self.transaction_with_snapshots(statements, &Snapshots::new())
+    }
+
+    pub fn read_blob(
+        &self,
+        table: &str,
+        column: &str,
+        row_id: i64,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, String> {
+        let mut blob = self
+            .connection
+            .blob_open("main", table, column, row_id, true)
+            .map_err(|e| e.to_string())?;
+        let length = chunk_length(blob.len() as u64, offset, length)?;
+        blob.seek(SeekFrom::Start(offset))
+            .map_err(|e| e.to_string())?;
+        let mut data = vec![0; length];
+        blob.read_exact(&mut data).map_err(|e| e.to_string())?;
+        Ok(data)
+    }
+
+    pub fn transaction_with_snapshots(
+        &mut self,
+        statements: Vec<Statement>,
+        snapshots: &Snapshots,
+    ) -> Result<(), String> {
         let transaction = self
             .connection
             .transaction()
@@ -146,6 +260,36 @@ impl Database {
                 transaction
                     .execute(&statement.sql, params_from_iter(params))
                     .map_err(|error| error.to_string())?;
+                if let Some(source) = statement.blob {
+                    let snapshot = snapshots
+                        .get(&source.token)
+                        .ok_or("Unknown file snapshot token")?;
+                    let mut blob = transaction
+                        .blob_open(
+                            "main",
+                            source.table.as_str(),
+                            source.column.as_str(),
+                            transaction.last_insert_rowid(),
+                            false,
+                        )
+                        .map_err(|e| e.to_string())?;
+                    if blob.len() as u64 != snapshot.length {
+                        return Err("BLOB size does not match file snapshot length".into());
+                    }
+                    let mut file = &snapshot.file;
+                    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+                    let mut remaining = snapshot.length;
+                    let mut buffer = [0; COPY_BUFFER_LENGTH];
+                    while remaining > 0 {
+                        let count = remaining.min(buffer.len() as u64) as usize;
+                        file.read_exact(&mut buffer[..count])
+                            .map_err(|e| e.to_string())?;
+                        blob.write_all(&buffer[..count])
+                            .map_err(|e| e.to_string())?;
+                        remaining -= count as u64;
+                    }
+                    blob.close().map_err(|e| e.to_string())?;
+                }
             }
             Ok(())
         })();
@@ -266,10 +410,128 @@ pub fn read_file(path: &Path) -> Result<Value, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn snapshot_is_independent_and_reads_are_bounded() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("source.bin");
+        let original = vec![42; MAX_CHUNK_LENGTH as usize + 5];
+        std::fs::write(&path, &original).unwrap();
+        let mut snapshots = Snapshots::new();
+        let info = snapshot_open(&mut snapshots, &path).unwrap();
+        assert_eq!(info.name, "source.bin");
+        assert_eq!(info.length, original.len() as u64);
+        std::fs::write(&path, b"changed").unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(
+            snapshot_read(&snapshots, &info.token, 0, MAX_CHUNK_LENGTH).unwrap(),
+            original[..MAX_CHUNK_LENGTH as usize]
+        );
+        assert_eq!(
+            snapshot_read(&snapshots, &info.token, MAX_CHUNK_LENGTH, 5).unwrap(),
+            [42; 5]
+        );
+        assert!(snapshot_read(&snapshots, &info.token, 0, MAX_CHUNK_LENGTH + 1).is_err());
+        assert!(snapshot_read(&snapshots, &info.token, info.length, 1).is_err());
+        assert!(snapshot_read(&snapshots, &info.token, u64::MAX, 1).is_err());
+        assert!(
+            snapshot_read(&snapshots, &info.token, info.length, 0)
+                .unwrap()
+                .is_empty()
+        );
+        snapshots.remove(&info.token);
+        assert!(snapshot_read(&snapshots, &info.token, 0, 1).is_err());
+    }
+
+    #[test]
+    fn snapshot_blob_transactions_roundtrip_and_rollback() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("source.bin");
+        let bytes: Vec<u8> = (0..COPY_BUFFER_LENGTH * 2 + 7)
+            .map(|i| (i % 251) as u8)
+            .collect();
+        std::fs::write(&path, &bytes).unwrap();
+        let mut snapshots = Snapshots::new();
+        let info = snapshot_open(&mut snapshots, &path).unwrap();
+        let mut database = Database::open(&directory.path().join("project.db"), true).unwrap();
+        database
+            .transaction(vec![statement(
+                "CREATE TABLE items (id INTEGER PRIMARY KEY, data BLOB)",
+                vec![],
+            )])
+            .unwrap();
+        let insert = |token: &str, length: u64| Statement {
+            sql: "INSERT INTO items(data) VALUES (zeroblob(?))".into(),
+            params: vec![json!(length)],
+            blob: Some(BlobSource {
+                token: token.into(),
+                table: "items".into(),
+                column: "data".into(),
+            }),
+        };
+        database
+            .transaction_with_snapshots(vec![insert(&info.token, info.length)], &snapshots)
+            .unwrap();
+        assert_eq!(
+            database
+                .read_blob("items", "data", 1, 0, info.length)
+                .unwrap(),
+            bytes
+        );
+        assert_eq!(
+            database.read_blob("items", "data", 1, 65530, 20).unwrap(),
+            bytes[65530..65550]
+        );
+        assert!(
+            database
+                .read_blob("items", "data", 1, info.length, 1)
+                .is_err()
+        );
+        assert!(
+            database
+                .read_blob("items", "data", 1, 0, MAX_CHUNK_LENGTH + 1)
+                .is_err()
+        );
+        assert!(database.read_blob("items", "data", 999, 0, 1).is_err());
+        for failure in [
+            insert("missing", info.length),
+            insert(&info.token, info.length - 1),
+            statement("invalid SQL", vec![]),
+        ] {
+            assert!(
+                database
+                    .transaction_with_snapshots(
+                        vec![insert(&info.token, info.length), failure],
+                        &snapshots
+                    )
+                    .is_err()
+            );
+            assert_eq!(
+                database
+                    .query("SELECT count(*) AS count FROM items", vec![])
+                    .unwrap()[0]["count"],
+                1
+            );
+        }
+        assert_eq!(
+            snapshot_read(&snapshots, &info.token, 1, 3).unwrap(),
+            bytes[1..4]
+        );
+        database
+            .transaction_with_snapshots(vec![insert(&info.token, info.length)], &snapshots)
+            .unwrap();
+        assert_eq!(
+            database
+                .read_blob("items", "data", 2, 0, info.length)
+                .unwrap(),
+            bytes
+        );
+    }
+
     fn statement(sql: &str, params: Vec<Value>) -> Statement {
         Statement {
             sql: sql.into(),
             params,
+            blob: None,
         }
     }
 

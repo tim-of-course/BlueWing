@@ -505,6 +505,33 @@ void test('channel flange depth does not alter authored slope cuts or backing co
   }
 });
 
+void test('off-module opening jambs replace overlapping automatic studs and cripples', () => {
+  const { project, data, wall } = fixture(6, 3);
+  wall.studSpacing = 0.5;
+  addHeader(data);
+  data.openings.door = opening('door', 1.01, 2, 0, 2);
+  const result = generateConstruction(project, data);
+  const studs = result.pieces.filter((piece) => piece.role === 'stud');
+  const cripples = result.pieces.filter((piece) => piece.role === 'cripple');
+  const jambs = result.pieces.filter((piece) => piece.role === 'jamb');
+  assert.equal(studs.length, 8);
+  assert.equal(cripples.length, 3);
+  assert.equal(jambs.length, 2);
+  for (const regular of [...studs, ...cripples])
+    for (const jamb of jambs)
+      assert.ok(Math.abs(regular.start.x - jamb.start.x) >= spec.width - 1e-8);
+  // An explicitly offset jamb on another face does not replace the stud line.
+  data.openings.door.jambOffsets = [{ along: 0, face: 0.2 }];
+  const offsetResult = generateConstruction(project, data);
+  for (const station of [1, 3])
+    assert.ok(
+      offsetResult.pieces.some(
+        (piece) =>
+          (piece.role === 'stud' || piece.role === 'cripple') &&
+          piece.start.x === station,
+      ),
+    );
+});
 void test('jambs preserve rough width and multiple offsets mirror into adjacent framing', () => {
   const { project, data } = fixture(5, 3);
   addHeader(data);

@@ -1,4 +1,11 @@
-import { createEffect, createSignal, For, Show, onSettled } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  Show,
+  onSettled,
+} from 'solid-js';
 import { createWorkspace } from './app/controller';
 import type { DrawingTool } from './app/contracts';
 import DrawingCanvas from './components/canvas/DrawingCanvas';
@@ -14,6 +21,9 @@ import SheetScaleDialog from './components/SheetScaleDialog';
 import SheetNamesDialog from './components/SheetNamesDialog';
 import type { Sheet } from './core/types';
 import type { Observation } from './app/application';
+import ConstructionView from './components/ConstructionView';
+import ConstructionEditor from './components/ConstructionEditor';
+import ReviewPanel from './components/ReviewPanel';
 import { formatScale } from './core/scale';
 
 const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
@@ -64,6 +74,10 @@ export default function App() {
     name: 'workspace.tool',
   });
   const [quantities, setQuantities] = createSignal(false);
+  const [view, setView] = createSignal<'plan' | '3d' | 'split'>('plan');
+  const [constructionOpen, setConstructionOpen] = createSignal(false);
+  const [reviewOpen, setReviewOpen] = createSignal(false);
+  const [detailDraft, setDetailDraft] = createSignal(false);
   const [error, setError] = createSignal('');
   const [projectName, setProjectName] = createSignal('Untitled project');
   const [groupName, setGroupName] = createSignal('');
@@ -82,16 +96,20 @@ export default function App() {
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
   };
-  const hasDraft = () =>
-    draft() ||
-    recipeDraft() ||
-    inspectorDraft() ||
-    selectionDraft() ||
-    sheetDraft() ||
-    scaleDialog() !== null ||
-    sheetNamesDialog() !== null ||
-    projectAction() !== null ||
-    groupName().trim() !== '';
+  const hasDraft = createMemo(
+    () =>
+      detailDraft() ||
+      draft() ||
+      recipeDraft() ||
+      inspectorDraft() ||
+      selectionDraft() ||
+      sheetDraft() ||
+      scaleDialog() !== null ||
+      sheetNamesDialog() !== null ||
+      projectAction() !== null ||
+      groupName().trim() !== '',
+    { name: 'workspace.hasDraft' },
+  );
   createEffect(
     hasDraft,
     (pending) => {
@@ -134,6 +152,8 @@ export default function App() {
         return;
       if (
         recipeOpen() ||
+        constructionOpen() ||
+        reviewOpen() ||
         updateOpen() ||
         projectAction() ||
         sheetDraft() ||
@@ -388,6 +408,38 @@ export default function App() {
                 Delete
               </button>
               <span class="spacer" />
+              <button
+                type="button"
+                disabled={hasDraft() || controller.busy()}
+                onClick={() => setConstructionOpen(true)}
+              >
+                Construction
+              </button>
+              <button
+                type="button"
+                disabled={hasDraft() || controller.busy()}
+                onClick={() => setReviewOpen(true)}
+              >
+                Review
+              </button>
+              <label class="view-select">
+                View
+                <select
+                  aria-label="Workspace view"
+                  value={view()}
+                  disabled={hasDraft()}
+                  onChange={(event) => {
+                    setView(
+                      event.currentTarget.value as 'plan' | '3d' | 'split',
+                    );
+                    setQuantities(false);
+                  }}
+                >
+                  <option value="plan">Plan</option>
+                  <option value="3d">3D</option>
+                  <option value="split">Split</option>
+                </select>
+              </label>
               <span class="muted">
                 {controller.selection().length} selected
               </span>
@@ -400,14 +452,74 @@ export default function App() {
                 navigationDisabled={inspectorDraft()}
               />
             </Show>
-            <div class="drawing-workspace" hidden={quantities()}>
-              <DrawingCanvas
-                controller={controller}
-                tool={tool()}
-                onError={setError}
-                onDraftChange={setDraft}
-                interactionDisabled={inspectorDraft() || selectionDraft()}
-              />
+            <div
+              class={[
+                'drawing-workspace',
+                view() === 'split' && 'split-workspace',
+              ]}
+              hidden={quantities()}
+            >
+              <div class="plan-pane" hidden={view() === '3d'}>
+                <DrawingCanvas
+                  controller={controller}
+                  tool={tool()}
+                  onError={setError}
+                  onDraftChange={setDraft}
+                  interactionDisabled={inspectorDraft() || selectionDraft()}
+                />
+              </div>
+              <Show
+                when={
+                  view() !== 'plan' &&
+                  !quantities() &&
+                  controller.construction()
+                }
+              >
+                {(result) => (
+                  <ConstructionView
+                    result={result()}
+                    levels={Object.values(
+                      controller.project()?.construction?.levels ?? {},
+                    ).map((level) => ({
+                      id: level.id,
+                      name: level.name,
+                      geometryIds: [
+                        ...new Set(
+                          [
+                            ...Object.values(
+                              controller.project()?.construction?.walls ?? {},
+                            ),
+                            ...Object.values(
+                              controller.project()?.construction?.ceilings ??
+                                {},
+                            ),
+                          ]
+                            .filter((source) => source.levelId === level.id)
+                            .map((source) => source.geometryId),
+                        ),
+                      ],
+                    }))}
+                    selectedGeometryIds={controller.selection()}
+                    onSelect={(id) => {
+                      const geometry = controller.project()?.geometries[id];
+                      if (geometry) {
+                        controller.setSheetVisible(geometry.sheetId, true);
+                        for (const group of Object.values(
+                          controller.project()?.groups ?? {},
+                        ))
+                          if (group.geometryIds.includes(id))
+                            controller.setGroupVisible(
+                              group.id,
+                              geometry.sheetId,
+                              true,
+                            );
+                        controller.setActiveSheetId(geometry.sheetId);
+                        controller.setSelection([id]);
+                      }
+                    }}
+                  />
+                )}
+              </Show>
             </div>
           </Show>
         </main>
@@ -683,6 +795,46 @@ export default function App() {
               }}
               onError={setError}
               onDraftChange={setRecipeDraft}
+            />
+          </section>
+        </div>
+      </Show>
+      <Show when={constructionOpen()}>
+        <div class="modal-backdrop">
+          <section
+            class="dialog detailed-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Construction editor"
+          >
+            <ConstructionEditor
+              controller={controller}
+              onClose={() => {
+                setConstructionOpen(false);
+                setDetailDraft(false);
+              }}
+              onError={setError}
+              onDraftChange={setDetailDraft}
+            />
+          </section>
+        </div>
+      </Show>
+      <Show when={reviewOpen()}>
+        <div class="modal-backdrop">
+          <section
+            class="dialog detailed-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Takeoff review"
+          >
+            <ReviewPanel
+              controller={controller}
+              onClose={() => {
+                setReviewOpen(false);
+                setDetailDraft(false);
+              }}
+              onError={setError}
+              onDraftChange={setDetailDraft}
             />
           </section>
         </div>
