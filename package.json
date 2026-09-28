@@ -11,6 +11,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "bun scripts/heavy.ts -- bun x --no-install vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "icons:generate": "bun scripts/export-icons.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier . --write",

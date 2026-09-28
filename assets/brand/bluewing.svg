@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Bluewing</title>
+  <desc>A swept blue wing with two broad planes and a squared drafting joint, on a navy tile.</desc>
+  <rect id="tile" x="32" y="32" width="448" height="448" rx="104" fill="#142740"/>
+  <g id="wing">
+    <path id="leading-plane" d="M104 376C104 256 216 144 408 104L248 264H208V336L168 376Z" fill="#8bd3ff"/>
+    <path id="trailing-plane" d="M256 312L392 176C384 272 336 344 240 400V328Z" fill="#3b82f6"/>
+  </g>
+</svg>

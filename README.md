@@ -110,6 +110,10 @@ See the [MVP validation record](docs/validation.md) for the completed checks, re
 
 The [UI restoration record](docs/ux-restoration.md) documents the subsequent reference review and restored interaction decisions.
 
+## Icon assets
+
+Edit the vector master at [`assets/brand/bluewing.svg`](assets/brand/bluewing.svg), then run `bun run icons:generate`. The script uses the installed Tauri CLI to export the browser SVG/favicons and Windows/macOS icons. Commit the master and generated files together. See [the branding notes](docs/branding.md) for the design, research, and output sizes.
+
 ## Development
 
 The [Solid 2 repo skill](.agents/skills/solidjs-2/SKILL.md) covers RC-specific APIs and diagnostics. Solid is pinned to `2.0.0-rc.8` with its compatible compiler, renderer, diagnostics, and Vite integration. Keep `bun.lock` and `src-tauri/Cargo.lock` committed. Upgrade the Solid package set deliberately.

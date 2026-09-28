@@ -124,6 +124,10 @@ small,
   border-bottom: 1px solid #242c3b;
 }
 .brand {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
   letter-spacing: -0.4px;
   font-size: 17px;
   margin-right: 15px;
@@ -229,15 +233,9 @@ small,
   margin-top: 24px;
 }
 .empty-mark {
-  display: grid;
-  place-items: center;
+  display: block;
   width: 52px;
   height: 52px;
-  border-radius: 12px;
-  background: #202734;
-  color: #6366f1;
-  font-weight: 600;
-  font-size: 28px;
   margin: 0 auto 24px;
 }
 .workspace-toolbar {

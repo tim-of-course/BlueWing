@@ -193,7 +193,10 @@ export default function App() {
   return (
     <div class="workspace">
       <header class="workspace-header">
-        <strong class="brand">Bluewing</strong>
+        <strong class="brand">
+          <img src="/brand/bluewing.svg" width="28" height="28" alt="" />
+          Bluewing
+        </strong>
         <button
           type="button"
           disabled={controller.busy() || hasDraft() || !!controller.project()}
@@ -321,7 +324,13 @@ export default function App() {
             when={controller.project()}
             fallback={
               <div class="empty-workspace">
-                <div class="empty-mark">B</div>
+                <img
+                  class="empty-mark"
+                  src="/brand/bluewing.svg"
+                  width="52"
+                  height="52"
+                  alt=""
+                />
                 <h1>No project open</h1>
                 <p>Your plans and takeoff will appear here.</p>
                 <div class="button-row">
