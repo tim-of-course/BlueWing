@@ -4,6 +4,7 @@ Build separately before running. BLUEWING_TEST_DETAILED_PLAN optionally imports
 the private large PDF and renders only its first, middle and last pages.
 """
 import copy
+from contextlib import closing
 import csv
 import hashlib
 import io
@@ -50,7 +51,7 @@ def equivalent(actual, expected):
 
 
 def database_snapshot(path):
-    with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True) as connection:
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as connection:
         assert connection.execute('PRAGMA integrity_check').fetchone() == ('ok',)
         return {
             'project': connection.execute('SELECT * FROM project').fetchall(),

@@ -65,7 +65,7 @@ Native coverage checks immutable temporary snapshots, bounded reads, incremental
 - Other trades retain editable formula assemblies. Only authored wall/ceiling geometry gets positioned 3D representation.
 - Generation stops at 50,000 pieces/surfaces with an incomplete warning. The scene displays at most 4,000 filtered objects and reports omissions; exports retain generated records.
 - Native import/reopen uses bounded IPC and incremental BLOB storage, removing full-file base64/JSON transfers. PDF.js still holds a whole PDF buffer; import temporarily retains a second binary buffer. This is not a claim of constant total memory.
-- New native behavior has not been verified on Windows.
+- The new native behavior passed Windows x64 release-binary smoke, desktop, assemblies, and detailed takeoff workflows on September 28, 2026. The optional private large-plan import was not run there; see [the Windows validation record](validation.md).
 
 ## Recovery checkpoints
 

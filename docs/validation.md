@@ -22,6 +22,14 @@ The first browser run used 14 workers alongside native builds and hit Solid comp
 
 The shared Tauri configuration still targets a macOS app with minimum macOS 15.4. The installed Tauri configuration loader selects `tauri.windows.conf.json` only for Windows; Rust source, dependency pins, and lockfiles are unchanged from upstream. A native macOS build was not rerun on this Windows machine.
 
+## Windows detailed takeoff validation, September 28, 2026
+
+On Windows x64, Bun was updated to the manifest's pinned 1.3.14; Node 22.22.3 and Rust 1.95.0 were used. Frozen dependency installation, TypeScript, lint, formatting, seven tooling tests (two macOS-only cases skipped), 110 core tests, nine platform tests, 26 development browser scenarios, 24 production browser scenarios, nine Rust tests, and debug and release builds passed. Chromium and WebKit browser tests ran with one worker under the resource guard.
+
+The first development browser run had two transient WebKit failures: an 8 ms Solid compute-time warning and a PDF worker access-control warning. Both passed in a focused rerun, then all 26 scenarios passed together without changed product code or diagnostic limits.
+
+The release Windows WebView2 executable and CLI passed native smoke, the standard desktop workflow, the assemblies workflow, and the detailed takeoff workflow. The detailed workflow initially completed its assertions but failed while deleting its temporary backup file because its Python SQLite snapshot connection remained open. Closing that test connection fixed cleanup; the workflow then passed. The refreshed unsigned NSIS installer is `src-tauri/target/release/bundle/nsis/Bluewing_0.1.0_x64-setup.exe`. A web release named `0.1.1-windows-0928` downloaded and activated through the desktop app; offline restart, project reopen, and PDF render passed. The optional private large-plan import was not run because that file was unavailable on this machine.
+
 ## Results
 
 | Check                 | Result and scope                                                                                                                                                                                                                                             |
