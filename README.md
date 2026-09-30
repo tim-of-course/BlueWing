@@ -53,13 +53,15 @@ Construction dimensions use metres and rotations use radians internally; drawing
 
 Use **Review** for source-linked snippets, geometry highlights, annotations, and review marks. Relevant dependency changes flag previously reviewed sources as changed. Generation shares a 50,000-piece/surface budget and reports incomplete results when exhausted. The 3D scene caps display at 4,000 objects and shows omissions; CSV retains all generated pieces regardless of scene filters or selection.
 
-Formats 1 and 2 remain readable. Construction, review, systems, and wall templates use format 3. Desktop storage automatically creates a sibling backup before an older project first upgrades; `project.backup` also creates an explicit recovery copy without overwriting files. Current web releases require native bridge 4 for backups and bounded PDF transfers. Keep the backup for use with an older app.
+Formats 1 and 2 remain readable. Construction, review, systems, and wall templates use format 3. Desktop storage automatically creates a sibling backup before an older project first upgrades; `project.backup` also creates an explicit recovery copy without overwriting files. Current web releases require native bridge 5 for backups, bounded PDF transfers, and Wingman screenshot attachments. Keep the backup for use with an older app.
 
 The CLI operates the running desktop app:
 
 ```sh
 src-tauri/target/release/bundle/macos/Bluewing.app/Contents/MacOS/bluewing commands.list
 ```
+
+Wingman shows the latest CLI-rendered plan or 3D location in a live corner preview. Click to swap views and click again to return. Its chat delivers user messages with the next CLI result; **Pause CLI** stops new and queued CLI actions. Use **Attach screenshot** or Cmd/Ctrl+Shift+X to capture any rectangle inside the app for the next message. See [Wingman behavior and verification](docs/wingman.md).
 
 See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs/web-releases.md). A public web-release host is not configured in this repository.
 
@@ -94,6 +96,7 @@ python3 tests/native/smoke.py
 python3 tests/desktop/workflow.py
 python3 tests/desktop/assemblies.py
 python3 tests/desktop/detailed.py
+python3 tests/desktop/wingman.py
 ```
 
 Set `BLUEWING_TEST_PLAN` to the local Behavioral Health Group PDF when running the desktop workflow to include its 15-sheet import and rendering check. That source plan is not stored in Git. Independent fixtures establish 384 sq ft wall area, 360 sq ft floor area, three items, and allowance/package arithmetic.

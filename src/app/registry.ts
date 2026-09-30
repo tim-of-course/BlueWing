@@ -29,6 +29,89 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'messages.send',
+    'Send a project message without changing the estimate or undo history.',
+    {
+      text: string,
+      attachments: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            id: string,
+            name: string,
+            dataUrl: string,
+            width: { type: 'number', minimum: 1 },
+            height: { type: 'number', minimum: 1 },
+          },
+          required: ['id', 'name', 'dataUrl', 'width', 'height'],
+          additionalProperties: false,
+        },
+      },
+    },
+    [],
+    false,
+    { text: 'Please review this detail.' },
+  ),
+  entry(
+    'messages.read',
+    'Read messages after a cursor; optionally wait up to 25000ms for delivery.',
+    {
+      after: { type: 'number', minimum: 0 },
+      waitMs: { type: 'number', minimum: 0 },
+    },
+    [],
+    false,
+    { after: 0, waitMs: 25000 },
+  ),
+  entry(
+    'wingman.inspect',
+    'Inspect the Wingman visual presentation.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'wingman.flash',
+    'Expand and glow the Wingman corner preview.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'wingman.annotate',
+    'Replace local Wingman plan annotations and optional highlights.',
+    {
+      annotations: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            points: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { x: { type: 'number' }, y: { type: 'number' } },
+                required: ['x', 'y'],
+                additionalProperties: false,
+              },
+            },
+            label: string,
+            color: string,
+          },
+          required: ['points', 'label', 'color'],
+          additionalProperties: false,
+        },
+      },
+      highlightIds: { type: 'array', items: string },
+    },
+    ['annotations'],
+    false,
+    { annotations: [], highlightIds: [] },
+  ),
+  entry(
     'project.backup',
     'Save a separate recovery copy of the open desktop project. Existing files are never overwritten.',
     { path: string },
@@ -41,6 +124,7 @@ export const applicationCommands = [
     'Export a saved highlighted snippet with sheet identity and coordinate mapping.',
     {
       id: string,
+      caption: string,
       path: string,
       maxDimension: { type: 'number', minimum: 64 },
     },
@@ -53,6 +137,7 @@ export const applicationCommands = [
     'Render the positioned construction as a bounded 3D PNG.',
     {
       path: string,
+      caption: string,
       width: { type: 'number', minimum: 64 },
       height: { type: 'number', minimum: 64 },
       geometryIds: { type: 'array', items: string },
@@ -150,6 +235,7 @@ export const applicationCommands = [
     'Render a bounded PNG with page/pixel mappings using the workspace renderer.',
     {
       sheetId: string,
+      caption: string,
       path: string,
       maxDimension: { type: 'number', minimum: 64 },
       mode: { type: 'string', enum: ['plan', 'takeoff', 'combined'] },

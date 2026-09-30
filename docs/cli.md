@@ -58,6 +58,29 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Formats 1 and 2 remain readable. Using construction, review, systems, or wall templates saves format 3; ordinary formula-only edits use format 2. Before the first desktop upgrade to format 3, storage automatically creates a sibling backup. Current web releases require native bridge 4 for backups and bounded PDF transfers. Older apps need the pre-upgrade copy rather than the format-3 file.
+Formats 1 and 2 remain readable. Using construction, review, systems, or wall templates saves format 3; ordinary formula-only edits use format 2. Before the first desktop upgrade to format 3, storage automatically creates a sibling backup. Current web releases require native bridge 5 for backups, bounded PDF transfers, and Wingman attachment exports. Older apps need the pre-upgrade copy rather than the format-3 file.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for current results and pending checks. Earlier dated assembly/ceiling passes do not establish verification of these commands.
+
+## Wingman messages and presentation
+
+`messages.send` accepts `{ "text": "Please review this detail" }` in `payload` and records an agent message in the open project's local conversation. Optional `attachments` contain `id`, `name`, `dataUrl`, `width`, and `height`; the UI supports up to eight images and 32 MiB of encoded image data per message. CLI requests also have the existing 16 MiB transport limit, including their JSON envelope. Desktop attachments are exported to absolute local file paths. CLI responses return attachment `path`, `id`, `name`, `width`, and `height`, without image base64. Conversation saves do not change the estimate revision or undo history. Browser conversations use IndexedDB; desktop conversations use local application data.
+
+`messages.read` accepts `{ "after": 0, "waitMs": 25000 }`. Reads are nondestructive. The optional wait is bounded to 25 seconds and runs outside the project command queue. Keep the latest message `id` as the cursor and reuse it after reconnecting. IDs and conversations are scoped to each project.
+
+Every successfully parsed CLI request accepts an optional top-level `messagesAfter` cursor. Both success and error responses include full `messages` newer than that cursor, including attachment paths, plus `messagesProjectId`. Store the cursor with that project identity; reset it when the identity changes. If the supplied `projectId` differs from the current conversation, response delivery starts at zero. Omitting the cursor returns the entire current conversation. `messages.read` uses the envelope cursor when its payload omits `after`. Supplying `projectId` to `messages.send` or `messages.read` requires it to match the open project.
+
+The UI's pause control rejects all non-messaging CLI commands with `WINGMAN_PAUSED`, including inspection and rendering. Commands queued before a pause remain rejected after resume; submit a new request to retry. Commands already executing may finish. UI operations and messages continue while paused.
+
+Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. `wingman.inspect` reads the presentation, `wingman.flash` expands and glows the corner preview, and `wingman.annotate` replaces local plan annotations with `{ "annotations": [{ "points": [{ "x": 10, "y": 20 }], "label": "Check", "color": "#ff8800" }], "highlightIds": [] }`. These commands do not edit the estimate.
+
+For ordinary work, include the most recent received message ID in the next command. There is no separate acknowledgement command or destructive inbox read:
+
+```sh
+bluewing project.inspect '{"messagesAfter":12}'
+bluewing messages.send '{"payload":{"text":"I checked the opening. Please confirm the head height."},"messagesAfter":12}'
+bluewing messages.read '{"payload":{"after":13,"waitMs":25000},"messagesAfter":13}'
+bluewing wingman.flash '{}'
+```
+
+A normal user message is delivered with the next CLI result. It does not interrupt an operation already running. The separate **Pause CLI** button cancels pending CLI work. Resume is available only in the desktop UI. The CLI cannot resume itself.

@@ -15,6 +15,8 @@ import {
   hitTestGeometrySweep,
 } from '../../core/geometry';
 import { paintTakeoff } from './paint';
+import type { PlanView, ViewportPort } from '../../app/wingman-types';
+import { paintPlanPresentation } from '../WingmanPreview';
 
 /** Canvas-local CSS pixels = camera offset + page coordinates * zoom. */
 interface Camera {
@@ -152,6 +154,8 @@ export default function DrawingCanvas(props: {
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
   interactionDisabled?: boolean;
+  presentationActive?: boolean;
+  onViewport?: (port: ViewportPort<PlanView>) => void;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let container: HTMLDivElement | undefined;
@@ -211,12 +215,21 @@ export default function DrawingCanvas(props: {
     },
     { name: 'canvas.activeSheet' },
   );
+  const [presentation, setPresentation] = createSignal<PlanView | null>(null);
+  const activePresentation = createMemo(() =>
+    props.presentationActive && presentation()?.sheetId === sheet()?.id
+      ? presentation()
+      : null,
+  );
   const geometries = createMemo(
     () =>
       Object.values(props.controller.project()?.geometries ?? {}).filter(
         (item) =>
           item.sheetId === sheet()?.id &&
-          props.controller.visibleGeometryIds().has(item.id),
+          (activePresentation()
+            ? !activePresentation()?.visibleGeometryIds ||
+              activePresentation()?.visibleGeometryIds?.includes(item.id)
+            : props.controller.visibleGeometryIds().has(item.id)),
       ),
     {
       name: 'canvas.geometries',
@@ -381,6 +394,7 @@ export default function DrawingCanvas(props: {
       hover: hover(),
       snapped: snapped(),
       selectionBox: selectionBox(),
+      presentation: activePresentation(),
     }),
     (state) => {
       if (!canvas) return;
@@ -396,7 +410,7 @@ export default function DrawingCanvas(props: {
       ctx.scale(state.camera.zoom, state.camera.zoom);
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, state.sheet.width, state.sheet.height);
-      if (state.image)
+      if (state.image && state.presentation?.mode !== 'takeoff')
         ctx.drawImage(state.image, 0, 0, state.sheet.width, state.sheet.height);
       const pixel = 1 / state.camera.zoom;
       const colors: Record<string, string> = {};
@@ -415,11 +429,14 @@ export default function DrawingCanvas(props: {
         );
         displayed = displayed.map((item) => moved.get(item.id) ?? item);
       }
+      if (state.presentation?.mode === 'plan') displayed = [];
       paintTakeoff(ctx, displayed, {
         selectedIds: state.selected,
         colors,
         unitsPerPixel: pixel,
       });
+      if (state.presentation)
+        paintPlanPresentation(ctx, state.geometries, state.presentation, pixel);
       for (const geometry of displayed) {
         if (!state.selected.includes(geometry.id)) continue;
         for (const point of geometry.points) {
@@ -896,6 +913,44 @@ export default function DrawingCanvas(props: {
       };
     });
   }
+  onSettled(() => {
+    props.onViewport?.({
+      read() {
+        const current = sheet();
+        if (!current) return null;
+        const view = camera(),
+          size = viewport();
+        return {
+          ...activePresentation(),
+          kind: 'plan',
+          sheetId: current.id,
+          bounds: {
+            x: -view.x / view.zoom,
+            y: -view.y / view.zoom,
+            width: size.width / view.zoom,
+            height: size.height / view.zoom,
+          },
+          visibleGeometryIds: geometries().map((item) => item.id),
+        };
+      },
+      apply(view) {
+        if (view.sheetId !== sheet()?.id) return;
+        setPresentation(view);
+        const size = viewport();
+        const zoom = Math.min(
+          size.width / view.bounds.width,
+          size.height / view.bounds.height,
+        );
+        setCamera({
+          zoom,
+          x: (size.width - view.bounds.width * zoom) / 2 - view.bounds.x * zoom,
+          y:
+            (size.height - view.bounds.height * zoom) / 2 -
+            view.bounds.y * zoom,
+        });
+      },
+    });
+  });
   onSettled(() => {
     const element = container;
     if (!element) return;

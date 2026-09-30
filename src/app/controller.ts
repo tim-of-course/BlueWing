@@ -16,8 +16,9 @@ import {
   type DrawingVisibility,
 } from './visibility';
 
-export function createWorkspace(): WorkspaceController {
-  const app = new Application(isTauri());
+export function createWorkspace(
+  app = new Application(isTauri()),
+): WorkspaceController {
   const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
   const [project, setProject] = createSignal<Project | null>(null, {
     name: 'workspace.acceptedProject',
@@ -208,6 +209,39 @@ export function createWorkspace(): WorkspaceController {
     return command('batch', { commands }, expected);
   }
   return {
+    messaging: app.messaging,
+    setPresentation(presentation) {
+      app.presentation = presentation;
+    },
+    captureContext() {
+      return structuredClone({
+        sheetId: activeSheetId(),
+        selection: selection(),
+        activeGroupId: activeGroupId(),
+        drawingGroupId: drawingGroupId(),
+        visibility: visibility(),
+      });
+    },
+    restoreContext(context) {
+      const current = app.project;
+      changeVisibility(context.visibility);
+      setActiveSheetId(
+        context.sheetId && current?.sheets[context.sheetId]
+          ? context.sheetId
+          : (Object.keys(current?.sheets ?? {})[0] ?? null),
+      );
+      setSelection(context.selection.filter((id) => current?.geometries[id]));
+      setActiveGroupId(
+        context.activeGroupId && current?.groups[context.activeGroupId]
+          ? context.activeGroupId
+          : null,
+      );
+      setDrawingGroupId(
+        context.drawingGroupId && current?.groups[context.drawingGroupId]
+          ? context.drawingGroupId
+          : null,
+      );
+    },
     construction,
     execute(call, expected) {
       return run(
@@ -528,6 +562,8 @@ export function createWorkspace(): WorkspaceController {
     saveRecipe: (recipe, expected) => command('assembly.put', recipe, expected),
     deleteRecipe: (id) => command('assembly.delete', { id }),
     renderSheet: (sheet, maxDimension) => app.pdf.render(sheet, maxDimension),
+    renderRegion: (sheet, bounds, maxDimension) =>
+      app.pdf.renderRegion(sheet, bounds, maxDimension),
     async exportQuantities(format) {
       const current = requireProject();
       const content = exportQuantities(current, format);

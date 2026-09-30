@@ -1,0 +1,39 @@
+.screenshot-capture {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.screenshot-capture-image,
+.screenshot-capture-shade {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.screenshot-capture-shade {
+  background: rgb(0 0 0 / 30%);
+}
+.screenshot-capture-selection {
+  position: absolute;
+  outline: 1px solid #93c5fd;
+  box-shadow: 0 0 0 100vmax rgb(0 0 0 / 30%);
+  pointer-events: none;
+}
+.screenshot-capture-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 12px;
+  border: 1px solid #526176;
+  border-radius: 6px;
+  background: #161d28;
+  color: #e6edf6;
+  pointer-events: none;
+}

@@ -6,6 +6,7 @@ import {
   onSettled,
   Show,
 } from 'solid-js';
+import type { ModelView, ViewportPort } from '../app/wingman-types';
 import type { ConstructionResult } from '../core/construction-types';
 import {
   buildConstructionScene,
@@ -21,6 +22,9 @@ import './construction-view.css';
 
 export interface ConstructionViewProps {
   result: ConstructionResult;
+  onViewport?: (port: ViewportPort<ModelView>) => void;
+  interactionDisabled?: boolean;
+  presentationActive?: boolean;
   selectedGeometryIds: string[];
   onSelect: (geometryId: string, pieceId?: string) => void;
   levels?: readonly {
@@ -51,6 +55,8 @@ export default function ConstructionView(props: ConstructionViewProps) {
     height: 480,
     pixelRatio: 1,
   });
+  const [presentation, setPresentation] = createSignal<ModelView | null>(null);
+  const displayIds = () => props.selectedGeometryIds;
   const [material, setMaterial] = createSignal('');
   const [role, setRole] = createSignal('');
   const [levelId, setLevelId] = createSignal('');
@@ -74,11 +80,13 @@ export default function ConstructionView(props: ConstructionViewProps) {
     ].sort(),
   );
   const isolatedIds = createMemo(() => {
-    if (!selectedOnly()) return props.isolatedGeometryIds;
-    const isolated = props.isolatedGeometryIds;
-    if (!isolated) return props.selectedGeometryIds;
+    const isolated = props.presentationActive
+      ? presentation()?.geometryIds
+      : props.isolatedGeometryIds;
+    if (!selectedOnly()) return isolated;
+    if (!isolated) return displayIds();
     const ids = new Set(isolated);
-    return props.selectedGeometryIds.filter((id) => ids.has(id));
+    return displayIds().filter((id) => ids.has(id));
   });
   const scene = createMemo(
     () => {
@@ -112,7 +120,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       scene: scene(),
       camera: camera(),
       viewport: viewport(),
-      ids: props.selectedGeometryIds,
+      ids: displayIds(),
       selected: selectedId(),
     }),
     (state) => {
@@ -132,6 +140,42 @@ export default function ConstructionView(props: ConstructionViewProps) {
     { name: 'construction.render' },
   );
   onSettled(() => {
+    props.onViewport?.({
+      read: () => ({
+        kind: '3d',
+        camera: { ...camera() },
+        ...((
+          props.presentationActive
+            ? presentation()?.geometryIds
+            : props.isolatedGeometryIds
+        )
+          ? {
+              geometryIds: [
+                ...((props.presentationActive
+                  ? presentation()?.geometryIds
+                  : props.isolatedGeometryIds) ?? []),
+              ],
+            }
+          : {}),
+        levelId: levelId(),
+        materialId: material(),
+        role: role(),
+        selectedOnly: selectedOnly(),
+        selectedGeometryIds: [...displayIds()],
+        selectedPieceId: selectedId(),
+      }),
+      apply(view) {
+        setPresentation(view);
+        setCamera({ ...view.camera });
+        setMaterial(view.materialId ?? '');
+        setRole(view.role ?? '');
+        setLevelId(view.levelId ?? '');
+        setSelectedOnly(view.selectedOnly ?? false);
+        setSelectedId(view.selectedPieceId ?? null);
+      },
+    });
+  });
+  onSettled(() => {
     const element = canvas;
     if (!element) return;
     const resize = () => {
@@ -148,6 +192,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
     observer.observe(element);
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
+      if (props.interactionDisabled) return;
       setCamera((old) => zoomCamera(old, Math.exp(-event.deltaY * 0.001)));
     };
     element.addEventListener('wheel', wheel, { passive: false });
@@ -165,6 +210,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
     setCamera({ ...defaultCamera });
   }
   function keydown(event: KeyboardEvent) {
+    if (props.interactionDisabled) return;
     const steps: Record<string, [number, number]> = {
       ArrowLeft: [-12, 0],
       ArrowRight: [12, 0],
@@ -253,7 +299,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
           aria-label="Construction model. Drag to orbit; scroll to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Click a member to select its source."
           onKeyDown={keydown}
           onPointerDown={(event) => {
-            if (event.button !== 0) return;
+            if (props.interactionDisabled || event.button !== 0) return;
             event.currentTarget.focus();
             event.currentTarget.setPointerCapture(event.pointerId);
             drag = {

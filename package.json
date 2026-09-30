@@ -36,6 +36,7 @@
     "@solidjs/web": "2.0.0-rc.8",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.7.3",
+    "modern-screenshot": "4.7.0",
     "pdfjs-dist": "6.3.289",
     "solid-js": "2.0.0-rc.8"
   },

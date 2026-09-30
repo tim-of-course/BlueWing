@@ -5,6 +5,9 @@ import type { SheetNameSuggestion } from '../pdf/sheet-names';
 import type { PlanSnippet } from '../core/review';
 import type { ConstructionResult } from '../core/construction-types';
 import type { CommandCall } from '../core/types';
+import type { Messaging } from './messaging';
+import type { ViewBounds, WingmanPresentation } from './wingman-types';
+import type { DrawingVisibility } from './visibility';
 import type {
   CalculationResult,
   AssemblyLibrary,
@@ -18,7 +21,18 @@ import type {
 } from '../core/types';
 
 export type DrawingTool = 'select' | 'path' | 'area' | 'count' | 'calibrate';
+export interface WorkspaceContext {
+  sheetId: string | null;
+  selection: string[];
+  activeGroupId: string | null;
+  drawingGroupId: string | null;
+  visibility: DrawingVisibility;
+}
 export interface WorkspaceController {
+  messaging: Messaging;
+  setPresentation(presentation: WingmanPresentation | undefined): void;
+  captureContext(): WorkspaceContext;
+  restoreContext(context: WorkspaceContext): void;
   construction: Accessor<ConstructionResult | null>;
   execute(call: CommandCall, expected?: Observation): Promise<unknown>;
   renderSnippet(id: string | PlanSnippet): Promise<string>;
@@ -129,6 +143,11 @@ export interface WorkspaceController {
   saveRecipe(recipe: Recipe, expected?: Observation): Promise<void>;
   deleteRecipe(id: string): Promise<void>;
   renderSheet(sheet: Sheet, maxDimension?: number): Promise<HTMLCanvasElement>;
+  renderRegion(
+    sheet: Sheet,
+    bounds: ViewBounds,
+    maxDimension: number,
+  ): Promise<HTMLCanvasElement>;
   exportQuantities(format: 'csv' | 'json'): Promise<void>;
   installWebUpdate(manifestUrl: string): Promise<string>;
   activateWebUpdate(version: string): Promise<void>;

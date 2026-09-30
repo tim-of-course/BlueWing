@@ -1,0 +1,501 @@
+import { expect, type Page } from '@playwright/test';
+import { drawWall, pagePoint } from './takeoff';
+import type { Project } from '../../src/core/types';
+import type { Message } from '../../src/app/messaging';
+import type {
+  WingmanVisual,
+  WorkspaceViewSnapshot,
+} from '../../src/app/wingman-types';
+
+interface CliResult<T = unknown> {
+  exitCode: number;
+  response: {
+    ok: boolean;
+    data: T;
+    revision: number;
+    projectId: string;
+    messages: Message[];
+    error?: { code: string };
+  };
+}
+async function mutate(page: Page, name: string, payload: unknown) {
+  const current = (await cli(page, 'project.inspect')).response;
+  const result = await page.evaluate(
+    async ({ name, request }) => {
+      const bridge = window as unknown as {
+        wingmanCli(name: string, request: unknown): Promise<CliResult>;
+      };
+      return bridge.wingmanCli(name, request);
+    },
+    {
+      name,
+      request: {
+        payload,
+        projectId: current.projectId,
+        expectedRevision: current.revision,
+      },
+    },
+  );
+  expect(result.response.ok, JSON.stringify(result.response)).toBe(true);
+}
+interface Inspection {
+  main: WorkspaceViewSnapshot;
+  agent: WingmanVisual | null;
+  swapped: boolean;
+  expanded: boolean;
+}
+export function cli<T = unknown>(
+  page: Page,
+  name: string,
+  payload = {},
+  messagesAfter = 0,
+): Promise<CliResult<T>> {
+  return page.evaluate(
+    async ({ name, payload, messagesAfter }) => {
+      const bridge = window as unknown as {
+        wingmanCli(name: string, request: unknown): Promise<CliResult<T>>;
+      };
+      return bridge.wingmanCli(name, { payload, messagesAfter });
+    },
+    { name, payload, messagesAfter },
+  );
+}
+async function inspect(page: Page) {
+  const result = await cli<Inspection>(page, 'wingman.inspect');
+  expect(result.exitCode).toBe(0);
+  return result.response;
+}
+export function captureErrors(page: Page) {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning')
+      errors.push(message.text());
+  });
+  return errors;
+}
+export async function startWingmanProject(page: Page, harness = false) {
+  await page.goto(harness ? '/tests/browser/wingman-harness.html' : '/');
+  await page
+    .getByRole('button', { name: 'Create project', exact: true })
+    .click();
+  await page
+    .getByLabel('Project name', { exact: true })
+    .fill('Wingman fixture');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const choosing = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
+  await (await choosing).setFiles('tests/fixtures/assessment-plan.pdf');
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toHaveAttribute('data-sheet-id', /.+/);
+  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+}
+export async function sendText(page: Page, text: string) {
+  const chat = page.getByRole('button', { name: 'Wingman chat', exact: true });
+  if ((await chat.getAttribute('aria-expanded')) !== 'true') await chat.click();
+  await page.getByLabel('Message', { exact: true }).fill(text);
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('log', { name: 'Messages' })).toContainText(text);
+}
+export async function viewWorkflow(page: Page) {
+  await drawWall(page);
+  const canvas = page.getByLabel('Drawing canvas', { exact: true });
+  await canvas.press('Control+1');
+  const camera = await canvas.evaluate((element) =>
+    ['data-camera-x', 'data-camera-y', 'data-camera-zoom'].map((name) =>
+      element.getAttribute(name),
+    ),
+  );
+  const before = await inspect(page);
+  const sheetId = await canvas.getAttribute('data-sheet-id');
+  const bounds = { x: 72, y: 144, width: 240, height: 180 };
+  expect(
+    (
+      await cli(page, 'sheet.render', {
+        sheetId,
+        path: 'wingman.png',
+        bounds,
+        maxDimension: 640,
+        caption: 'Check this detail',
+      })
+    ).exitCode,
+  ).toBe(0);
+  const quiet = await inspect(page);
+  expect(quiet.data.expanded).toBe(false);
+  expect(quiet.data.main).toEqual(before.data.main);
+  expect(quiet.data.agent?.view).toMatchObject({
+    kind: 'plan',
+    sheetId,
+    bounds,
+  });
+  expect((await cli(page, 'wingman.flash')).exitCode).toBe(0);
+  await expect(
+    page.getByRole('button', { name: 'Swap to agent view', exact: true }),
+  ).toContainText('Check this detail');
+  const preview = page.getByRole('img', { name: 'Live workspace preview' });
+  await expect(preview).toBeVisible();
+  await expect(page.getByText('Loading plan…', { exact: true })).toBeHidden();
+  const pixels = await preview.evaluate((element) =>
+    (element as HTMLCanvasElement).toDataURL(),
+  );
+  expect(
+    (
+      await cli(page, 'wingman.annotate', {
+        annotations: [
+          {
+            points: [
+              { x: 90, y: 160 },
+              { x: 180, y: 220 },
+            ],
+            color: '#ff0000',
+            label: 'Check opening',
+          },
+        ],
+        highlightIds: [],
+      })
+    ).exitCode,
+  ).toBe(0);
+  await expect
+    .poll(() =>
+      preview.evaluate((element) => (element as HTMLCanvasElement).toDataURL()),
+    )
+    .not.toBe(pixels);
+  const annotated = await inspect(page);
+  expect(annotated.revision).toBe(before.revision);
+  expect(annotated.data.main).toEqual(before.data.main);
+  await page
+    .getByRole('button', { name: 'Swap to agent view', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Return to your view', exact: true }),
+  ).toBeEnabled();
+  const firstSwap = (await inspect(page)).data.main.plan;
+  expect(firstSwap?.bounds).not.toEqual(before.data.main.plan?.bounds);
+  // A later render must update the agent view without replacing the saved user view.
+  expect(
+    (
+      await cli(page, 'sheet.render', {
+        sheetId,
+        path: 'wingman-next.png',
+        bounds: { x: 180, y: 220, width: 100, height: 100 },
+        maxDimension: 320,
+      })
+    ).exitCode,
+  ).toBe(0);
+  await expect
+    .poll(async () => (await inspect(page)).data.main.plan?.bounds)
+    .not.toEqual(firstSwap?.bounds);
+  await page
+    .getByRole('button', { name: 'Return to your view', exact: true })
+    .click();
+  await expect
+    .poll(async () => (await inspect(page)).data.main)
+    .toEqual(before.data.main);
+  expect(
+    await canvas.evaluate((element) =>
+      ['data-camera-x', 'data-camera-y', 'data-camera-zoom'].map((name) =>
+        element.getAttribute(name),
+      ),
+    ),
+  ).toEqual(camera);
+  expect((await inspect(page)).revision).toBe(before.revision);
+}
+export async function messagingWorkflow(page: Page) {
+  await sendText(page, 'Please check this wall');
+  const success = await cli(page, 'project.inspect');
+  expect(success.exitCode).toBe(0);
+  expect(success.response.messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        sender: 'user',
+        text: 'Please check this wall',
+      }),
+    ]),
+  );
+  expect((await cli(page, 'project.inspect')).response.messages).toEqual(
+    success.response.messages,
+  );
+  const failed = await cli(page, 'sheet.render', {
+    sheetId: 'missing',
+    path: 'missing.png',
+  });
+  expect(failed.exitCode).not.toBe(0);
+  expect(failed.response.messages).toEqual(success.response.messages);
+  const cursor = success.response.messages.at(-1)?.id ?? 0;
+  expect(
+    (await cli(page, 'project.inspect', {}, cursor)).response.messages,
+  ).toEqual([]);
+  // A pending long poll must leave the application command queue available.
+  const waiting = cli<Message[]>(
+    page,
+    'messages.read',
+    { after: cursor, waitMs: 25000 },
+    cursor,
+  );
+  expect((await cli(page, 'project.inspect', {}, cursor)).exitCode).toBe(0);
+  await sendText(page, 'The read must not block editing');
+  expect((await waiting).response.data).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ text: 'The read must not block editing' }),
+    ]),
+  );
+  await page.getByRole('button', { name: 'Pause CLI', exact: true }).click();
+  for (const name of [
+    'commands.list',
+    'project.inspect',
+    'wingman.inspect',
+    'undo',
+  ]) {
+    const paused = await cli(page, name);
+    expect(paused.exitCode, name).not.toBe(0);
+    expect(paused.response.error?.code, name).toBe('WINGMAN_PAUSED');
+  }
+  expect((await cli(page, 'messages.read')).exitCode).toBe(0);
+  expect(
+    (
+      await cli(page, 'messages.send', {
+        text: 'I can still reply while paused',
+      })
+    ).exitCode,
+  ).toBe(0);
+  await expect(page.getByRole('log', { name: 'Messages' })).toContainText(
+    'I can still reply while paused',
+  );
+  await page.getByRole('button', { name: 'Resume CLI', exact: true }).click();
+  expect((await cli(page, 'project.inspect')).exitCode).toBe(0);
+}
+
+export async function modelWorkflow(page: Page) {
+  await drawWall(page);
+  const project = (await cli<Project>(page, 'project.inspect')).response.data;
+  const geometry = Object.values(project.geometries)[0];
+  if (!geometry) throw new Error('Missing wall geometry');
+  await mutate(page, 'wall.put', {
+    id: 'wingman-wall',
+    geometryId: geometry.id,
+    baseElevation: 0,
+    height: 3,
+    studSpacing: 0.4,
+    stud: { materialId: 'stud', width: 0.04, depth: 0.09 },
+    track: { materialId: 'track', width: 0.04, depth: 0.09 },
+    finishes: [],
+  });
+  await page
+    .getByLabel('Workspace view', { exact: true })
+    .selectOption('split');
+  const viewer = page.getByRole('region', { name: '3D construction viewer' });
+  await viewer
+    .getByRole('combobox', { name: 'Role', exact: true })
+    .selectOption('stud');
+  await viewer.getByRole('img').press('ArrowLeft');
+  const before = (await inspect(page)).data.main;
+  expect(before.model?.role).toBe('stud');
+  expect(
+    (
+      await cli(page, 'construction.render', {
+        path: 'model.png',
+        width: 640,
+        height: 480,
+        role: 'top-track',
+        azimuth: 0.7,
+        elevation: 0.6,
+        caption: 'Track detail',
+      })
+    ).exitCode,
+  ).toBe(0);
+  await cli(page, 'wingman.flash');
+  const preview = page.getByRole('img', { name: 'Live workspace preview' });
+  await expect(preview).toBeVisible();
+  const pixels = await preview.evaluate((el) =>
+    (el as HTMLCanvasElement).toDataURL(),
+  );
+  // Accepted geometry edits repaint the live preview without another render command.
+  await mutate(page, 'geometry.put', {
+    ...geometry,
+    points: [
+      { x: 72, y: 144 },
+      { x: 260, y: 300 },
+    ],
+  });
+  await expect
+    .poll(() => preview.evaluate((el) => (el as HTMLCanvasElement).toDataURL()))
+    .not.toBe(pixels);
+  await page
+    .getByRole('button', { name: 'Swap to agent view', exact: true })
+    .click();
+  await expect(page.getByLabel('Workspace view', { exact: true })).toHaveValue(
+    '3d',
+  );
+  await expect(
+    viewer.getByRole('combobox', { name: 'Role', exact: true }),
+  ).toHaveValue('top-track');
+  await page
+    .getByRole('button', { name: 'Return to your view', exact: true })
+    .click();
+  await expect
+    .poll(async () => (await inspect(page)).data.main)
+    .toEqual(before);
+  // An unfinished drawing gesture must not be discarded by swapping or a render.
+  await page.getByLabel('Workspace view', { exact: true }).selectOption('plan');
+  await page.getByRole('button', { name: 'Path (L)', exact: true }).click();
+  await pagePoint(page, 110, 200);
+  await expect(
+    page.getByRole('button', { name: 'Finish', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Swap to agent view', exact: true }),
+  ).toBeDisabled();
+  expect(
+    (
+      await cli(page, 'sheet.render', {
+        sheetId: geometry.sheetId,
+        path: 'draft.png',
+        maxDimension: 320,
+      })
+    ).exitCode,
+  ).toBe(0);
+  await expect(
+    page.getByRole('button', { name: 'Finish', exact: true }),
+  ).toBeVisible();
+  await page.getByLabel('Drawing canvas', { exact: true }).press('Escape');
+  await expect(
+    page.getByRole('button', { name: 'Swap to agent view', exact: true }),
+  ).toBeEnabled();
+}
+
+async function crop(
+  page: Page,
+  rect: { x: number; y: number; width: number; height: number },
+  shortcut: boolean,
+) {
+  if (shortcut) await page.keyboard.press('Control+Shift+X');
+  else
+    await page
+      .getByRole('button', { name: 'Attach screenshot', exact: true })
+      .click();
+  await expect(
+    page.getByText('Drag to capture · Escape to cancel', { exact: true }),
+  ).toBeVisible();
+  await page.mouse.move(rect.x, rect.y);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width, rect.y + rect.height, {
+    steps: 5,
+  });
+  await page.mouse.up();
+  await expect(
+    page.getByRole('dialog', {
+      name: 'Capture screenshot: drag a rectangle, or press Escape to cancel',
+    }),
+  ).toBeHidden();
+  const pixels = await page
+    .locator('.wingman-attachments img')
+    .last()
+    .evaluate(async (element) => {
+      const image = element as HTMLImageElement;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Missing canvas context');
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      ).data;
+      const colors = new Set<number>();
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3])
+          colors.add(
+            (pixels[i] ?? 0) * 65536 +
+              (pixels[i + 1] ?? 0) * 256 +
+              (pixels[i + 2] ?? 0),
+          );
+      }
+      return {
+        width: canvas.width,
+        height: canvas.height,
+        colors: colors.size,
+        ratio: devicePixelRatio,
+      };
+    });
+  expect(pixels.width).toBe(Math.round(rect.width * pixels.ratio));
+  expect(pixels.height).toBe(Math.round(rect.height * pixels.ratio));
+  expect(pixels.colors).toBeGreaterThan(20);
+}
+export async function captureWorkflow(page: Page) {
+  await sendText(page, 'Screenshot review');
+  await crop(page, { x: 5, y: 5, width: 500, height: 70 }, false);
+  const sidebar = await page
+    .getByRole('complementary', { name: 'Sheets', exact: true })
+    .boundingBox();
+  if (!sidebar) throw new Error('Missing sheets sidebar');
+  await crop(
+    page,
+    {
+      x: Math.ceil(sidebar.x + 5),
+      y: Math.ceil(sidebar.y + 5),
+      width: 180,
+      height: 180,
+    },
+    true,
+  );
+  const canvas = await page
+    .getByLabel('Drawing canvas', { exact: true })
+    .boundingBox();
+  if (!canvas) throw new Error('Missing drawing canvas');
+  await crop(
+    page,
+    {
+      x: Math.ceil(canvas.x + canvas.width / 2 - 100),
+      y: Math.ceil(canvas.y + canvas.height / 2 - 100),
+      width: 200,
+      height: 200,
+    },
+    true,
+  );
+  await expect(page.locator('.wingman-attachments img')).toHaveCount(3);
+  await page
+    .getByRole('button', { name: 'Remove Screenshot 2', exact: true })
+    .click();
+  await expect(page.locator('.wingman-attachments img')).toHaveCount(2);
+  await page.keyboard.press('Control+Shift+X');
+  const overlay = page.getByRole('dialog', {
+    name: 'Capture screenshot: drag a rectangle, or press Escape to cancel',
+  });
+  await expect(overlay).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(overlay).toBeHidden();
+  await expect(page.locator('.wingman-attachments img')).toHaveCount(2);
+  const urls = await page
+    .locator('.wingman-attachments img')
+    .evaluateAll((images) => images.map((image) => image.getAttribute('src')));
+  await sendText(page, 'Two captured details');
+  await expect(page.locator('.wingman-attachments img')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Pause CLI', exact: true }).click();
+  await page
+    .getByLabel('New group name', { exact: true })
+    .fill('UI still edits');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Undo', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  const chat = page.getByRole('button', { name: 'Wingman chat', exact: true });
+  if ((await chat.getAttribute('aria-expanded')) !== 'true') await chat.click();
+  const log = page.getByRole('log', { name: 'Messages' });
+  await expect(log).toContainText('Screenshot review');
+  await expect(log).toContainText('Two captured details');
+  await expect(log.locator('img')).toHaveCount(2);
+  expect(
+    await log
+      .locator('img')
+      .evaluateAll((images) =>
+        images.map((image) => image.getAttribute('src')),
+      ),
+  ).toEqual(urls);
+}

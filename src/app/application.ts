@@ -34,6 +34,10 @@ import { readNativeFile, releaseNativeFile, writeOutput } from './files';
 import type { ImportedFile } from './files';
 import { applicationCommands, registry } from './registry';
 import { renderImage, type RenderOptions } from './render';
+import { Messaging, type Attachment } from './messaging';
+import { messagingStorage } from '../platform/messaging-storage';
+import type { WingmanPresentation } from './wingman-types';
+import type { PlanSnippet } from '../core/review';
 
 export interface Observation {
   projectId: string;
@@ -43,6 +47,7 @@ export interface ApplicationRequest extends CommandCall {
   projectId?: string;
   expectedRevision?: number;
   origin?: string;
+  messagesAfter?: number;
 }
 export interface ApplicationResult {
   data: unknown;
@@ -51,6 +56,8 @@ export interface ApplicationResult {
 }
 
 export class Application {
+  readonly messaging: Messaging;
+  presentation?: WingmanPresentation | undefined;
   readonly storage;
   readonly pdf;
   readonly libraryStore;
@@ -61,6 +68,7 @@ export class Application {
   private readonly listeners = new Set<() => void>();
 
   constructor(readonly native: boolean) {
+    this.messaging = new Messaging(messagingStorage(native));
     this.storage = createStorage(native);
     this.libraryStore = new AssemblyLibraryStore(libraryStorage(native));
     this.pdf = new PdfDocuments((id) => this.storage.readAsset(id));
@@ -105,7 +113,16 @@ export class Application {
   }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
-    return this.schedule(async () => {
+    if (request.name === 'messages.read' || request.name === 'messages.send')
+      return this.dispatchMessage(request);
+    const enqueue = (operation: () => Promise<ApplicationResult>) =>
+      this.schedule(operation);
+    const schedule =
+      request.origin === 'cli'
+        ? (operation: () => Promise<ApplicationResult>) =>
+            this.messaging.scheduleCli(enqueue, operation)
+        : enqueue;
+    return schedule(async () => {
       const definition = registry.find((entry) => entry.name === request.name);
       if (!definition)
         throw new Error(`Unknown command ${request.name}. Use commands.list.`);
@@ -128,6 +145,8 @@ export class Application {
             invocation: 'bluewing <command> <JSON request>',
             request: {
               payload: {},
+              messagesAfter:
+                'optional nonnegative message cursor; reads are nondestructive',
               projectId: 'required for active project mutations',
               expectedRevision: 'required for active project mutations',
             },
@@ -165,6 +184,24 @@ export class Application {
           : result.data;
       } else
         switch (request.name) {
+          case 'wingman.inspect':
+            data = this.presentation?.inspect() ?? null;
+            break;
+          case 'wingman.flash':
+            if (!this.presentation)
+              throw new Error('Wingman presentation unavailable');
+            this.presentation.flash();
+            data = { flashed: true };
+            break;
+          case 'wingman.annotate':
+            if (!this.presentation)
+              throw new Error('Wingman presentation unavailable');
+            this.presentation.annotate(
+              payload.annotations as PlanSnippet['annotations'],
+              payload.highlightIds as string[] | undefined,
+            );
+            data = { annotated: true };
+            break;
           case 'project.backup':
             if (!(this.storage instanceof NativeStorage) || !this.project)
               throw new Error('File backups require an open desktop project');
@@ -192,6 +229,21 @@ export class Application {
               payload.path as string,
             );
             data = { path, snippetId: snippet.id, ...image.metadata };
+            if (request.origin === 'cli')
+              this.presentation?.publish({
+                projectId: project.id,
+                revision: project.revision,
+                view: {
+                  kind: 'plan',
+                  sheetId: snippet.sheetId,
+                  bounds: snippet.bounds,
+                  highlightIds: snippet.geometryIds,
+                  annotations: snippet.annotations,
+                },
+                ...(payload.caption === undefined
+                  ? {}
+                  : { caption: payload.caption as string }),
+              });
             break;
           }
           case 'construction.render': {
@@ -272,6 +324,38 @@ export class Application {
               displayedObjects: scene.count,
               omittedObjects: scene.omitted,
             };
+            if (request.origin === 'cli')
+              this.presentation?.publish({
+                projectId: project.id,
+                revision: project.revision,
+                view: {
+                  kind: '3d',
+                  camera: {
+                    ...defaultCamera,
+                    yaw:
+                      (payload.azimuth as number | undefined) ??
+                      defaultCamera.yaw,
+                    pitch:
+                      (payload.elevation as number | undefined) ??
+                      defaultCamera.pitch,
+                  },
+                  ...(payload.geometryIds === undefined
+                    ? {}
+                    : { geometryIds: payload.geometryIds as string[] }),
+                  ...(payload.levelId === undefined
+                    ? {}
+                    : { levelId: payload.levelId as string }),
+                  ...(payload.materialId === undefined
+                    ? {}
+                    : { materialId: payload.materialId as string }),
+                  ...(payload.role === undefined
+                    ? {}
+                    : { role: payload.role as string }),
+                },
+                ...(payload.caption === undefined
+                  ? {}
+                  : { caption: payload.caption as string }),
+              });
             break;
           }
           case 'library.inspect':
@@ -328,6 +412,7 @@ export class Application {
                   : await this.storage.load();
               if (request.name === 'project.create')
                 await this.storage.initialize(project);
+              await this.messaging.bind(project.id);
               this.attach(project);
               if (!this.native)
                 localStorage.setItem('bluewing.lastProject', path);
@@ -345,6 +430,7 @@ export class Application {
               );
             await this.storage.close();
             this.session = null;
+            await this.messaging.bind(null);
             await this.pdf.clear();
             this.publish();
             data = { closed: true };
@@ -372,6 +458,29 @@ export class Application {
               payload.path as string,
             );
             data = { path, ...rendered.metadata };
+            if (request.origin === 'cli')
+              this.presentation?.publish({
+                projectId: project.id,
+                revision: project.revision,
+                view: {
+                  kind: 'plan',
+                  sheetId: payload.sheetId as string,
+                  bounds: rendered.metadata.bounds,
+                  ...(payload.mode === undefined
+                    ? {}
+                    : {
+                        mode: payload.mode as NonNullable<
+                          RenderOptions['mode']
+                        >,
+                      }),
+                  ...(payload.highlightIds === undefined
+                    ? {}
+                    : { highlightIds: payload.highlightIds as string[] }),
+                },
+                ...(payload.caption === undefined
+                  ? {}
+                  : { caption: payload.caption as string }),
+              });
             break;
           }
           case 'web.inspect':
@@ -409,6 +518,43 @@ export class Application {
         revision: this.project?.revision ?? null,
       };
     });
+  }
+
+  private async dispatchMessage(
+    request: ApplicationRequest,
+  ): Promise<ApplicationResult> {
+    const definition = registry.find((entry) => entry.name === request.name);
+    if (!definition) throw new Error('Unknown messaging command');
+    validatePayload(definition.schema, request.payload ?? {});
+    if (
+      request.projectId !== undefined &&
+      request.projectId !== this.project?.id
+    )
+      throw new Error('Message project does not match the open project');
+    const payload = (request.payload ?? {}) as Record<string, unknown>;
+    if (typeof payload.waitMs === 'number' && payload.waitMs > 25000)
+      throw new Error('waitMs must be at most 25000');
+    if (
+      typeof payload.after === 'number' &&
+      !Number.isSafeInteger(payload.after)
+    )
+      throw new Error('after must be a nonnegative integer');
+    const data =
+      request.name === 'messages.send'
+        ? await this.messaging.send(
+            (payload.text as string | undefined) ?? '',
+            (payload.attachments as Attachment[] | undefined) ?? [],
+            request.origin === 'cli' ? 'agent' : 'user',
+          )
+        : await this.messaging.read(
+            (payload.after as number | undefined) ?? request.messagesAfter ?? 0,
+            (payload.waitMs as number | undefined) ?? 0,
+          );
+    return {
+      data,
+      projectId: this.project?.id ?? null,
+      revision: this.project?.revision ?? null,
+    };
   }
 
   importBytes(file: ImportedFile, observation: Observation): Promise<Sheet[]> {

@@ -5,6 +5,8 @@ import {
   For,
   Show,
   onSettled,
+  flush,
+  untrack,
 } from 'solid-js';
 import { createWorkspace } from './app/controller';
 import type { DrawingTool } from './app/contracts';
@@ -20,11 +22,19 @@ import SheetNavigator from './components/SheetNavigator';
 import SheetScaleDialog from './components/SheetScaleDialog';
 import SheetNamesDialog from './components/SheetNamesDialog';
 import type { Sheet } from './core/types';
-import type { Observation } from './app/application';
+import type { Application, Observation } from './app/application';
 import ConstructionView from './components/ConstructionView';
 import ConstructionEditor from './components/ConstructionEditor';
 import ReviewPanel from './components/ReviewPanel';
 import { formatScale } from './core/scale';
+import Wingman from './components/Wingman';
+import type {
+  ModelView,
+  PlanView,
+  ViewportPort,
+  WingmanVisual,
+  WorkspaceViewSnapshot,
+} from './app/wingman-types';
 
 const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
   { id: 'select', label: 'Select', key: 'V', icon: '↖' },
@@ -43,8 +53,8 @@ const groupColors = [
   '#f43f5e',
   '#84cc16',
 ];
-export default function App() {
-  const controller = createWorkspace();
+export default function App(props: { application?: Application }) {
+  const controller = createWorkspace(untrack(() => props.application));
   const [sheetsVisible, setSheetsVisible] = createSignal(
     localStorage.getItem('bluewing.panel.sheets.pinned') !== 'false',
     {
@@ -75,6 +85,9 @@ export default function App() {
   });
   const [quantities, setQuantities] = createSignal(false);
   const [view, setView] = createSignal<'plan' | '3d' | 'split'>('plan');
+  const [followingAgent, setFollowingAgent] = createSignal(false);
+  let planViewport: ViewportPort<PlanView> | undefined;
+  let modelViewport: ViewportPort<ModelView> | undefined;
   const [constructionOpen, setConstructionOpen] = createSignal(false);
   const [reviewOpen, setReviewOpen] = createSignal(false);
   const [detailDraft, setDetailDraft] = createSignal(false);
@@ -131,6 +144,64 @@ export default function App() {
     setQuantities(false);
     if (id !== 'select') setInspectorPeek((value) => value + 1);
   };
+  function captureView(): WorkspaceViewSnapshot | null {
+    const project = controller.project();
+    if (!project) return null;
+    return structuredClone({
+      projectId: project.id,
+      mode: view(),
+      plan: planViewport?.read() ?? null,
+      model: view() !== 'plan' ? (modelViewport?.read() ?? null) : null,
+      context: controller.captureContext(),
+      quantities: quantities(),
+      tool: tool(),
+    });
+  }
+  async function applyView(next: WorkspaceViewSnapshot | WingmanVisual) {
+    const project = controller.project();
+    if (!project || next.projectId !== project.id)
+      throw new Error('This view belongs to another project');
+    if (hasDraft() || controller.busy())
+      throw new Error('Finish your current edit before swapping views');
+    if ('context' in next) {
+      controller.restoreContext(next.context);
+      setView(next.mode);
+      setQuantities(next.quantities);
+      setTool(next.tool);
+      setFollowingAgent(false);
+    } else {
+      if (next.view.kind === 'plan' && !project.sheets[next.view.sheetId])
+        throw new Error('The source sheet is no longer available');
+      const context = controller.captureContext();
+      controller.restoreContext({
+        ...context,
+        sheetId:
+          next.view.kind === 'plan' ? next.view.sheetId : context.sheetId,
+        selection: [],
+        activeGroupId: null,
+        drawingGroupId: null,
+        visibility: { hiddenSheets: [], hiddenGroups: {} },
+      });
+      setView(next.view.kind);
+      setQuantities(false);
+      setTool('select');
+      setFollowingAgent(true);
+    }
+    // The viewport ports read the mounted sheet and measured pane, after Solid commits.
+    flush();
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => {
+        resolve();
+      }),
+    );
+    if (controller.project()?.id !== project.id) return;
+    if ('context' in next) {
+      if (next.plan && project.sheets[next.plan.sheetId])
+        planViewport?.apply(next.plan);
+      if (next.model && next.mode !== 'plan') modelViewport?.apply(next.model);
+    } else if (next.view.kind === 'plan') planViewport?.apply(next.view);
+    else modelViewport?.apply(next.view);
+  }
   const nextGroupColor = () => {
     const groups = Object.values(controller.project()?.groups ?? {});
     return (
@@ -470,6 +541,10 @@ export default function App() {
             >
               <div class="plan-pane" hidden={view() === '3d'}>
                 <DrawingCanvas
+                  onViewport={(port) => {
+                    planViewport = port;
+                  }}
+                  presentationActive={followingAgent()}
                   controller={controller}
                   tool={tool()}
                   onError={setError}
@@ -486,6 +561,10 @@ export default function App() {
               >
                 {(result) => (
                   <ConstructionView
+                    onViewport={(port) => {
+                      modelViewport = port;
+                    }}
+                    presentationActive={followingAgent()}
                     result={result()}
                     levels={Object.values(
                       controller.project()?.construction?.levels ?? {},
@@ -531,6 +610,19 @@ export default function App() {
               </Show>
             </div>
           </Show>
+          <Wingman
+            controller={controller}
+            captureView={captureView}
+            applyView={applyView}
+            navigationDisabled={
+              hasDraft() ||
+              controller.busy() ||
+              constructionOpen() ||
+              reviewOpen() ||
+              recipeOpen() ||
+              updateOpen()
+            }
+          />
         </main>
         <WorkspacePanel
           id="group-inspector"

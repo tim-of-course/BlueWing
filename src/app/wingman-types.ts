@@ -1,5 +1,6 @@
 import type { PlanSnippet } from '../core/review';
 import type { SceneCamera } from '../three/scene';
+import type { DrawingTool, WorkspaceContext } from './contracts';
 
 export interface ViewBounds {
   x: number;
@@ -34,6 +35,15 @@ export interface WingmanVisual {
   view: WingmanView;
   caption?: string;
 }
+export interface WorkspaceViewSnapshot {
+  projectId: string;
+  mode: 'plan' | '3d' | 'split';
+  plan: PlanView | null;
+  model: ModelView | null;
+  context: WorkspaceContext;
+  quantities: boolean;
+  tool: DrawingTool;
+}
 export interface ViewportPort<T> {
   read(): T | null;
   apply(view: T): void;
@@ -43,5 +53,8 @@ export interface WingmanPresentation {
   publish(visual: WingmanVisual): void;
   inspect(): unknown;
   flash(): void;
-  annotate(annotations: PlanSnippet['annotations'], highlightIds?: string[]): void;
+  annotate(
+    annotations: PlanSnippet['annotations'],
+    highlightIds?: string[],
+  ): void;
 }

@@ -144,6 +144,19 @@ fn app_data_write(key: String, data: String) -> Result<(), String> {
     storage::atomic_write(&path, data.as_bytes())
 }
 #[tauri::command]
+fn app_data_export(key: String, data: String) -> Result<String, String> {
+    let path = app_data_path(&key)?;
+    let bytes = STANDARD.decode(data).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(path.parent().ok_or("Missing application data directory")?)
+        .map_err(|e| e.to_string())?;
+    storage::atomic_write(&path, &bytes)?;
+    Ok(path
+        .canonicalize()
+        .map_err(|e| e.to_string())?
+        .to_string_lossy()
+        .into_owned())
+}
+#[tauri::command]
 fn cache_stage(
     state: State<Shared>,
     version: String,
@@ -179,7 +192,7 @@ fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> 
         } else {
             "bluewing"
         });
-    json!({"bridgeVersion":4,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
+    json!({"bridgeVersion":5,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
 }
 #[tauri::command]
 fn cli_respond(
@@ -211,6 +224,7 @@ pub fn run() {
             file_snapshot_release,
             app_data_read,
             app_data_write,
+            app_data_export,
             read_file,
             write_file,
             cache_stage,
