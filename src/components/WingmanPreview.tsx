@@ -122,6 +122,10 @@ export default function WingmanPreview(props: {
           selectedPieceId: view.selectedPieceId ?? null,
         });
         if (!scene.count) setStatus('No construction matches this view.');
+        else if (scene.omitted)
+          setStatus(
+            `${String(scene.omitted)} objects omitted from this preview.`,
+          );
         return;
       }
       const sheet = project.sheets[view.sheetId];
@@ -220,7 +224,7 @@ export default function WingmanPreview(props: {
         style={{
           display: 'block',
           width: '100%',
-          'max-height': '240px',
+          'max-height': 'var(--wingman-preview-height, 240px)',
           'object-fit': 'contain',
         }}
       />

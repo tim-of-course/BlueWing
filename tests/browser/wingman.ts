@@ -203,6 +203,24 @@ export async function viewWorkflow(page: Page) {
 }
 export async function messagingWorkflow(page: Page) {
   await sendText(page, 'Please check this wall');
+  const sheetId = await page
+    .getByLabel('Drawing canvas', { exact: true })
+    .getAttribute('data-sheet-id');
+  expect(
+    (
+      await cli(page, 'sheet.render', {
+        sheetId,
+        path: 'chat-view.png',
+        maxDimension: 320,
+      })
+    ).exitCode,
+  ).toBe(0);
+  await cli(page, 'wingman.flash');
+  const log = page.getByRole('log', { name: 'Messages' });
+  await expect(
+    page.getByRole('img', { name: 'Live workspace preview' }),
+  ).toBeVisible();
+  expect((await log.boundingBox())?.height).toBeGreaterThan(60);
   const success = await cli(page, 'project.inspect');
   expect(success.exitCode).toBe(0);
   expect(success.response.messages).toEqual(

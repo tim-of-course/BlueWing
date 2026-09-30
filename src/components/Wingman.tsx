@@ -255,6 +255,7 @@ export default function Wingman(props: Props) {
         <aside
           class={[
             'wingman',
+            chatOpen() && 'wingman-chat-open',
             glowing() && 'wingman-glowing',
             conversation().paused && 'wingman-paused',
           ]}

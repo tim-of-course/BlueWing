@@ -25,6 +25,9 @@
   justify-content: space-between;
   flex-shrink: 0;
 }
+.wingman-chat-open {
+  --wingman-preview-height: min(18vh, 150px);
+}
 .wingman-header button {
   font-size: 12px;
   padding: 5px 8px;
