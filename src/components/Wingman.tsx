@@ -346,7 +346,7 @@ export default function Wingman(props: Props) {
                 <textarea
                   id="wingman-message"
                   value={text()}
-                  disabled={sending()}
+                  readonly={sending()}
                   placeholder="Ask a question or give a correction…"
                   onInput={(event) => setText(event.currentTarget.value)}
                   aria-describedby="wingman-keyboard-hint"

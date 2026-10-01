@@ -111,6 +111,7 @@ export async function keyboardWorkflow(page: Page) {
   await input.press('Enter');
   await expect(log).toContainText('First line\na');
   await expect(input).toHaveValue('');
+  await expect(input).toBeFocused();
   await input.fill('Composed message');
   await input.dispatchEvent('compositionstart');
   await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true });

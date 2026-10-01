@@ -4,6 +4,10 @@ Wingman gives a user and an external CLI participant a shared visual and a small
 
 ## Use
 
+Choose **Copy AI prompt**, then **Wingman + chat** to talk in either place, or **Chat only** to keep the conversation in your AI's chat. Paste the prompt into your AI's chat. The desktop app supplies the installed command path and current project automatically. No model or provider setup lives in Bluewing. A browser-only workspace explains that connecting needs the desktop app.
+
+Enter sends a chat message; Shift+Enter adds a new line. Confirming composed text does not send it. If copying a prompt is unavailable, select and copy the displayed prompt instead.
+
 Wingman sits in the drawing workspace's lower-right corner, keeping inspector and sheet controls accessible. Expand or collapse the preview independently of Chat. Successful CLI `sheet.render`, `snippet.render`, and `construction.render` calls publish their view quietly. Optional `caption` text describes the view; otherwise the app uses the sheet name or a 3D label. `wingman.flash` expands and briefly glows the preview, including a nonanimated indication when reduced motion is enabled.
 
 Click the preview to swap with the main workspace. Clicking again restores the user's sheet, camera, selection, group context, visibility, workspace mode, and 3D filters. Subsequent agent renders while swapped update the agent view without replacing the saved return view. Draft edits disable swapping; updates that arrive during an edit remain available through **Show latest agent view**. Preview content follows accepted project edits. It is not the original exported PNG. A deleted source is shown as unavailable, and capped 3D previews report omissions.
@@ -15,6 +19,38 @@ CLI messages are delivered as text with image paths, including on application er
 Conversations and screenshot files are local application data keyed by project identity. They survive reopening on the same device but are not included when copying the `.bluewing` file to another computer. No model, provider, external message service, or agent runtime is embedded. See [CLI examples and cursor rules](cli.md#wingman-messages-and-presentation).
 
 Pause blocks new non-messaging CLI actions and rejects queued actions that have not started. A running atomic action can finish. Resuming never replays rejected actions. Desktop editing and messaging remain available.
+
+**Waiting for your message** appears while a CLI message wait is pending. **End conversation** wakes that wait and prevents it renewing. Neither asks an external host to stop a running task. An agent that cannot remain available should explain that in Wingman. If its process disconnects, the waiting indicator clears when the outstanding application wait expires, within 25 seconds. Bluewing communicates your intent; the external host controls agent availability.
+
+## Discovery and conversation verification, October 1, 2026
+
+Implemented on `main`: two copyable connection prompts, concise CLI help and `connect`, reply guidance beside user messages, native `messages.wait` renewal, waiting/end controls, and Enter-to-send with Shift+Enter for a new line. Connection prompts carry the installed executable, shell quoting, project identity, and any custom application-data location. They communicate conversation intent without saving a global mode or choosing an agent provider.
+
+| Check                               | Result                                                                                                                                                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript, ESLint, formatting      | Passed                                                                                                                                                                          |
+| Core tests                          | 128 passed; includes prompt quoting, selected intent, cursor delivery, user-only wake, concurrent waits, timeout, stop, project switch/reopen, pause, and attachment paths      |
+| Development browsers                | 38 passed across Chromium and WebKit; no Solid diagnostics or silent holds                                                                                                      |
+| Production browsers                 | 28 passed across Chromium and WebKit                                                                                                                                            |
+| Platform storage regression         | Nine passed                                                                                                                                                                     |
+| Rust tests                          | 13 passed; includes native renewal, identity binding, retained cursors, terminal/error responses, malformed requests, and timeout races                                         |
+| Production web and macOS app builds | Passed                                                                                                                                                                          |
+| Packaged native CLI workflow        | Passed; includes concise help, connection modes, a real 27-second wait spanning renewal, nonblocking inspection, project-close termination, and stale wait tokens after restart |
+
+Browser checks cover both copied prompts, missing/denied clipboard fallback, Enter vs Shift+Enter, composition and repeated key events, waiting visibility, and End conversation. Existing visual swap, annotations, screenshot attachments, and persistence checks continue to pass. Native Computer Use again returned `cgWindowNotFound` by both app path and bundle ID. Native clipboard and keyboard/pointer interaction remain unverified; the browser results do not establish those behaviors. Windows native behavior was not run. Heavy checks ran serially under the resource guard without resource refusals.
+
+A final keyboard assertion reproduced Chromium losing composer focus after sending. The composer now stays focused while read-only during the save. After that fix, all 12 focused development and four production Wingman checks passed, static checks passed, and the macOS app was rebuilt.
+
+A live Astra-low agent through the Codex harness used the exact generated **Wingman + chat** prompt against the packaged CLI. It inspected the isolated sample, answered its seeded user question with `messages.send`, and started `messages.wait` with the received cursor. The host observed the waiting process after 20 seconds and closed the sample project; the agent received `project_changed` and stopped successfully. This establishes routing and a bounded active wait; it does not establish a second live user message after idle or indefinite availability. User-message wake and multiple exchanges are covered by deterministic browser/core tests. The native UI limitation prevented typing the live question through the desktop. Evidence is in ignored `tmp/wingman-live/`.
+
+Four independent Banana Split roots completed successfully, with no descendants: UI implementation, native implementation, read-only review, and the live conversation check. All used configured Astra low; the host used Astra ultra. Runtime diagnostics recorded no managed tool rejections, revisions, acceptances, or turns without disposition. The host approved five exact local CLI operations for the live agent after its sandbox blocked loopback access. One host context message reached the UI worker after completion and was rejected without affecting the work. Host verification fixed lint findings and a Chromium focus-loss issue after Enter-to-send.
+
+| Assignment              | Workflow                                  | Root agent                                 |
+| ----------------------- | ----------------------------------------- | ------------------------------------------ |
+| UI and browser coverage | `wf_f0d97443-6f1b-4f3e-b97e-ec017e281b1c` | `agt_94133e23-e5b5-48f7-aed1-891650c3d89d` |
+| Native waiting          | `wf_50f929f7-6910-4e23-826f-ac981b4234bf` | `agt_57b569e8-855a-4e00-a15d-e9927f9439a1` |
+| Code review             | `wf_35409ab7-1989-483e-acc1-d73b70fd18fd` | `agt_b9070ecd-269e-478c-b350-3207956c2e06` |
+| Live agent check        | `wf_578bf877-0f86-432a-bcdb-c3322eb01ad0` | `agt_e3da8aa0-fbae-4804-98f7-848d33d587ee` |
 
 ## Verification, September 29, 2026
 
@@ -52,7 +88,7 @@ Browser evidence is in ignored `test-results/dev/` and `test-results/production/
 
 ## Implementation checkpoints and delegated work
 
-Work is on `feat/wingman`. `c2b46ad` records the agreed scope/contracts; `dafb6b1` records the integrated feature and test workflows.
+The initial work used `feat/wingman` and was merged to `main`. `c2b46ad` records the agreed scope/contracts; `dafb6b1` records the integrated feature and test workflows.
 
 Five independent Banana Split worker contexts completed successfully, with no descendants, plus the host coordinator. All five workers used configured `gpt-6-astra` with low reasoning. The host model is GPT-6; its exact routing/reasoning setting is unavailable. Host review found and fixed a chat reactive relay, reset-on-edit behavior, and inspector overlap before the final passing development suite.
 
