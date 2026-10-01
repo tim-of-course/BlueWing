@@ -2,7 +2,11 @@
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
-Use `bluewing commands.list` for the current payload schemas and examples. Each request is a JSON object with a `payload`. Mutations of the active project also require the project identity and revision returned by `project.inspect`:
+In Wingman, choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**, and paste the prompt into your agent's chat. It includes the installed executable, the open project identity, and your conversation preference. Keep Bluewing open. This works with any agent that can run local commands; Bluewing does not run or select a model.
+
+Start with `bluewing help` for a short introduction, or `bluewing help messages.send` for one command's schema and examples. `bluewing connect '{"payload":{"mode":"wingman"}}'` returns the current project and Wingman conversation instructions; mode `chat` keeps answers in the external chat. These modes communicate intent through instructions, without changing other callers' behavior or storing a global conversation mode. `commands.list` still returns the full registry.
+
+Each request is a JSON object with a `payload`. Mutations of the active project also require the project identity and revision returned by `project.inspect`:
 
 ```sh
 bluewing project.create '{"payload":{"name":"Estimate","path":"/absolute/path/estimate.bluewing"}}'
@@ -68,7 +72,15 @@ See [detailed-takeoff verification](detailed-takeoff.md) for current results and
 
 `messages.read` accepts `{ "after": 0, "waitMs": 25000 }`. Reads are nondestructive. The optional wait is bounded to 25 seconds and runs outside the project command queue. Keep the latest message `id` as the cursor and reuse it after reconnecting. IDs and conversations are scoped to each project.
 
+For a conversation, use `messages.wait` with `{ "after": 0, "timeoutMs": 300000 }`. It waits for **user** messages, so an agent's own replies do not wake it. The native launcher quietly renews bounded 25-second application waits until a user message arrives or the total timeout expires (five minutes by default). `timeoutMs: 0` reads immediately. Browser dispatch and older launchers return after one bounded application wait. Waiting does not occupy the project command queue or make repeated model calls. Your agent still needs to await the process using the tools its host supports.
+
+The result is `{ status, projectId, waitToken, after, messages }`. On `messages`, process the messages and reply. On `timeout`, renew if continuing is supported. On `ended` or `project_changed`, stop waiting; a project switch is not permission to continue on the newly open project. The launcher binds renewals to the original desktop, project, and wait token. It preserves cursors over intermediate responses so the final response includes their messages. Application errors and transport failures return immediately rather than being retried.
+
+**Wingman + chat:** send questions, progress, and answers with `messages.send` when communicating through Wingman; inspect screenshot attachment paths. After answering or completing work, call `messages.wait` again. Use the host's waiting tools while the process is pending. If the host cannot keep the agent available, explain that briefly in Wingman before ending the turn. The external chat remains available, and duplicate replies are optional. **Chat only:** keep questions and answers in the external chat, including answers to any Wingman input. Wait for further instructions there. A small `messageGuidance` field accompanies newly delivered user messages to remind agents of these choices; ordinary results without user messages do not carry it.
+
 Every successfully parsed CLI request accepts an optional top-level `messagesAfter` cursor. Both success and error responses include full `messages` newer than that cursor, including attachment paths, plus `messagesProjectId`. Store the cursor with that project identity; reset it when the identity changes. If the supplied `projectId` differs from the current conversation, response delivery starts at zero. Omitting the cursor returns the entire current conversation. `messages.read` uses the envelope cursor when its payload omits `after`. Supplying `projectId` to `messages.send` or `messages.read` requires it to match the open project.
+
+For `messages.wait`, the payload's `after` (or the envelope cursor when omitted) applies to both result messages and the response envelope. A pending wait never delivers messages from a different project. Always consume messages returned by a send or another action before starting the next wait, and pass the greatest received ID forward. Reads do not acknowledge or delete messages.
 
 The UI's pause control rejects all non-messaging CLI commands with `WINGMAN_PAUSED`, including inspection and rendering. Commands queued before a pause remain rejected after resume; submit a new request to retry. Commands already executing may finish. UI operations and messages continue while paused.
 
@@ -80,7 +92,10 @@ For ordinary work, include the most recent received message ID in the next comma
 bluewing project.inspect '{"messagesAfter":12}'
 bluewing messages.send '{"payload":{"text":"I checked the opening. Please confirm the head height."},"messagesAfter":12}'
 bluewing messages.read '{"payload":{"after":13,"waitMs":25000},"messagesAfter":13}'
+bluewing messages.wait '{"projectId":"PROJECT_ID","payload":{"after":13,"timeoutMs":300000},"messagesAfter":13}'
 bluewing wingman.flash '{}'
 ```
 
 A normal user message is delivered with the next CLI result. It does not interrupt an operation already running. The separate **Pause CLI** button cancels pending CLI work. Resume is available only in the desktop UI. The CLI cannot resume itself.
+
+While a message wait is pending, Wingman shows **Waiting for your message** and **End conversation**. Ending wakes active waits and prevents their renewal. A later new wait can start another conversation. This indicator establishes that a request is waiting, not that a model is guaranteed to respond; if a caller is killed, the outstanding application wait expires within 25 seconds. Pausing CLI actions leaves messaging and waits available.

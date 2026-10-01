@@ -99,6 +99,87 @@ void test('CLI parsing owns origin and validates the envelope cursor', () => {
     /nonnegative integer/,
   );
 });
+void test('short help and command help parse without requesting the full registry', () => {
+  assert.equal(parseCli([]).name, 'help');
+  assert.equal(parseCli(['--help']).name, 'help');
+  assert.deepEqual(parseCli(['help', 'messages.wait']).payload, {
+    command: 'messages.wait',
+  });
+  assert.equal(parseCli(['commands.list']).name, 'commands.list');
+  assert.deepEqual(
+    parseCli(['help'], '{"payload":{"command":"sheet.render"}}').payload,
+    {
+      command: 'sheet.render',
+    },
+  );
+});
+void test('Wingman wait wakes for user input, permits agent sends, and shows only active waiters', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  const pending = messaging.wait(0, 1000);
+  assert.equal(messaging.snapshot().waiting, true);
+  await messaging.send('Still checking', [], 'agent');
+  assert.equal(messaging.snapshot().waiting, true);
+  const user = await messaging.send('Use 12 feet', [], 'user');
+  const reply = await pending;
+  assert.equal(reply.status, 'messages');
+  assert.equal(reply.after, user.id);
+  assert.equal(reply.messages.length, 2);
+  assert.equal(reply.projectId, 'one');
+  assert.equal(messaging.snapshot().waiting, false);
+  assert.deepEqual((await messaging.wait(0, 0)).messages, reply.messages);
+});
+void test('ending a conversation wakes all waits, prevents renewal, and permits a new conversation', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  const a = messaging.wait(0, 1000);
+  const b = messaging.wait(0, 1000);
+  messaging.setPaused(true);
+  assert.equal(messaging.snapshot().waiting, true);
+  messaging.stopWaiting();
+  const ended = await a;
+  assert.equal(ended.status, 'ended');
+  assert.equal((await b).status, 'ended');
+  assert.equal(messaging.snapshot().waiting, false);
+  assert.equal(
+    (await messaging.wait(0, 1000, ended.waitToken)).status,
+    'ended',
+  );
+  const next = messaging.wait(0, 1000);
+  await messaging.send('Start again', [], 'user');
+  assert.equal((await next).status, 'messages');
+});
+void test('project switching and reopening stop waits without borrowing another conversation', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('two');
+  await messaging.send('Other project', [], 'user');
+  await messaging.bind('one');
+  const first = messaging.wait(0, 1000);
+  await messaging.bind('two');
+  const changed = await first;
+  assert.equal(changed.status, 'project_changed');
+  assert.equal(changed.projectId, 'one');
+  assert.deepEqual(changed.messages, []);
+  assert.equal(messaging.snapshot().waiting, false);
+  const oldToken = (await messaging.wait(1, 0)).waitToken;
+  await messaging.bind('two');
+  assert.equal((await messaging.wait(1, 0, oldToken)).status, 'ended');
+  await messaging.bind(null);
+  await assert.rejects(messaging.wait(), /Open a project/);
+});
+void test('timeouts return received agent messages and release only their own waiting indicator', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  await messaging.send('Agent message', [], 'agent');
+  const long = messaging.wait(0, 1000);
+  const timed = await messaging.wait(0, 1);
+  assert.equal(timed.status, 'timeout');
+  assert.equal(timed.after, 1);
+  assert.equal(messaging.snapshot().waiting, true);
+  messaging.stopWaiting();
+  await long;
+  assert.equal(messaging.snapshot().waiting, false);
+});
 void test('queued CLI cancellation returns before a running action ends and never replays', async () => {
   const { messaging } = fixture();
   let release!: () => void;
@@ -162,6 +243,15 @@ void test('success and failure envelopes carry full unconsumed messages', async 
   assert.deepEqual((await dispatchCli(application, args)).response.messages, [
     message,
   ]);
+  assert.match(
+    (await dispatchCli(application, args)).response.messageGuidance ?? '',
+    /messages.send/,
+  );
+  assert.equal(
+    (await dispatchCli(application, ['project.inspect', '{"messagesAfter":2}']))
+      .response.messageGuidance,
+    undefined,
+  );
   application.dispatch = () =>
     Promise.reject(
       Object.assign(new Error('Paused'), { code: 'WINGMAN_PAUSED' }),
@@ -217,4 +307,13 @@ void test('CLI strips image data from message results and identifies the cursor 
   ]);
   assert.equal(changed.response.messages?.length, 1);
   assert.equal(changed.response.messagesProjectId, 'one');
+  application.dispatch = async () => ({
+    data: await messaging.wait(0, 0),
+    projectId: 'one',
+    revision: 0,
+  });
+  const waiting = await dispatchCli(application, ['messages.wait']);
+  assert.ok(!JSON.stringify(waiting).includes('dataUrl'));
+  assert.ok(JSON.stringify(waiting).includes('/local/a.png'));
+  assert.equal(waiting.response.messagesProjectId, 'one');
 });

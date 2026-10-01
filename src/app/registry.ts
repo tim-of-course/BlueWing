@@ -29,6 +29,22 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'help',
+    'Get a short CLI introduction or the schema and examples for one command.',
+    { command: string },
+    [],
+    false,
+    { command: 'messages.send' },
+  ),
+  entry(
+    'connect',
+    'Identify the open project and get instructions for Wingman + chat or Chat only.',
+    { mode: { type: 'string', enum: ['wingman', 'chat'] } },
+    [],
+    false,
+    { mode: 'wingman' },
+  ),
+  entry(
     'messages.send',
     'Send a project message without changing the estimate or undo history.',
     {
@@ -63,6 +79,18 @@ export const applicationCommands = [
     [],
     false,
     { after: 0, waitMs: 25000 },
+  ),
+  entry(
+    'messages.wait',
+    'Wait for user input in Wingman. The native CLI quietly renews short waits, up to timeoutMs (default 300000). Stop on ended or project_changed.',
+    {
+      after: { type: 'number', minimum: 0 },
+      timeoutMs: { type: 'number', minimum: 0 },
+      waitToken: string,
+    },
+    [],
+    false,
+    { after: 0, timeoutMs: 300000 },
   ),
   entry(
     'wingman.inspect',

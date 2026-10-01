@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Application, ApplicationRequest } from './application';
-import type { Message } from './messaging';
+import type { Message, MessageWait } from './messaging';
+import { messageGuidance, type CliConnection } from './cli-guide';
 
 interface CliRequest {
   id: string;
@@ -17,9 +18,15 @@ export function parseCli(args: string[], input?: string): ApplicationRequest {
   const argument = args[0];
   const name =
     !argument || argument === '--help' || argument === 'help'
-      ? 'commands.list'
+      ? 'help'
       : argument;
-  const source = input ?? args[1] ?? '{}';
+  const source =
+    name === 'help' &&
+    input === undefined &&
+    args[1] &&
+    !args[1].startsWith('{')
+      ? JSON.stringify({ payload: { command: args[1] } })
+      : (input ?? args[1] ?? '{}');
   const body: unknown = JSON.parse(source);
   if (!body || typeof body !== 'object' || Array.isArray(body))
     throw new Error('Request must be a JSON object');
@@ -80,7 +87,17 @@ export async function connectCli(
       console.error('CLI response failed', error);
     });
   });
-  await invoke('bridge_ready');
+  const connection = await invoke<Partial<CliConnection>>('bridge_ready');
+  if (connection.cliPath)
+    application.setCliConnection({
+      cliPath: connection.cliPath,
+      shell:
+        connection.shell ??
+        (connection.cliPath.endsWith('.exe') ? 'powershell' : 'posix'),
+      ...(connection.dataDir === undefined
+        ? {}
+        : { dataDir: connection.dataDir }),
+    });
   return unlisten;
 }
 
@@ -103,18 +120,30 @@ export async function dispatchCli(
   input?: string,
 ) {
   let request: ApplicationRequest | undefined;
-  const delivery = () => {
+  const delivery = (wait?: MessageWait) => {
+    if (wait)
+      return {
+        messagesProjectId: wait.projectId,
+        messages: wait.messages.map(wireMessage),
+        ...(wait.messages.some((message) => message.sender === 'user')
+          ? { messageGuidance }
+          : {}),
+      };
     const snapshot = application.messaging.snapshot();
     const after =
       request?.projectId !== undefined &&
       request.projectId !== snapshot.projectId
         ? 0
         : (request?.messagesAfter ?? 0);
+    const messages = snapshot.messages
+      .filter((message) => message.id > after)
+      .map(wireMessage);
     return {
       messagesProjectId: snapshot.projectId,
-      messages: snapshot.messages
-        .filter((message) => message.id > after)
-        .map(wireMessage),
+      messages,
+      ...(messages.some((message) => message.sender === 'user')
+        ? { messageGuidance }
+        : {}),
     };
   };
   try {
@@ -124,12 +153,18 @@ export async function dispatchCli(
       result.data = wireMessage(result.data as Message);
     if (request.name === 'messages.read')
       result.data = (result.data as Message[]).map(wireMessage);
+    const wait =
+      request.name === 'messages.wait'
+        ? (result.data as MessageWait)
+        : undefined;
+    if (wait)
+      result.data = { ...wait, messages: wait.messages.map(wireMessage) };
     return {
       exitCode: 0,
       response: {
         ok: true,
         ...result,
-        ...delivery(),
+        ...delivery(wait),
       },
     };
   } catch (error) {

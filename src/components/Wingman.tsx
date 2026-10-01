@@ -9,6 +9,7 @@ import {
   untrack,
 } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
+import { connectionPrompt } from '../app/cli-guide';
 import type { Attachment } from '../app/messaging';
 import { visibleDrawingIds } from '../app/visibility';
 import type {
@@ -53,6 +54,10 @@ export default function Wingman(props: Props) {
   const [sending, setSending] = createSignal(false);
   const [error, setError] = createSignal('');
   const [lastRead, setLastRead] = createSignal(0);
+  const [promptOpen, setPromptOpen] = createSignal(false);
+  const [copyStatus, setCopyStatus] = createSignal('');
+  const [fallbackPrompt, setFallbackPrompt] = createSignal('');
+  let composing = false;
   let glowTimer: ReturnType<typeof setTimeout> | undefined;
   let transcript: HTMLDivElement | undefined;
   let screenshotNumber = 0;
@@ -89,7 +94,7 @@ export default function Wingman(props: Props) {
         props.controller.project()?.sheets[current.view.sheetId]?.name ??
         'Plan unavailable'
       );
-    return current ? 'Construction · 3D' : 'Waiting for a CLI view';
+    return current ? 'Construction · 3D' : 'Your AI’s view will appear here';
   });
   async function apply(view: WorkspaceViewSnapshot | WingmanVisual) {
     setChangingView(true);
@@ -199,6 +204,9 @@ export default function Wingman(props: Props) {
       setCapturing(false);
       setError('');
       setLastRead(0);
+      setPromptOpen(false);
+      setCopyStatus('');
+      setFallbackPrompt('');
     },
     { name: 'wingman.project' },
   );
@@ -234,6 +242,20 @@ export default function Wingman(props: Props) {
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
   }
+  async function copyPrompt(mode: 'wingman' | 'chat') {
+    const connection = props.controller.cliConnection();
+    const project = props.controller.project();
+    if (!connection || !project) return;
+    const prompt = connectionPrompt(connection, project, mode);
+    setFallbackPrompt('');
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopyStatus('Prompt copied. Paste it into your AI’s chat.');
+    } catch {
+      setCopyStatus('Could not copy. Select and copy the prompt below.');
+      setFallbackPrompt(prompt);
+    }
+  }
   async function send() {
     if (sending() || (!text().trim() && !attachments().length)) return;
     const projectId = props.controller.project()?.id;
@@ -265,7 +287,7 @@ export default function Wingman(props: Props) {
             <section class="wingman-chat" aria-label="Wingman conversation">
               <div class="wingman-chat-title">
                 <strong>Conversation</strong>
-                <span>Through the CLI</span>
+                <span>With your AI</span>
               </div>
               <div
                 class="wingman-messages"
@@ -278,8 +300,7 @@ export default function Wingman(props: Props) {
               >
                 <Show when={!conversation().messages.length}>
                   <p class="wingman-empty">
-                    Send a message or attach a screenshot. The CLI participant
-                    receives it with its next result.
+                    Send a message or attach a screenshot for your connected AI.
                   </p>
                 </Show>
                 <For each={conversation().messages}>
@@ -291,7 +312,7 @@ export default function Wingman(props: Props) {
                       ]}
                     >
                       <strong>
-                        {message.sender === 'user' ? 'You' : 'CLI participant'}
+                        {message.sender === 'user' ? 'You' : 'AI'}
                       </strong>
                       <p>{message.text}</p>
                       <div class="wingman-message-images">
@@ -328,16 +349,31 @@ export default function Wingman(props: Props) {
                   disabled={sending()}
                   placeholder="Ask a question or give a correction…"
                   onInput={(event) => setText(event.currentTarget.value)}
+                  aria-describedby="wingman-keyboard-hint"
+                  onCompositionStart={() => {
+                    composing = true;
+                  }}
+                  onCompositionEnd={() => {
+                    composing = false;
+                  }}
                   onKeyDown={(event) => {
                     if (
                       event.key === 'Enter' &&
-                      (event.metaKey || event.ctrlKey)
+                      !event.shiftKey &&
+                      !event.isComposing &&
+                      !composing &&
+                      // WebKit can clear isComposing before the IME's final Enter.
+                      // eslint-disable-next-line @typescript-eslint/no-deprecated
+                      event.keyCode !== 229
                     ) {
                       event.preventDefault();
-                      action(send);
+                      if (!event.repeat) action(send);
                     }
                   }}
                 />
+                <p id="wingman-keyboard-hint" class="wingman-keyboard-hint">
+                  Enter to send · Shift+Enter for a new line
+                </p>
                 <div class="wingman-attachments">
                   <For each={attachments()}>
                     {(attachment) => (
@@ -412,9 +448,78 @@ export default function Wingman(props: Props) {
               {conversation().paused ? 'Resume CLI' : 'Pause CLI'}
             </button>
           </div>
+          <div class="wingman-connect">
+            <button
+              type="button"
+              aria-expanded={promptOpen() ? 'true' : 'false'}
+              onClick={() => setPromptOpen((open) => !open)}
+            >
+              Copy AI prompt
+            </button>
+          </div>
+          <Show when={promptOpen()}>
+            <section class="wingman-prompts" aria-label="Connect your AI">
+              <Show
+                when={props.controller.cliConnection()}
+                fallback={
+                  <p>
+                    Connecting an AI needs the Bluewing desktop app. Open this
+                    project there to copy a connection prompt.
+                  </p>
+                }
+              >
+                <p>Copy a prompt and paste it into your AI’s chat.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void copyPrompt('wingman');
+                  }}
+                >
+                  Wingman + chat
+                </button>
+                <p>Talk here or in your AI’s chat.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void copyPrompt('chat');
+                  }}
+                >
+                  Chat only
+                </button>
+                <p>Keep the conversation in your AI’s chat.</p>
+                <Show when={copyStatus()}>
+                  <p role="status">{copyStatus()}</p>
+                </Show>
+                <Show when={fallbackPrompt()}>
+                  <label for="wingman-prompt">AI connection prompt</label>
+                  <textarea
+                    id="wingman-prompt"
+                    readonly
+                    value={fallbackPrompt()}
+                    onFocus={(event) => {
+                      event.currentTarget.select();
+                    }}
+                  />
+                </Show>
+              </Show>
+            </section>
+          </Show>
+          <Show when={conversation().waiting}>
+            <div class="wingman-waiting">
+              <span role="status">Waiting for your message</span>
+              <button
+                type="button"
+                onClick={() => {
+                  messaging.stopWaiting();
+                }}
+              >
+                End conversation
+              </button>
+            </div>
+          </Show>
           <Show when={conversation().paused}>
             <p class="wingman-pause-note" role="status">
-              CLI actions paused. An action already running may finish.
+              AI actions paused. An action already running may finish.
             </p>
           </Show>
           <Show when={expanded()}>
@@ -433,7 +538,7 @@ export default function Wingman(props: Props) {
                 when={preview()}
                 fallback={
                   <div class="wingman-empty">
-                    The latest view rendered through the CLI will appear here.
+                    Views shared by your AI will appear here.
                   </div>
                 }
               >

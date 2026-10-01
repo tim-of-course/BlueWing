@@ -35,6 +35,11 @@ import type { ImportedFile } from './files';
 import { applicationCommands, registry } from './registry';
 import { renderImage, type RenderOptions } from './render';
 import { Messaging, type Attachment } from './messaging';
+import {
+  cliIntroduction,
+  type CliConnection,
+  type ConversationMode,
+} from './cli-guide';
 import { messagingStorage } from '../platform/messaging-storage';
 import type { WingmanPresentation } from './wingman-types';
 import type { PlanSnippet } from '../core/review';
@@ -57,6 +62,7 @@ export interface ApplicationResult {
 
 export class Application {
   readonly messaging: Messaging;
+  cliConnection: CliConnection | null = null;
   presentation?: WingmanPresentation | undefined;
   readonly storage;
   readonly pdf;
@@ -84,6 +90,10 @@ export class Application {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+  setCliConnection(connection: CliConnection): void {
+    this.cliConnection = connection;
+    this.publish();
   }
   private publish() {
     this.listeners.forEach((listener) => {
@@ -113,7 +123,11 @@ export class Application {
   }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
-    if (request.name === 'messages.read' || request.name === 'messages.send')
+    if (
+      request.name === 'messages.read' ||
+      request.name === 'messages.send' ||
+      request.name === 'messages.wait'
+    )
       return this.dispatchMessage(request);
     const enqueue = (operation: () => Promise<ApplicationResult>) =>
       this.schedule(operation);
@@ -125,7 +139,7 @@ export class Application {
     return schedule(async () => {
       const definition = registry.find((entry) => entry.name === request.name);
       if (!definition)
-        throw new Error(`Unknown command ${request.name}. Use commands.list.`);
+        throw new Error(`Unknown command ${request.name}. Use bluewing help.`);
       validatePayload(definition.schema, request.payload ?? {});
       const isApplication = applicationCommands.some(
         (entry) => entry.name === request.name,
@@ -184,6 +198,31 @@ export class Application {
           : result.data;
       } else
         switch (request.name) {
+          case 'help': {
+            const command = payload.command as string | undefined;
+            if (command) {
+              const found = registry.find((entry) => entry.name === command);
+              if (!found)
+                throw new Error(
+                  `Unknown command ${command}. Use bluewing help.`,
+                );
+              data = found;
+            } else data = cliIntroduction(this.project);
+            break;
+          }
+          case 'connect':
+            if (
+              request.projectId !== undefined &&
+              request.projectId !== this.project?.id
+            )
+              throw new Error(
+                'Connection project does not match the open project. Copy a new prompt from Wingman.',
+              );
+            data = cliIntroduction(
+              this.project,
+              (payload.mode as ConversationMode | undefined) ?? 'chat',
+            );
+            break;
           case 'wingman.inspect':
             data = this.presentation?.inspect() ?? null;
             break;
@@ -539,6 +578,20 @@ export class Application {
       !Number.isSafeInteger(payload.after)
     )
       throw new Error('after must be a nonnegative integer');
+    if (
+      payload.timeoutMs !== undefined &&
+      !Number.isSafeInteger(payload.timeoutMs)
+    )
+      throw new Error('timeoutMs must be a nonnegative integer');
+    if (request.name === 'messages.wait') {
+      const revision = this.project?.revision ?? null;
+      const data = await this.messaging.wait(
+        (payload.after as number | undefined) ?? request.messagesAfter ?? 0,
+        (payload.timeoutMs as number | undefined) ?? 25000,
+        payload.waitToken as string | undefined,
+      );
+      return { data, projectId: data.projectId, revision };
+    }
     const data =
       request.name === 'messages.send'
         ? await this.messaging.send(

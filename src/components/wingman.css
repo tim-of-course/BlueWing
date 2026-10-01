@@ -195,3 +195,36 @@
   color: #ffb4b4;
   font-size: 12px;
 }
+.wingman-connect {
+  padding: 0 8px 8px;
+}
+.wingman-connect button {
+  width: 100%;
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.wingman-prompts {
+  padding: 0 10px 10px;
+  overflow: auto;
+  font-size: 12px;
+}
+.wingman-prompts p {
+  margin: 6px 0 10px;
+}
+.wingman-prompts textarea {
+  width: 100%;
+  min-height: 120px;
+}
+.wingman-keyboard-hint {
+  margin: 5px 0 0;
+  font-size: 11px;
+  color: #a6b7c8;
+}
+.wingman-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px;
+  font-size: 12px;
+}

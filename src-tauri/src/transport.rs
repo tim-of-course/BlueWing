@@ -160,21 +160,34 @@ pub fn launch(args: Vec<String>, input: Option<String>) -> Result<Reply, String>
         &fs::read(data_dir()?.join("cli-session.json")).map_err(|e| unavailable(e.to_string()))?,
     )
     .map_err(|e| unavailable(e.to_string()))?;
+    // Resolve once: renewal must never migrate to a restarted desktop session.
+    crate::cli_wait::launch(args, input, |args, input, timeout| {
+        exchange(&endpoint, args, input, timeout)
+    })
+}
+fn exchange(
+    endpoint: &Endpoint,
+    args: Vec<String>,
+    input: Option<String>,
+    timeout: Duration,
+) -> Result<Reply, String> {
+    let unavailable =
+        |e| format!("Bluewing desktop is unavailable. Open Bluewing and retry. ({e})");
     let mut stream = TcpStream::connect_timeout(
         &std::net::SocketAddr::from(([127, 0, 0, 1], endpoint.port)),
-        Duration::from_secs(3),
+        Duration::from_secs(3).min(timeout),
     )
     .map_err(|e| unavailable(e.to_string()))?;
     stream
-        .set_read_timeout(Some(TIMEOUT + Duration::from_secs(5)))
+        .set_read_timeout(Some(timeout))
         .map_err(|e| e.to_string())?;
     stream
-        .set_write_timeout(Some(TIMEOUT))
+        .set_write_timeout(Some(timeout))
         .map_err(|e| e.to_string())?;
     serde_json::to_writer(
         &mut stream,
         &Request {
-            token: endpoint.token,
+            token: endpoint.token.clone(),
             args,
             input,
         },

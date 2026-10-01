@@ -6,12 +6,16 @@ import {
   captureErrors,
   captureWorkflow,
   messagingWorkflow,
+  keyboardWorkflow,
+  promptWorkflow,
   modelWorkflow,
   startWingmanProject,
   viewWorkflow,
 } from './wingman';
 
 for (const [name, workflow] of [
+  ['connection prompts and clipboard fallback', promptWorkflow],
+  ['Enter sends, Shift+Enter and composition do not', keyboardWorkflow],
   ['CLI renders and exact view restoration', viewWorkflow],
   ['message cursors, long polling and pause', messagingWorkflow],
   ['live 3D preview, split restoration and draft protection', modelWorkflow],

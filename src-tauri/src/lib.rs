@@ -1,4 +1,5 @@
 mod cache;
+mod cli_wait;
 mod storage;
 pub mod transport;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -192,7 +193,12 @@ fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> 
         } else {
             "bluewing"
         });
-    json!({"bridgeVersion":5,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli})
+    let mut info = json!({"bridgeVersion":5,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli,
+        "shell": if cfg!(windows) { "powershell" } else { "posix" }});
+    if let Some(directory) = std::env::var_os("BLUEWING_DATA_DIR") {
+        info["dataDir"] = json!(directory.to_string_lossy());
+    }
+    info
 }
 #[tauri::command]
 fn cli_respond(

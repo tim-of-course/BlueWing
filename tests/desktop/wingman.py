@@ -116,10 +116,18 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
     try:
         start()
         commands = {entry['name'] for entry in command('commands.list')['commands']}
-        assert {'messages.send', 'messages.read', 'wingman.inspect', 'wingman.flash',
+        assert {'help', 'connect', 'messages.send', 'messages.read', 'messages.wait', 'wingman.inspect', 'wingman.flash',
                 'wingman.annotate', 'sheet.render', 'snippet.render', 'construction.render'} <= commands
+        assert command('help')['project'] is None
+        assert command('help', {'command': 'messages.wait'})['name'] == 'messages.wait'
+        call('help', {'command': 'does.not.exist'}, succeeds=False)
         project_path = data / 'wingman.bluewing'
         command('project.create', {'name': 'Wingman native fixture', 'path': str(project_path)})
+        connected = command('connect', {'mode': 'wingman'}, projectId=project_id)
+        assert connected['project']['id'] == project_id
+        assert 'messages.send' in connected['instructions'] and 'messages.wait' in connected['instructions']
+        assert 'external chat' in command('connect', {'mode': 'chat'})['instructions']
+        call('connect', {'mode': 'wingman'}, projectId='wrong-project', succeeds=False)
         sheets = command('project.import', {'path': str(ROOT / 'tests/fixtures/assessment-plan.pdf')}, True)
         sheet = sheets[0]['id']
         command('sheet.calibrate', {'id': sheet, 'start': {'x': 72, 'y': 144},
@@ -210,6 +218,25 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         assert delivered['messagesProjectId'] == project_id
         assert command('messages.read', {'after': cursor}) == [second]
         assert command('messages.read', {'after': second['id'], 'waitMs': 100}) == []
+        # The native convenience command renews after 25 seconds without
+        # emitting intermediate output or returning on its own agent messages.
+        waiting_request = {'projectId': project_id, 'messagesAfter': second['id'],
+                           'payload': {'timeoutMs': 27000}}
+        began = time.monotonic()
+        pending = subprocess.Popen(argv('messages.wait'), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, env=env)
+        pending.stdin.write(json.dumps(waiting_request))
+        pending.stdin.close()
+        pending.stdin = None
+        assert command('project.inspect', timeout=10) == baseline
+        stdout, stderr = pending.communicate(timeout=40)
+        waited = response('messages.wait', waiting_request, pending.returncode, stdout, stderr)
+        assert time.monotonic() - began >= 26
+        assert waited['data']['status'] == 'timeout' and waited['data']['messages'] == []
+        assert waited['data']['projectId'] == project_id
+        wait_token = waited['data']['waitToken']
+        assert command('messages.wait', {'after': second['id'], 'timeoutMs': 0})['status'] == 'timeout'
+        call('messages.wait', {'timeoutMs': 1.5}, succeeds=False)
         history = [first, second]
         assert command('project.inspect') == baseline
         # Undo still targets the last estimate edit, not chat or presentation.
@@ -219,11 +246,26 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         command('history.redo', mutates=True)
         saved = command('project.inspect')
         original_id = project_id
+        waiting_request = {'projectId': project_id, 'messagesAfter': second['id'],
+                           'payload': {'timeoutMs': 300000}}
+        pending = subprocess.Popen(argv('messages.wait'), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, env=env)
+        pending.stdin.write(json.dumps(waiting_request))
+        pending.stdin.close()
+        pending.stdin = None
+        time.sleep(0.5)
+        assert pending.poll() is None
         command('project.close', mutates=True)
+        stdout, stderr = pending.communicate(timeout=10)
+        changed = response('messages.wait', waiting_request, pending.returncode, stdout, stderr)
+        assert changed['data']['status'] == 'project_changed'
+        assert changed['messages'] == [] and changed['messagesProjectId'] == original_id
         stop()
         start()
         command('project.open', {'path': str(project_path)})
         assert project_id == original_id and command('project.inspect') == saved
+        assert command('messages.wait', {'after': second['id'], 'timeoutMs': 0,
+                                         'waitToken': wait_token})['status'] == 'ended'
         reopened = call('messages.read')
         assert reopened['data'] == history and reopened['messages'] == history
         attachment(reopened['data'][0], image_bytes)
@@ -250,6 +292,6 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         stop()
         log.close()
 
-print('PASS: native Wingman publication, flash, annotations, messages/cursors, attachments, concurrent read and reopen')
+print('PASS: native Wingman discovery, wait renewal, publication, flash, annotations, messages/cursors, attachments, concurrent read and reopen')
 print('Not exercised here: UI screenshot selection, pause/resume and view swapping (host browser-test scope).')
 print('Attachment transport uses a real rendered PNG; this workflow does not capture desktop UI pixels.')

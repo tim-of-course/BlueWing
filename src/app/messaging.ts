@@ -18,6 +18,13 @@ export interface MessagingStorage {
   write(projectId: string, messages: Message[]): Promise<void>;
   exportAttachment(attachment: Attachment): Promise<Attachment>;
 }
+export interface MessageWait {
+  status: 'messages' | 'timeout' | 'ended' | 'project_changed';
+  projectId: string | null;
+  waitToken: string;
+  after: number;
+  messages: Message[];
+}
 export class Messaging {
   private projectId: string | null = null;
   private messages: Message[] = [];
@@ -25,12 +32,15 @@ export class Messaging {
   private epoch = 0;
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<() => void>();
+  private waitToken: string = crypto.randomUUID();
+  private waiters = new Set<symbol>();
   constructor(private storage: MessagingStorage) {}
   snapshot() {
     return {
       projectId: this.projectId,
       messages: structuredClone(this.messages),
       paused: this.paused,
+      waiting: this.waiters.size > 0,
     };
   }
   subscribe(fn: () => void): () => void {
@@ -55,6 +65,8 @@ export class Messaging {
         projectId === null ? [] : await this.storage.read(projectId);
       this.projectId = projectId;
       this.messages = messages;
+      this.waitToken = crypto.randomUUID();
+      this.waiters.clear();
       this.publish();
     });
   }
@@ -62,6 +74,11 @@ export class Messaging {
     if (this.paused === paused) return;
     this.paused = paused;
     if (paused) this.epoch++;
+    this.publish();
+  }
+  stopWaiting(): void {
+    this.waitToken = crypto.randomUUID();
+    this.waiters.clear();
     this.publish();
   }
   /** A ticket stays invalid after any intervening pause, even after resume. */
@@ -160,5 +177,53 @@ export class Messaging {
       const timer = setTimeout(finish, Math.min(25000, Math.max(0, waitMs)));
     });
     return this.projectId === projectId ? read() : [];
+  }
+  async wait(
+    after = 0,
+    timeoutMs = 25000,
+    waitToken = this.waitToken,
+  ): Promise<MessageWait> {
+    const projectId = this.projectId;
+    if (!projectId)
+      throw new Error('Open a project before waiting for messages');
+    const read = () => this.messages.filter((message) => message.id > after);
+    const status = (): MessageWait['status'] => {
+      if (projectId !== this.projectId) return 'project_changed';
+      if (waitToken !== this.waitToken) return 'ended';
+      return read().some((message) => message.sender === 'user')
+        ? 'messages'
+        : 'timeout';
+    };
+    if (status() === 'timeout' && timeoutMs > 0) {
+      const waiter = Symbol();
+      this.waiters.add(waiter);
+      try {
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            clearTimeout(timer);
+            unsubscribe();
+            resolve();
+          };
+          const unsubscribe = this.subscribe(() => {
+            if (status() !== 'timeout') finish();
+          });
+          const timer = setTimeout(finish, Math.min(25000, timeoutMs));
+          this.publish();
+        });
+      } finally {
+        this.waiters.delete(waiter);
+        this.publish();
+      }
+    }
+    const outcome = status();
+    const messages =
+      outcome === 'project_changed' ? [] : structuredClone(read());
+    return {
+      status: outcome,
+      projectId,
+      waitToken,
+      after: messages.at(-1)?.id ?? after,
+      messages,
+    };
   }
 }

@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import { drawWall, pagePoint } from './takeoff';
 import type { Project } from '../../src/core/types';
-import type { Message } from '../../src/app/messaging';
+import type { Message, MessageWait } from '../../src/app/messaging';
 import type {
   WingmanVisual,
   WorkspaceViewSnapshot,
@@ -97,6 +97,132 @@ export async function sendText(page: Page, text: string) {
   await page.getByLabel('Message', { exact: true }).fill(text);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(text);
+}
+export async function keyboardWorkflow(page: Page) {
+  await page.getByRole('button', { name: 'Wingman chat', exact: true }).click();
+  const input = page.getByLabel('Message', { exact: true });
+  const log = page.getByRole('log', { name: 'Messages' });
+  await input.fill('First line');
+  await input.press('Shift+Enter');
+  await input.press('End');
+  await input.press('a');
+  await expect(input).toHaveValue('First line\na');
+  await expect(log).not.toContainText('First line');
+  await input.press('Enter');
+  await expect(log).toContainText('First line\na');
+  await expect(input).toHaveValue('');
+  await input.fill('Composed message');
+  await input.dispatchEvent('compositionstart');
+  await input.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
+  await expect(input).toHaveValue('Composed message');
+  await expect(log).not.toContainText('Composed message');
+  await input.dispatchEvent('compositionend');
+  await input.dispatchEvent('keydown', { key: 'Enter', repeat: true });
+  await expect(log).not.toContainText('Composed message');
+  await input.press('Enter');
+  await expect(log).toContainText('Composed message');
+  await expect(input).toHaveValue('');
+}
+
+export async function browserPromptWorkflow(page: Page) {
+  await page
+    .getByRole('button', { name: 'Copy AI prompt', exact: true })
+    .click();
+  const panel = page.getByRole('region', { name: 'Connect your AI' });
+  await expect(panel).toContainText(
+    'Connecting an AI needs the Bluewing desktop app.',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Wingman + chat', exact: true }),
+  ).toBeHidden();
+}
+
+export async function promptWorkflow(page: Page) {
+  await browserPromptWorkflow(page);
+  await page.evaluate(() => {
+    const bridge = window as unknown as {
+      wingmanConnection(info: { cliPath: string; shell: 'posix' }): void;
+      copiedPrompts: string[];
+    };
+    bridge.wingmanConnection({
+      cliPath: '/Applications/Bluewing.app/Contents/MacOS/bluewing',
+      shell: 'posix',
+    });
+    bridge.copiedPrompts = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: (text: string) => {
+          bridge.copiedPrompts.push(text);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await expect(
+    page.getByText('Talk here or in your AI’s chat.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Keep the conversation in your AI’s chat.', { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Wingman + chat', exact: true })
+    .click();
+  await expect(
+    page.getByText('Prompt copied. Paste it into your AI’s chat.', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Chat only', exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { copiedPrompts: string[] }).copiedPrompts
+            .length,
+      ),
+    )
+    .toBe(2);
+  const prompts = await page.evaluate(
+    () => (window as unknown as { copiedPrompts: string[] }).copiedPrompts,
+  );
+  expect(prompts[0]).toContain(
+    '/Applications/Bluewing.app/Contents/MacOS/bluewing',
+  );
+  expect(prompts[0]).toContain('Wingman fixture');
+  expect(prompts[0]).toContain('Wingman + chat:');
+  expect(prompts[0]).toContain('messages.wait');
+  expect(prompts[1]).toContain('Wingman fixture');
+  expect(prompts[1]).toContain('Chat only:');
+  expect(prompts[0]).not.toEqual(prompts[1]);
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: undefined,
+    }),
+  );
+  await page
+    .getByRole('button', { name: 'Wingman + chat', exact: true })
+    .click();
+  const fallback = page.getByLabel('AI connection prompt', { exact: true });
+  await expect(fallback).toHaveValue(prompts[0] ?? '');
+  await fallback.focus();
+  expect(
+    await fallback.evaluate((element) => {
+      const input = element as HTMLTextAreaElement;
+      return input.selectionEnd - input.selectionStart;
+    }),
+  ).toBe(prompts[0]?.length);
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error('Clipboard denied')),
+      },
+    }),
+  );
+  await page.getByRole('button', { name: 'Chat only', exact: true }).click();
+  await expect(fallback).toHaveValue(prompts[1] ?? '');
 }
 export async function viewWorkflow(page: Page) {
   await drawWall(page);
@@ -202,6 +328,9 @@ export async function viewWorkflow(page: Page) {
   expect((await inspect(page)).revision).toBe(before.revision);
 }
 export async function messagingWorkflow(page: Page) {
+  await expect(
+    page.getByText('Waiting for your message', { exact: true }),
+  ).toBeHidden();
   await sendText(page, 'Please check this wall');
   const sheetId = await page
     .getByLabel('Drawing canvas', { exact: true })
@@ -251,6 +380,15 @@ export async function messagingWorkflow(page: Page) {
     { after: cursor, waitMs: 25000 },
     cursor,
   );
+  const conversationWait = cli<MessageWait>(
+    page,
+    'messages.wait',
+    { after: cursor, timeoutMs: 25000 },
+    cursor,
+  );
+  await expect(
+    page.getByText('Waiting for your message', { exact: true }),
+  ).toBeVisible();
   expect((await cli(page, 'project.inspect', {}, cursor)).exitCode).toBe(0);
   await sendText(page, 'The read must not block editing');
   expect((await waiting).response.data).toEqual(
@@ -258,6 +396,36 @@ export async function messagingWorkflow(page: Page) {
       expect.objectContaining({ text: 'The read must not block editing' }),
     ]),
   );
+  expect((await conversationWait).response.data).toMatchObject({
+    status: 'messages',
+    messages: expect.arrayContaining([
+      expect.objectContaining({ text: 'The read must not block editing' }),
+    ]),
+  });
+  await expect(
+    page.getByText('Waiting for your message', { exact: true }),
+  ).toBeHidden();
+  const latest =
+    (await cli(page, 'project.inspect')).response.messages.at(-1)?.id ?? 0;
+  const stopped = cli<MessageWait>(
+    page,
+    'messages.wait',
+    { after: latest, timeoutMs: 25000 },
+    latest,
+  );
+  await page
+    .getByRole('button', { name: 'End conversation', exact: true })
+    .click();
+  expect((await stopped).response.data).toMatchObject({
+    status: 'ended',
+    messages: [],
+  });
+  await expect(
+    page.getByText('Waiting for your message', { exact: true }),
+  ).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'End conversation', exact: true }),
+  ).toBeHidden();
   await page.getByRole('button', { name: 'Pause CLI', exact: true }).click();
   for (const name of [
     'commands.list',

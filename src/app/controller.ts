@@ -19,6 +19,7 @@ import {
 export function createWorkspace(
   app = new Application(isTauri()),
 ): WorkspaceController {
+  const [cliConnection, setCliConnection] = createSignal(app.cliConnection);
   const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
   const [project, setProject] = createSignal<Project | null>(null, {
     name: 'workspace.acceptedProject',
@@ -133,6 +134,7 @@ export function createWorkspace(
     app.subscribe(() => {
       const current = app.project;
       setProject(current);
+      setCliConnection(app.cliConnection);
       setLibrary(app.library);
       setCanUndo(app.session?.canUndo ?? false);
       setCanRedo(app.session?.canRedo ?? false);
@@ -210,6 +212,7 @@ export function createWorkspace(
   }
   return {
     messaging: app.messaging,
+    cliConnection,
     setPresentation(presentation) {
       app.presentation = presentation;
     },

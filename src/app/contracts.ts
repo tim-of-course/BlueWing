@@ -6,6 +6,7 @@ import type { PlanSnippet } from '../core/review';
 import type { ConstructionResult } from '../core/construction-types';
 import type { CommandCall } from '../core/types';
 import type { Messaging } from './messaging';
+import type { CliConnection } from './cli-guide';
 import type { ViewBounds, WingmanPresentation } from './wingman-types';
 import type { DrawingVisibility } from './visibility';
 import type {
@@ -30,6 +31,7 @@ export interface WorkspaceContext {
 }
 export interface WorkspaceController {
   messaging: Messaging;
+  cliConnection: Accessor<CliConnection | null>;
   setPresentation(presentation: WingmanPresentation | undefined): void;
   captureContext(): WorkspaceContext;
   restoreContext(context: WorkspaceContext): void;
