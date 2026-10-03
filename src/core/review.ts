@@ -75,15 +75,18 @@ export function reviewFingerprint(
   const sources: SourceReference[] = [target];
   const levels = new Set<string>();
   const related: unknown[] = [entity];
-  const includeWall = (id: string) => {
+  const includedWalls = new Set<string>();
+  const includeWall = (id: string): void => {
+    if (includedWalls.has(id)) return;
     const wall = construction.walls[id];
     if (!wall) return;
+    includedWalls.add(id);
     related.push(wall);
     sources.push({ kind: 'wall', id });
     if (wall.levelId) levels.add(wall.levelId);
     for (const condition of wall.conditions ?? [])
       if (condition.ownerWallId && condition.ownerWallId !== id)
-        related.push(construction.walls[condition.ownerWallId]);
+        includeWall(condition.ownerWallId);
     geometryIds.add(wall.geometryId);
     for (const opening of byId(construction.openings)) {
       if (opening.wallId !== id) continue;

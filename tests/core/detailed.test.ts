@@ -375,6 +375,90 @@ void test('review follows linked header evidence and relevant levels, independen
   );
 });
 
+void test('reviewed shared members become changed when their owner moves, changes scale or changes level', async () => {
+  const { session, call, wall } = fixture();
+  const sheet = session.project.sheets.s;
+  assert.ok(sheet);
+  await call({
+    name: 'sheet.put',
+    payload: { ...sheet, id: 'dependent-sheet' },
+  });
+  await call({
+    name: 'level.put',
+    payload: { id: 'owner-level', name: 'Owner level', elevation: 0 },
+  });
+  const condition = { id: 'shared', distance: 0, kind: 'junction', count: 1 };
+  await call({
+    name: 'wall.put',
+    payload: { ...wall, levelId: 'owner-level', conditions: [condition] },
+  });
+  await call({
+    name: 'geometry.put',
+    payload: {
+      id: 'dependent-trace',
+      sheetId: 'dependent-sheet',
+      name: 'Dependent wall',
+      kind: 'path',
+      points: [
+        { x: 10, y: 10 },
+        { x: 10, y: 16 },
+      ],
+    },
+  });
+  await call({
+    name: 'wall.put',
+    payload: {
+      ...wall,
+      id: 'dependent',
+      geometryId: 'dependent-trace',
+      conditions: [{ ...condition, ownerWallId: 'w' }],
+    },
+  });
+  await call({
+    name: 'review.mark',
+    payload: {
+      id: 'checked',
+      target: { kind: 'wall', id: 'dependent' },
+      status: 'reviewed',
+      note: 'Shared junction checked',
+    },
+  });
+  const model = () =>
+    generateConstruction(session.project, resolveConstruction(session.project));
+  assert.equal(model().complete, true);
+  const changes: CommandCall[] = [
+    { name: 'geometry.move', payload: { ids: ['g'], dx: 1, dy: 0 } },
+    {
+      name: 'sheet.put',
+      payload: { ...sheet, calibration: { metresPerUnit: 2 } },
+    },
+    {
+      name: 'level.put',
+      payload: { id: 'owner-level', name: 'Owner level', elevation: 1 },
+    },
+  ];
+  for (const change of changes) {
+    await call(change);
+    assert.ok(
+      model().diagnostics.some(
+        (diagnostic) =>
+          diagnostic.wallId === 'dependent' &&
+          diagnostic.code === 'shared-member-mismatch',
+      ),
+    );
+    assert.equal(
+      inspectReview(session.project).marks[0]?.effectiveStatus,
+      'changed',
+      change.name,
+    );
+    await call({ name: 'history.undo' });
+    assert.equal(
+      inspectReview(session.project).marks[0]?.effectiveStatus,
+      'reviewed',
+    );
+  }
+});
+
 void test('construction material CSV includes every displayed surface and preserves finish purchasing', async () => {
   const { session, call, wall } = fixture();
   await call({

@@ -213,3 +213,111 @@ void test('unlocated finish deductions are rejected and incompatible model assig
   assert.equal(result.model.pieces.length, 0);
   assert.equal(result.outputs[0]?.modeling, 'unresolved');
 });
+
+void test('reapplying an assembly preserves a wall that owns shared junction members', () => {
+  const f = fixture();
+  f.run({
+    name: 'geometry.put',
+    payload: {
+      ...f.project.geometries.b,
+      points: [
+        { x: 4, y: 0 },
+        { x: 4, y: 4 },
+      ],
+    },
+  });
+  for (const [id, distance] of [
+    ['wall-a', 4],
+    ['wall-b', 0],
+  ] as const) {
+    const wall = resolveConstruction(f.project).walls[id];
+    assert.ok(wall);
+    f.run({
+      name: 'wall.put',
+      payload: {
+        ...materialSettings(wall),
+        id,
+        geometryId: wall.geometryId,
+        conditions: [
+          {
+            id: 'shared',
+            kind: 'junction',
+            distance,
+            count: 1,
+            ownerWallId: 'wall-a',
+          },
+        ],
+      },
+    });
+  }
+  f.run({
+    name: 'wall.fromAssembly',
+    payload: { assemblyId: 'wall', geometryId: 'a', id: 'wall-a' },
+  });
+  const data = resolveConstruction(f.project);
+  assert.equal(data.walls['wall-a']?.conditions?.[0]?.ownerWallId, 'wall-a');
+  assert.equal(data.walls['wall-b']?.conditions?.[0]?.ownerWallId, 'wall-a');
+  assert.equal(
+    calculateProject(f.project).model.pieces.filter(
+      (p) => p.role === 'junction',
+    ).length,
+    1,
+  );
+  assert.throws(() => {
+    f.run({ name: 'wall.delete', payload: { id: 'wall-a' } });
+  }, /Reassign shared member ownership/);
+});
+
+void test('incomplete modeled applications retain their own diagnostics without invalidating unrelated quantities', () => {
+  const f = fixture();
+  f.run({
+    name: 'geometry.put',
+    payload: {
+      id: 'count',
+      name: 'Count',
+      sheetId: 's',
+      kind: 'count',
+      points: [{ x: 0, y: 0 }],
+    },
+  });
+  f.run({
+    name: 'group.put',
+    payload: { id: 'wrong', name: 'Wrong kind', geometryIds: ['count'] },
+  });
+  f.run({
+    name: 'assignment.put',
+    payload: {
+      id: 'bad',
+      groupId: 'wrong',
+      recipeId: 'wall',
+      inputs: {},
+      allowances: {},
+    },
+  });
+  let result = calculateProject(f.project);
+  assert.ok(
+    result.outputs
+      .filter((output) => output.assignmentId === 'use')
+      .every((output) => output.complete),
+  );
+  assert.equal(
+    result.outputs.find((output) => output.assignmentId === 'bad')?.modeling,
+    'unresolved',
+  );
+  f.run({ name: 'assignment.delete', payload: { id: 'bad' } });
+  const assembly = structuredClone(f.project.recipes.wall);
+  assert.ok(assembly?.wallTemplate);
+  delete assembly.wallTemplate.height;
+  f.run({ name: 'assembly.put', payload: assembly });
+  result = calculateProject(f.project);
+  const missing = result.outputs.filter(
+    (output) => output.modeling === 'unresolved',
+  );
+  assert.equal(missing.length, 2);
+  assert.deepEqual(
+    missing
+      .flatMap((output) => output.sources.map((source) => source.geometryId))
+      .sort(),
+    ['a', 'b'],
+  );
+});

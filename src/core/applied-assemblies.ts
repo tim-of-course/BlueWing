@@ -267,6 +267,7 @@ export function deleteAppliedMaterial(
   const item = kind === 'wall' ? data.walls[id] : data.ceilings[id];
   if (!item?.assignmentId) throw new Error(`${kind} not found`);
   if (
+    deleteOpenings &&
     kind === 'wall' &&
     Object.values(data.walls).some(
       (w) => w.id !== id && w.conditions?.some((c) => c.ownerWallId === id),

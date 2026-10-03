@@ -3,6 +3,7 @@ import type {
   ConstructionResult,
   ConstructionSource,
   ConstructionSurface,
+  ConstructionDiagnostic,
 } from './construction-types';
 import { purchaseAmount } from './purchasing';
 
@@ -133,18 +134,21 @@ export function modeledOutputs(
     assignmentId: source.assignmentId ?? '',
     recipeId: source.recipeId ?? '',
   });
-  const messages = (ids: ConstructionSource[]) =>
-    result.diagnostics
-      .filter(
-        (d) =>
-          (!d.wallId && !d.ceilingId) ||
-          ids.some(
-            (s) =>
-              (d.wallId && d.wallId === s.wallId) ||
-              (d.ceilingId && d.ceilingId === s.ceilingId),
-          ),
-      )
-      .map((d) => d.message);
+  const represented = new Set<ConstructionDiagnostic>();
+  const messages = (sources: ConstructionSource[]) => {
+    const matches = result.diagnostics.filter((d) => {
+      if (d.wallId) return sources.some((source) => source.wallId === d.wallId);
+      if (d.ceilingId)
+        return sources.some((source) => source.ceilingId === d.ceilingId);
+      if (d.assignmentId)
+        return sources.some((source) => source.assignmentId === d.assignmentId);
+      if (d.geometryId)
+        return sources.some((source) => source.geometryId === d.geometryId);
+      return true;
+    });
+    for (const diagnostic of matches) represented.add(diagnostic);
+    return matches.map((d) => d.message);
+  };
   const pieces = new Map(result.pieces.map((p) => [p.id, p]));
   const surfaces = new Map(result.surfaces.map((s) => [s.id, s]));
   for (const [index, purchase] of result.purchases.entries()) {
@@ -218,10 +222,7 @@ export function modeledOutputs(
     });
   }
   for (const [index, diagnostic] of result.diagnostics.entries()) {
-    if (
-      outputs.some((output) => output.diagnostics.includes(diagnostic.message))
-    )
-      continue;
+    if (represented.has(diagnostic)) continue;
     outputs.push({
       ...identity(diagnostic),
       modeling: 'unresolved',

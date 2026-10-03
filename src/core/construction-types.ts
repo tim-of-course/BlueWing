@@ -137,7 +137,7 @@ export interface Ceiling extends ConstructionSource {
   thickness?: number;
   wastePercent?: number;
   packageSize?: number;
-  grid?: Omit<CeilingGridSpec, 'tile'>;
+  grid?: CeilingGridSpec;
 }
 export interface ConstructionContext {
   openings: Record<string, Opening>;
