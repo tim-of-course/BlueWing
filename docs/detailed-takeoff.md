@@ -23,20 +23,20 @@ The original blueprint PDFs remain reusable. The private Bingham Elementary Scho
 
 ## Verification of this refactor
 
-The first verification pass completed the lightweight and platform checks below. Browser and native verification remain pending because macOS reported memory pressure. Earlier detailed-takeoff and assembly passes do not verify this implementation. Only the integrating agent runs heavy checks, through the README resource guard with one browser worker. A resource refusal is an unrun check, not a pass.
+The final lightweight checks and platform suite passed. Browser verification is partial and native verification remains pending because macOS reported memory pressure. Earlier detailed-takeoff and assembly passes do not verify this implementation. Only the integrating agent runs heavy checks, through the README resource guard with one browser worker. A resource refusal is an unrun check, not a pass.
 
-| Check                                                     | Current result                                                                                              |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| TypeScript, lint, formatting                              | Pass: `bun run check`                                                                                       |
-| Core calculated materials and assemblies                  | Pass: 157 tests across 23 files after source/review fixes                                                   |
-| Platform persistence                                      | Pass: 10 tests through guarded `bun run test:platform`                                                      |
-| Python workflow syntax                                    | Pass: `py_compile` for both updated desktop workflow scripts                                                |
-| Development browser workflows                             | Not run: `bun run test:dev` refused before launch with exit 75 because macOS memory pressure was at warning |
-| Web build and production browser workflows                | Not run; pending resource recovery                                                                          |
-| Native builds, smoke, assembly and detailed CLI workflows | Not run; pending resource recovery                                                                          |
-| Packaged desktop and representative real-plan inspection  | Pending                                                                                                     |
+| Check                                                     | Current result                                                                                                                                                                          |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript, lint, formatting                              | Pass: `bun run check`                                                                                                                                                                   |
+| Core calculated materials and assemblies                  | Pass: 157 tests across 23 files after source/review fixes                                                                                                                               |
+| Platform persistence                                      | Pass: 10 tests through guarded `bun run test:platform`                                                                                                                                  |
+| Python workflow syntax                                    | Pass: `py_compile` for both updated desktop workflow scripts                                                                                                                            |
+| Development browser workflows                             | Partial: Chromium 19 passed; one stale assembly-name selector timed out and is now corrected. Guard stopped the resumed run with exit 75 before WebKit completed; focused rerun pending |
+| Web build and production browser workflows                | Not run; pending resource recovery                                                                                                                                                      |
+| Native builds, smoke, assembly and detailed CLI workflows | Not run; pending resource recovery                                                                                                                                                      |
+| Packaged desktop and representative real-plan inspection  | Pending                                                                                                                                                                                 |
 
-Checkpoint `f7d5f2e` records the initial calculated-material refactor; `99679ff` fixes shared-wall references and diagnostic ownership, with regressions. The resource guard remains enabled; heavy checks will resume after resources recover.
+Checkpoint `f7d5f2e` records the initial calculated-material refactor; `99679ff` fixes shared-wall references and diagnostic ownership, with regressions. The resource guard remains enabled. An initial browser launch was refused, then resources recovered and allowed the Chromium run, then warning pressure returned and stopped the job. No leftover Bluewing app or test browser was running at the initial refusal. Heavy checks resume only after resources recover.
 
 The passing core suite includes independent framing and header cuts, slope and opening deductions, multi-layer surface area, actual ACT border/concave/rotated layouts, rendered-geometry/report source equality, purchasing without extra meshes, live definition and override/reset behavior, shared-group copying and deletion, multiple unresolved sources, and shared-junction review invalidation. The passing platform suite covers current-format persistence, rollback, unsupported-file rejection without upgrades, and explicit backups.
 

@@ -167,7 +167,7 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
     .click();
   const steel = page.locator('section.panel-section').filter({
     has: page.getByRole('heading', {
-      name: 'Steel studs — straight run',
+      name: 'Steel studs straight run estimate',
       exact: true,
     }),
   });
