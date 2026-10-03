@@ -21,7 +21,7 @@ test('assemblies support project copies, object overrides and piece schedules', 
   // Capture a live assignment edit after the reopen portion of the workflow.
   const steel = page.locator('section.panel-section').filter({
     has: page.getByRole('heading', {
-      name: 'Steel studs — straight run',
+      name: 'Steel studs straight run estimate',
       exact: true,
     }),
   });

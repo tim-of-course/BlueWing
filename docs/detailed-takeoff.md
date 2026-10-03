@@ -62,3 +62,5 @@ The optional `BLUEWING_TEST_DETAILED_PLAN` run imports the private 164-page set,
 - Native PDF transfer/storage is bounded, but PDF.js still holds a complete PDF buffer. Large imports are not constant-memory operations.
 
 Recovery for this development change is through the branch and Git checkpoints. `project.backup` remains a user-requested copy of a current project, not a migration mechanism.
+
+Follow-up verification: the focused development run passed four Chromium ceiling/framing/system checks, then the guard stopped it at warning pressure before WebKit completed. The remaining assembly test reached its diagnostics step and found a second outdated assembly-name selector, now corrected; its rerun remains pending. Process inspection found no running Android emulator, Bluewing app, or leftover test browser. Attempts to inspect other apps for safe cleanup timed out, so no unrelated app was force-quit.
