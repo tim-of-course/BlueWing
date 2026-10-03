@@ -10,16 +10,21 @@ import type {
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
 import {
   calculateProject,
+  quantityReport,
   exportQuantities,
   pieceSchedule,
   exportPieces,
 } from './calculations';
 import { calibrationFromRatio, type PaperScale } from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
-import { validateWallTemplate } from './wall-template';
+import { validateWallTemplate, validateCeilingTemplate } from './wall-template';
+import { copyApplicationDetails } from './applied-assemblies';
 import {
   detailedCommands,
   wallTemplateSchema,
+  ceilingTemplateSchema,
+  wallOverrideSchema,
+  ceilingOverrideSchema,
   constructionSchema,
   reviewSchema,
   executeDetailed,
@@ -30,6 +35,7 @@ import {
 
 export interface PayloadSchema {
   type?: 'object' | 'array' | 'string' | 'number' | 'boolean';
+  nullable?: boolean;
   properties?: Record<string, PayloadSchema>;
   required?: string[];
   items?: PayloadSchema;
@@ -153,6 +159,7 @@ export const assemblySchema: PayloadSchema = {
   properties: {
     ...leafAssemblySchema.properties,
     wallTemplate: wallTemplateSchema,
+    ceilingTemplate: ceilingTemplateSchema,
     components: array(
       object({
         id: string,
@@ -175,6 +182,19 @@ const assignment = object(
     inputs: inputValues,
     allowances: { type: 'object', additionalProperties: allowance },
     geometryInputs: { type: 'object', additionalProperties: inputValues },
+    wallOverrides: wallOverrideSchema,
+    ceilingOverrides: ceilingOverrideSchema,
+    geometryDetails: {
+      type: 'object',
+      additionalProperties: object(
+        {
+          id: string,
+          wall: wallOverrideSchema,
+          ceiling: ceilingOverrideSchema,
+        },
+        [],
+      ),
+    },
   },
   ['id', 'groupId', 'recipeId', 'inputs', 'allowances'],
 );
@@ -463,6 +483,7 @@ export function validatePayload(
   item: unknown,
   path = 'payload',
 ): void {
+  if (schema.nullable && item === null) return;
   if (schema.anyOf) {
     for (const candidate of schema.anyOf) {
       try {
@@ -553,18 +574,20 @@ export function validateAssembly(input: unknown): asserts input is Recipe {
     new Set(entry.geometryKinds).size !== entry.geometryKinds.length
   )
     throw new Error('Assembly needs unique compatible geometry kinds');
-  if (entry.wallTemplate) {
+  if (entry.wallTemplate || entry.ceilingTemplate) {
     if (
       entry.components ||
       entry.inputs.length ||
       entry.outputs.length ||
       entry.geometryKinds.length !== 1 ||
-      entry.geometryKinds[0] !== 'path'
+      entry.geometryKinds[0] !== (entry.wallTemplate ? 'path' : 'area') ||
+      !!(entry.wallTemplate && entry.ceilingTemplate)
     )
       throw new Error(
-        'Wall templates require path geometry, empty inputs and outputs, and no system components',
+        'Modeled assemblies need one wall or ceiling definition, matching geometry, empty inputs and outputs, and no formula system components',
       );
-    validateWallTemplate(entry.wallTemplate);
+    if (entry.wallTemplate) validateWallTemplate(entry.wallTemplate);
+    if (entry.ceilingTemplate) validateCeilingTemplate(entry.ceilingTemplate);
     return;
   }
   const names = new Set<string>();
@@ -633,10 +656,19 @@ export function validateAssemblyInputs(
 }
 
 export function validateProject(input: unknown): asserts input is Project {
+  if (
+    input &&
+    typeof input === 'object' &&
+    'formatVersion' in input &&
+    input.formatVersion !== 4
+  )
+    throw new Error(
+      'Unsupported project format. Create a new takeoff with this version of Bluewing.',
+    );
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [1, 2, 3] },
+        formatVersion: { type: 'number', enum: [4] },
         id: string,
         name: string,
         revision: { type: 'number', minimum: 0 },
@@ -705,8 +737,25 @@ export function validateProject(input: unknown): asserts input is Project {
   for (const entry of Object.values(project.assignments)) {
     requireEntity(project.groups, entry.groupId, 'Group');
     const definition = requireEntity(project.recipes, entry.recipeId, 'Recipe');
-    if (definition.wallTemplate)
-      throw new Error('Use wall.fromAssembly to apply a wall template');
+    for (const geometryId of Object.keys(entry.geometryDetails ?? {}))
+      if (!project.groups[entry.groupId]?.geometryIds.includes(geometryId))
+        throw new Error('Material overrides must belong to the assigned group');
+    if (
+      (entry.wallOverrides ||
+        Object.values(entry.geometryDetails ?? {}).some(
+          (detail) => detail.wall,
+        )) &&
+      !definition.wallTemplate
+    )
+      throw new Error('Wall overrides require a wall assembly');
+    if (
+      (entry.ceilingOverrides ||
+        Object.values(entry.geometryDetails ?? {}).some(
+          (detail) => detail.ceiling,
+        )) &&
+      !definition.ceilingTemplate
+    )
+      throw new Error('Ceiling overrides require a ceiling assembly');
     validateAssemblyInputs(definition, entry.inputs);
     for (const [geometryId, inputs] of Object.entries(
       entry.geometryInputs ?? {},
@@ -757,7 +806,7 @@ export function executeCommand(
       data = exportPieces(next, payload.format as 'csv' | 'json');
       break;
     case 'quantities.inspect':
-      data = calculateProject(next);
+      data = quantityReport(calculateProject(next));
       break;
     case 'quantities.export':
       data = exportQuantities(next, payload.format as 'csv' | 'json');
@@ -843,6 +892,7 @@ export function executeCommand(
             id: newId(),
             groupId: source.id,
           };
+          copyApplicationDetails(next, entry, copy);
           next.assignments[copy.id] = copy;
         }
       data = source;
@@ -885,16 +935,17 @@ export function executeCommand(
       data = executeDetailed(next, call);
   }
   if (definition.mutates) {
-    next.formatVersion =
-      next.formatVersion === 3 ||
-      next.construction ||
-      next.review ||
-      Object.values(next.recipes).some(
-        (recipe) => recipe.components || recipe.wallTemplate,
-      )
-        ? 3
-        : 2;
-    if (call.name.endsWith('.delete')) pruneDetailed(next);
+    if (
+      call.name.endsWith('.delete') ||
+      [
+        'group.members',
+        'group.put',
+        'assignment.put',
+        'assembly.put',
+        'recipe.put',
+      ].includes(call.name)
+    )
+      pruneDetailed(next);
     if (
       [
         'geometry.delete',
@@ -911,10 +962,14 @@ export function executeCommand(
 
 function pruneObjectInputs(project: Project): void {
   for (const assignment of Object.values(project.assignments)) {
-    if (!assignment.geometryInputs) continue;
     const members = project.groups[assignment.groupId]?.geometryIds ?? [];
+    assignment.geometryDetails = Object.fromEntries(
+      Object.entries(assignment.geometryDetails ?? {}).filter(([id]) =>
+        members.includes(id),
+      ),
+    );
     assignment.geometryInputs = Object.fromEntries(
-      Object.entries(assignment.geometryInputs).filter(([id]) =>
+      Object.entries(assignment.geometryInputs ?? {}).filter(([id]) =>
         members.includes(id),
       ),
     );

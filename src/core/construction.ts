@@ -1,5 +1,7 @@
 import type { Geometry, Point, Project } from './types';
 import { polygonArea } from './geometry';
+import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
+import { summarizeMaterials } from './material-results';
 import type {
   ConstructionData,
   ConstructionOptions,
@@ -14,9 +16,6 @@ import type {
 } from './construction-types';
 export type * from './construction-types';
 const EPS = 1e-8;
-// Do not buy an extra piece for multiplication noise such as 100 * 1.1.
-const wholeQuantity = (value: number) =>
-  Math.ceil(value - Number.EPSILON * Math.max(1, Math.abs(value)) * 4);
 export const CONSTRUCTION_GENERATION_BUDGET = 50000;
 export function emptyConstruction(): ConstructionData {
   return {
@@ -171,13 +170,7 @@ export function validateConstruction(
     numeric(p.worldOffset.z, 'world z');
     numeric(p.rotation, 'rotation');
   }
-  const wallGeometries = new Set<string>();
   for (const w of Object.values(data.walls)) {
-    requireValue(
-      !wallGeometries.has(w.geometryId),
-      'only one wall per geometry',
-    );
-    wallGeometries.add(w.geometryId);
     geometryFor(w.geometryId, 'path');
     level(w.levelId);
     numeric(w.baseElevation, 'base elevation');
@@ -251,7 +244,6 @@ export function validateConstruction(
       numeric(f.offset ?? 0, 'finish offset');
       if (f.height !== undefined) positive(f.height, 'finish height');
       if (f.thickness !== undefined) positive(f.thickness, 'finish thickness');
-      numeric(f.deduction ?? 0, 'finish deduction', 0);
       numeric(f.wastePercent ?? 0, 'finish waste', 0);
       if (f.packageSize !== undefined)
         positive(f.packageSize, 'finish package area');
@@ -305,11 +297,6 @@ export function validateConstruction(
       }
   }
   for (const c of Object.values(data.ceilings)) {
-    if (c.quantityMode !== undefined)
-      requireValue(
-        ['reference', 'included'].includes(c.quantityMode),
-        'invalid ceiling quantity mode',
-      );
     geometryFor(c.geometryId, 'area');
     level(c.levelId);
     numeric(c.elevation, 'ceiling elevation');
@@ -318,6 +305,15 @@ export function validateConstruction(
       'ceiling material is required',
     );
     integer(c.layers, 'ceiling layers', 1);
+    if (c.thickness !== undefined) positive(c.thickness, 'ceiling thickness');
+    if (c.wastePercent !== undefined)
+      numeric(c.wastePercent, 'ceiling waste', 0);
+    if (c.packageSize !== undefined)
+      positive(c.packageSize, 'ceiling package area');
+    if (c.grid) {
+      validateCeilingGrid(c.grid);
+      requireValue(c.layers === 1, 'ACT grid needs one tile layer');
+    }
   }
 }
 function heightAt(wall: Wall, distance: number, fromLeft = false): number {
@@ -460,15 +456,6 @@ export function generateConstruction(
   );
   let budget = options.maxPieces ?? CONSTRUCTION_GENERATION_BUDGET;
   let budgetSource: ConstructionSource = {};
-  const purchase = new Map<
-    string,
-    {
-      spec: MemberSpec;
-      length: number;
-      count: number;
-      pieceIds: string[];
-    }
-  >();
   const emit = (
     source: ConstructionSource,
     id: string,
@@ -491,6 +478,10 @@ export function generateConstruction(
       id,
       role,
       materialId: spec.materialId,
+      wastePercent: spec.wastePercent ?? 0,
+      ...(spec.packageSize === undefined
+        ? {}
+        : { packageSize: spec.packageSize }),
       start,
       end,
       cutLength,
@@ -527,22 +518,14 @@ export function generateConstruction(
         'stock-shortfall',
         `${id}: cut ${String(cutLength)} m exceeds stock ${String(spec.stockLength)} m`,
       );
-    const length = spec.stockLength ?? cutLength;
-    const key = JSON.stringify([
-      spec.materialId,
-      length,
-      spec.wastePercent ?? 0,
-      spec.packageSize ?? 1,
-    ]);
-    const entry = purchase.get(key);
-    if (entry) {
-      entry.count++;
-      entry.pieceIds.push(id);
-    } else purchase.set(key, { spec, length, count: 1, pieceIds: [id] });
   };
   try {
     for (const wall of ordered(data.walls)) {
-      const source = { wallId: wall.id, geometryId: wall.geometryId };
+      const source = {
+        ...applicationSource(wall),
+        wallId: wall.id,
+        geometryId: wall.geometryId,
+      };
       budgetSource = source;
       const geometry = present(project.geometries[wall.geometryId]);
       if (
@@ -1222,7 +1205,6 @@ export function generateConstruction(
                 layers: finish.layers,
                 geometricArea: area,
                 area: area * finish.layers,
-                quantityMode: 'included',
                 wastePercent: finish.wastePercent ?? 0,
                 ...(finish.packageSize === undefined
                   ? {}
@@ -1241,7 +1223,11 @@ export function generateConstruction(
       }
     }
     for (const ceiling of ordered(data.ceilings)) {
-      const source = { ceilingId: ceiling.id, geometryId: ceiling.geometryId };
+      const source = {
+        ...applicationSource(ceiling),
+        ceilingId: ceiling.id,
+        geometryId: ceiling.geometryId,
+      };
       budgetSource = source;
       const geometry = present(project.geometries[ceiling.geometryId]);
       if (geometry.points.length > budget) {
@@ -1262,7 +1248,6 @@ export function generateConstruction(
         );
         continue;
       }
-      if (--budget < 0) throw new Error('generation-budget');
       const placement = placements.find((p) => p.sheetId === geometry.sheetId);
       const elevation =
         ceiling.elevation +
@@ -1271,6 +1256,42 @@ export function generateConstruction(
         const v = world(p, scale, placement);
         return { ...v, z: v.z + elevation };
       });
+      if (ceiling.grid) {
+        if (budget <= 0) throw new Error('generation-budget');
+        const generated = generateCeilingGrid({
+          ...ceiling.grid,
+          id: ceiling.id,
+          geometryId: ceiling.geometryId,
+          boundary: points,
+          elevation: points[0]?.z ?? elevation,
+          tile: {
+            materialId: ceiling.materialId,
+            ...(ceiling.thickness === undefined
+              ? {}
+              : { thickness: ceiling.thickness }),
+            ...(ceiling.wastePercent === undefined
+              ? {}
+              : { wastePercent: ceiling.wastePercent }),
+            ...(ceiling.packageSize === undefined
+              ? {}
+              : { packageSize: ceiling.packageSize }),
+          },
+          maxElements: budget,
+        });
+        result.pieces.push(
+          ...generated.pieces.map((piece) => ({ ...piece, ...source })),
+        );
+        result.surfaces.push(
+          ...generated.surfaces.map((surface) => ({ ...surface, ...source })),
+        );
+        result.diagnostics.push(
+          ...generated.diagnostics.map((d) => ({ ...d, ...source })),
+        );
+        result.complete &&= generated.complete;
+        budget -= generated.pieces.length + generated.surfaces.length;
+        continue;
+      }
+      if (--budget < 0) throw new Error('generation-budget');
       const area = polygonArea(geometry.points) * scale ** 2;
       result.surfaces.push({
         ...source,
@@ -1278,10 +1299,19 @@ export function generateConstruction(
         materialId: ceiling.materialId,
         face: 'ceiling',
         layers: ceiling.layers,
-        points,
+        points: points.map((point) => ({
+          ...point,
+          z: point.z + ((ceiling.thickness ?? 0) * ceiling.layers) / 2,
+        })),
         geometricArea: area,
         area: area * ceiling.layers,
-        quantityMode: ceiling.quantityMode ?? 'reference',
+        ...(ceiling.thickness === undefined
+          ? {}
+          : { thickness: ceiling.thickness * ceiling.layers }),
+        wastePercent: ceiling.wastePercent ?? 0,
+        ...(ceiling.packageSize === undefined
+          ? {}
+          : { packageSize: ceiling.packageSize }),
       });
     }
   } catch (error) {
@@ -1293,88 +1323,19 @@ export function generateConstruction(
       'Construction generation stopped at the finite piece/surface budget',
     );
   }
-  for (const { spec, length, count, pieceIds } of purchase.values()) {
-    const adjusted = count * (1 + (spec.wastePercent ?? 0) / 100);
-    const packageCount = spec.packageSize
-      ? wholeQuantity(adjusted / spec.packageSize)
-      : null;
-    result.purchases.push({
-      materialId: spec.materialId,
-      stockLength: length,
-      requiredCount: count,
-      wastePercent: spec.wastePercent ?? 0,
-      adjustedCount: adjusted,
-      pieceIds,
-      purchasedCount:
-        packageCount === null
-          ? wholeQuantity(adjusted)
-          : packageCount * present(spec.packageSize),
-      packageCount,
-    });
-  }
-  for (const wall of ordered(data.walls))
-    for (const finish of wall.finishes ?? []) {
-      const surfaces = result.surfaces.filter(
-        (s) => s.wallId === wall.id && s.finishId === finish.id,
-      );
-      if (!surfaces.length) continue;
-      const gross = surfaces.reduce(
-        (sum, surface) => sum + surface.geometricArea,
-        0,
-      );
-      const deduction = finish.deduction ?? 0;
-      const source = {
-        wallId: wall.id,
-        geometryId: wall.geometryId,
-        finishId: finish.id,
-      };
-      if (deduction > gross + EPS)
-        diagnostic(
-          source,
-          'excess-finish-deduction',
-          'Finish deduction exceeds remaining face area',
-        );
-      const net = Math.max(0, gross - deduction);
-      for (const surface of surfaces)
-        surface.area = ((surface.geometricArea * net) / gross) * finish.layers;
-      const requiredArea = net * finish.layers;
-      const wastePercent = finish.wastePercent ?? 0;
-      const adjusted = requiredArea * (1 + wastePercent / 100);
-      const packageCount =
-        finish.packageSize === undefined
-          ? null
-          : wholeQuantity(adjusted / finish.packageSize);
-      present(result.surfacePurchases).push({
-        ...source,
-        materialId: finish.materialId,
-        requiredArea,
-        wastePercent,
-        ...(finish.packageSize === undefined
-          ? {}
-          : { packageSize: finish.packageSize }),
-        packageCount,
-        purchasedArea:
-          packageCount === null
-            ? adjusted
-            : packageCount * present(finish.packageSize),
-      });
-    }
-  for (const surface of result.surfaces)
-    if (surface.face === 'ceiling' && surface.quantityMode === 'included') {
-      present(result.surfacePurchases).push({
-        ...(surface.ceilingId ? { ceilingId: surface.ceilingId } : {}),
-        ...(surface.geometryId ? { geometryId: surface.geometryId } : {}),
-        materialId: surface.materialId,
-        requiredArea: surface.area,
-        wastePercent: 0,
-        packageCount: null,
-        purchasedArea: surface.area,
-      });
-    }
+  summarizeMaterials(result);
   return result;
 }
 function present<T>(value: T | undefined): T {
   if (value === undefined)
     throw new Error('Expected validated construction value');
   return value;
+}
+
+function applicationSource(source: ConstructionSource): ConstructionSource {
+  return Object.fromEntries(
+    Object.entries(source).filter(([key]) =>
+      ['assignmentId', 'recipeId', 'groupId', 'componentId'].includes(key),
+    ),
+  );
 }

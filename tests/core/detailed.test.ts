@@ -3,10 +3,8 @@ import assert from 'node:assert/strict';
 import { createProject } from '../../src/core/geometry';
 import { ProjectSession } from '../../src/core/session';
 import { executeCommand } from '../../src/core/commands';
-import {
-  generateConstruction,
-  emptyConstruction,
-} from '../../src/core/construction';
+import { generateConstruction } from '../../src/core/construction';
+import { resolveConstruction } from '../../src/core/applied-assemblies';
 import { inspectReview, reviewFingerprint } from '../../src/core/review';
 import { exportConstruction } from '../../src/core/detailed-commands';
 import type { CommandCall } from '../../src/core/types';
@@ -62,10 +60,10 @@ void test('construction commands save, preview, undo and redo without changing a
   const { session, call, wall, saves } = fixture();
   const points = session.project.geometries.g?.points;
   await call({ name: 'wall.put', payload: wall });
-  assert.equal(session.project.formatVersion, 3);
+  assert.equal(session.project.formatVersion, 4);
   const result = generateConstruction(
     session.project,
-    session.project.construction ?? emptyConstruction(),
+    resolveConstruction(session.project),
   );
   assert.equal(result.pieces.filter((p) => p.role === 'stud').length, 13);
   assert.equal(
@@ -79,12 +77,12 @@ void test('construction commands save, preview, undo and redo without changing a
     },
   });
   assert.equal(preview.preview, true);
-  assert.equal(session.project.construction?.walls.w?.height, 3);
+  assert.equal(resolveConstruction(session.project).walls.w?.height, 3);
   assert.equal(saves.length, 1);
   await call({ name: 'history.undo' });
   assert.equal(Object.hasOwn(session.project, 'construction'), false);
   await call({ name: 'history.redo' });
-  assert.equal(session.project.construction.walls.w.height, 3);
+  assert.equal(resolveConstruction(session.project).walls.w?.height, 3);
   assert.deepEqual(session.project.geometries.g?.points, points);
 });
 
@@ -181,7 +179,7 @@ void test('invalid snippets and batched openings roll back, while geometry delet
     }),
     /jamb count/,
   );
-  assert.equal(session.project.construction?.walls.w?.height, 3);
+  assert.equal(resolveConstruction(session.project).walls.w?.height, 3);
   await call({
     name: 'opening.put',
     payload: {
@@ -195,8 +193,8 @@ void test('invalid snippets and batched openings roll back, while geometry delet
     },
   });
   await call({ name: 'geometry.delete', payload: { id: 'g' } });
-  assert.deepEqual(session.project.construction.walls, {});
-  assert.deepEqual(session.project.construction.openings, {});
+  assert.deepEqual(resolveConstruction(session.project).walls, {});
+  assert.deepEqual(session.project.construction?.openings, {});
   await call({ name: 'history.undo' });
   assert.ok(session.project.construction.openings.o);
 });
@@ -220,7 +218,7 @@ void test('duplicating geometry copies its construction and openings as independ
     name: 'geometry.copy',
     payload: { id: 'g', newId: 'g2', dx: 0, dy: 5 },
   });
-  const copied = Object.values(session.project.construction?.walls ?? {}).find(
+  const copied = Object.values(resolveConstruction(session.project).walls).find(
     (w) => w.geometryId === 'g2',
   );
   assert.ok(copied);
@@ -249,8 +247,7 @@ void test('ordinary quantities, exact piece exports and preview deltas share pos
   await call({ name: 'wall.put', payload: wall });
   const { calculateProject, pieceSchedule } =
     await import('../../src/core/calculations');
-  const { quantityChanges } =
-    await import('../../src/core/construction-calculations');
+  const { quantityChanges } = await import('../../src/core/quantity-changes');
   const before = calculateProject(session.project);
   assert.equal(
     before.totals.find((total) => total.materialId === 'stud')?.amount,
@@ -378,7 +375,7 @@ void test('review follows linked header evidence and relevant levels, independen
   );
 });
 
-void test('construction material CSV preserves finish purchasing and excludes reference ceilings', async () => {
+void test('construction material CSV includes every displayed surface and preserves finish purchasing', async () => {
   const { session, call, wall } = fixture();
   await call({
     name: 'wall.put',
@@ -414,21 +411,74 @@ void test('construction material CSV preserves finish purchasing and excludes re
   });
   const exported = exportConstruction(session.project, 'csv', 'materials');
   assert.ok(exported.includes('"board","m2","","36","40","10","true"'));
-  assert.doesNotMatch(exported, /ceiling-tile/);
-  await call({
-    name: 'ceiling.put',
-    payload: {
-      id: 'ceiling',
-      geometryId: 'ceiling-area',
-      elevation: 2.7,
-      materialId: 'ceiling-tile',
-      layers: 1,
-      quantityMode: 'included',
-    },
-  });
   assert.ok(
     exportConstruction(session.project, 'csv', 'materials').includes(
       '"ceiling-tile","m2","","4","4","","true"',
     ),
   );
+});
+
+void test('review tracks live assembly changes without invalidating another trace for a local override', async () => {
+  const { session, call, wall } = fixture();
+  await call({ name: 'wall.put', payload: wall });
+  const applied = resolveConstruction(session.project).walls.w;
+  assert.ok(applied?.assignmentId && applied.groupId && applied.recipeId);
+  await call({
+    name: 'geometry.put',
+    payload: {
+      ...session.project.geometries.g,
+      id: 'second-trace',
+      points: [
+        { x: 10, y: 15 },
+        { x: 16, y: 15 },
+      ],
+    },
+  });
+  await call({
+    name: 'group.members',
+    payload: { id: applied.groupId, geometryIds: ['g', 'second-trace'] },
+  });
+  const secondId = `${applied.assignmentId}/second-trace`;
+  for (const id of ['w', secondId])
+    await call({
+      name: 'review.mark',
+      payload: {
+        id,
+        target: { kind: 'wall', id },
+        status: 'reviewed',
+        note: '',
+      },
+    });
+  const assignment = session.project.assignments[applied.assignmentId];
+  assert.ok(assignment);
+  await call({
+    name: 'assignment.put',
+    payload: {
+      ...assignment,
+      geometryDetails: {
+        ...assignment.geometryDetails,
+        'second-trace': { wall: { height: 2.5 } },
+      },
+    },
+  });
+  const status = (id: string) =>
+    inspectReview(session.project).marks.find((mark) => mark.target.id === id)
+      ?.effectiveStatus;
+  assert.equal(status('w'), 'reviewed');
+  assert.equal(status(secondId), 'changed');
+  const recipe = session.project.recipes[applied.recipeId];
+  assert.ok(recipe?.wallTemplate);
+  await call({
+    name: 'assembly.put',
+    payload: {
+      ...recipe,
+      wallTemplate: { ...recipe.wallTemplate, height: 2.8 },
+    },
+  });
+  assert.equal(resolveConstruction(session.project).walls.w?.height, 2.8);
+  assert.equal(
+    resolveConstruction(session.project).walls[secondId]?.height,
+    2.5,
+  );
+  assert.equal(status('w'), 'changed');
 });

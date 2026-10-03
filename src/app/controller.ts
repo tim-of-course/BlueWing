@@ -5,7 +5,6 @@ import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
 import { Application, type Observation } from './application';
 import { choosePdf, chooseProject, writeOutput } from './files';
 import { connectCli } from './cli';
-import { generateConstruction, emptyConstruction } from '../core/construction';
 import { exportConstruction } from '../core/detailed-commands';
 import { renderImage } from './render';
 import { encodeBase64 } from '../platform/base64';
@@ -104,27 +103,16 @@ export function createWorkspace(
   const [canRedo, setCanRedo] = createSignal(false, {
     name: 'workspace.canRedo',
   });
-  const construction = createMemo(
-    () => {
-      const current = project();
-      return current
-        ? generateConstruction(
-            current,
-            current.construction ?? emptyConstruction(),
-          )
-        : null;
-    },
-    { name: 'workspace.construction' },
-  );
   const quantities = createMemo(
     () => {
       const current = project();
-      return current
-        ? calculateProject(current, construction() ?? undefined)
-        : null;
+      return current ? calculateProject(current) : null;
     },
     { name: 'workspace.quantities' },
   );
+  const construction = createMemo(() => quantities()?.model ?? null, {
+    name: 'workspace.construction',
+  });
   const saved = createMemo(() => !busy() && !error(), {
     name: 'workspace.saved',
   });

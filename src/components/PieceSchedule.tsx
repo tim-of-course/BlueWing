@@ -25,7 +25,7 @@ export default function PieceSchedule(props: {
         <p class="muted">
           Required pieces exclude purchasing waste and package rounding. Stock
           counts allow one stock length per piece; offcut reuse is not
-          calculated.
+          calculated. Rows without a positioned piece are formula estimates.
         </p>
         <table>
           <caption>Piece schedule</caption>
@@ -62,7 +62,13 @@ export default function PieceSchedule(props: {
                   <td>{row().quantity ?? '—'}</td>
                   <td>{displayMetres(row().cutLength_m)}</td>
                   <td>{displayMetres(row().stockLength_m)}</td>
-                  <td>{row().complete ? 'Calculated' : row().diagnostic}</td>
+                  <td>
+                    {row().complete
+                      ? row().pieceId
+                        ? 'Measured from 3D'
+                        : 'Estimate only'
+                      : row().diagnostic}
+                  </td>
                 </tr>
               )}
             </For>

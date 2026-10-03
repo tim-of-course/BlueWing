@@ -18,7 +18,7 @@ function fixture(
   recipeId: string,
 ): Project {
   return {
-    formatVersion: 1,
+    formatVersion: 4,
     id: 'project',
     name: 'Estimate',
     revision: 0,
@@ -184,7 +184,12 @@ void test('recipe edits and multiple outputs preserve output and material identi
   assert.equal(result.totals.length, 2);
   assert.equal(result.outputs[1]?.materialId, 'other');
   const json: unknown = JSON.parse(exportQuantities(project, 'json'));
-  assert.deepEqual(json, result);
+  assert.deepEqual(json, {
+    outputs: result.outputs,
+    totals: result.totals,
+    complete: result.complete,
+    coverage: result.coverage,
+  });
   assert.match(exportQuantities(project, 'csv'), /"outputId"/);
 });
 void test('constrained formulas support arithmetic, conditions, rounding and unit checks', () => {

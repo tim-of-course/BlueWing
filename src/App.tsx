@@ -27,6 +27,7 @@ import ConstructionView from './components/ConstructionView';
 import ConstructionEditor from './components/ConstructionEditor';
 import ReviewPanel from './components/ReviewPanel';
 import { formatScale } from './core/scale';
+import { resolveConstruction } from './core/applied-assemblies';
 import Wingman from './components/Wingman';
 import type {
   ModelView,
@@ -55,6 +56,10 @@ const groupColors = [
 ];
 export default function App(props: { application?: Application }) {
   const controller = createWorkspace(untrack(() => props.application));
+  const construction = createMemo(() => {
+    const project = controller.project();
+    return project ? resolveConstruction(project) : undefined;
+  });
   const [sheetsVisible, setSheetsVisible] = createSignal(
     localStorage.getItem('bluewing.panel.sheets.pinned') !== 'false',
     {
@@ -566,6 +571,9 @@ export default function App(props: { application?: Application }) {
                     }}
                     presentationActive={followingAgent()}
                     result={result()}
+                    estimateOutputs={
+                      controller.quantities()?.coverage.estimateOutputs ?? 0
+                    }
                     levels={Object.values(
                       controller.project()?.construction?.levels ?? {},
                     ).map((level) => ({
@@ -574,13 +582,8 @@ export default function App(props: { application?: Application }) {
                       geometryIds: [
                         ...new Set(
                           [
-                            ...Object.values(
-                              controller.project()?.construction?.walls ?? {},
-                            ),
-                            ...Object.values(
-                              controller.project()?.construction?.ceilings ??
-                                {},
-                            ),
+                            ...Object.values(construction()?.walls ?? {}),
+                            ...Object.values(construction()?.ceilings ?? {}),
                           ]
                             .filter((source) => source.levelId === level.id)
                             .map((source) => source.geometryId),

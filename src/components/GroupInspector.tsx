@@ -5,6 +5,23 @@ import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import type { Assignment, OutputAllowance } from '../core/types';
+import type { PayloadSchema } from '../core/commands';
+import {
+  wallOverrideSchema,
+  ceilingOverrideSchema,
+} from '../core/detailed-commands';
+import { ConstructionFields } from './ConstructionEditor';
+
+function selectedFields(schema: PayloadSchema, keys: string[]): PayloadSchema {
+  return {
+    ...schema,
+    properties: Object.fromEntries(
+      Object.entries(schema.properties ?? {}).filter(([key]) =>
+        keys.includes(key),
+      ),
+    ),
+  };
+}
 
 interface Props {
   controller: WorkspaceController;
@@ -377,6 +394,106 @@ export default function GroupInspector(props: Props) {
                         </For>
                       </select>
                     </label>
+                    <Show when={recipe()?.wallTemplate}>
+                      <fieldset disabled={pending()}>
+                        <legend>Wall values</legend>
+                        <p class="muted">
+                          Height drives framing and full-height finishes
+                          together. Reset a value to use the group or assembly
+                          value again.
+                        </p>
+                        <ConstructionFields
+                          schema={selectedFields(wallOverrideSchema, [
+                            'height',
+                            'baseElevation',
+                            'levelId',
+                            'studSpacing',
+                            'topAllowance',
+                            'bottomAllowance',
+                          ])}
+                          value={{
+                            ...(inputTarget()
+                              ? assignment()?.geometryDetails?.[inputTarget()]
+                                  ?.wall
+                              : assignment()?.wallOverrides),
+                          }}
+                          inherited={{
+                            ...recipe()?.wallTemplate,
+                            ...(inputTarget()
+                              ? assignment()?.wallOverrides
+                              : {}),
+                          }}
+                          unit="ft"
+                          parent="walls"
+                          controller={props.controller}
+                          onChange={(wall) => {
+                            const target = inputTarget();
+                            editAssignment(id, (value) =>
+                              target
+                                ? {
+                                    ...value,
+                                    geometryDetails: {
+                                      ...value.geometryDetails,
+                                      [target]: {
+                                        ...value.geometryDetails?.[target],
+                                        wall,
+                                      },
+                                    },
+                                  }
+                                : { ...value, wallOverrides: wall },
+                            );
+                          }}
+                        />
+                      </fieldset>
+                    </Show>
+                    <Show when={recipe()?.ceilingTemplate}>
+                      <fieldset disabled={pending()}>
+                        <legend>Ceiling values</legend>
+                        <p class="muted">
+                          Changes update the measured ceiling and its material
+                          quantities.
+                        </p>
+                        <ConstructionFields
+                          schema={selectedFields(ceilingOverrideSchema, [
+                            'elevation',
+                            'levelId',
+                            'layers',
+                          ])}
+                          value={{
+                            ...(inputTarget()
+                              ? assignment()?.geometryDetails?.[inputTarget()]
+                                  ?.ceiling
+                              : assignment()?.ceilingOverrides),
+                          }}
+                          inherited={{
+                            ...recipe()?.ceilingTemplate,
+                            ...(inputTarget()
+                              ? assignment()?.ceilingOverrides
+                              : {}),
+                          }}
+                          unit="ft"
+                          parent="ceilings"
+                          controller={props.controller}
+                          onChange={(ceiling) => {
+                            const target = inputTarget();
+                            editAssignment(id, (value) =>
+                              target
+                                ? {
+                                    ...value,
+                                    geometryDetails: {
+                                      ...value.geometryDetails,
+                                      [target]: {
+                                        ...value.geometryDetails?.[target],
+                                        ceiling,
+                                      },
+                                    },
+                                  }
+                                : { ...value, ceilingOverrides: ceiling },
+                            );
+                          }}
+                        />
+                      </fieldset>
+                    </Show>
                     <AssemblyInputs
                       inputs={recipe()?.inputs ?? []}
                       values={

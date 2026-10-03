@@ -170,8 +170,6 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
   }
   async save(previous: Project, next: Project): Promise<void> {
     checkSave(previous, next);
-    if (previous.formatVersion < 3 && next.formatVersion === 3)
-      await this.backup();
     // CHECK rejects stale revisions (and missing metadata) inside the same transaction.
     await this.transaction([
       {

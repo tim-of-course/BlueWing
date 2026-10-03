@@ -21,7 +21,7 @@ function fixture() {
       let result: unknown;
       if (command === 'database_backup') {
         if (failBackup) throw new Error('backup disk full');
-        backups.push('before-format-3.bluewing');
+        backups.push((args?.path as string | null) ?? 'test.backup.bluewing');
         result = backups.at(-1);
       }
       if (command === 'database_query') {
@@ -107,7 +107,7 @@ function fixture() {
   };
 }
 const project = (): Project => ({
-  formatVersion: 1,
+  formatVersion: 4,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -175,16 +175,15 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   database.close();
 });
 
-void test('legacy projects upgrade to format 2 atomically and retain assembly fields on reopen', async () => {
+void test('format 4 saves assembly fields atomically and retains them on reopen', async () => {
   const { storage, database, setFailure } = fixture();
-  await storage.open('legacy', true);
+  await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 1);
+  assert.equal((await storage.load()).formatVersion, 4);
   const next: Project = {
     ...initial,
     revision: 1,
-    formatVersion: 2,
     recipes: {
       header: {
         id: 'header',
@@ -213,46 +212,55 @@ void test('legacy projects upgrade to format 2 atomically and retain assembly fi
   };
   setFailure(true);
   await assert.rejects(storage.save(initial, next), /disk full/);
-  assert.equal((await storage.load()).formatVersion, 1);
+  assert.deepEqual(await storage.load(), initial);
   setFailure(false);
   await storage.save(initial, next);
   assert.deepEqual(await storage.load(), next);
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    2,
+    4,
   );
   database.close();
 });
 
-void test('format 3 extensions survive reopen and backup failure prevents an upgrade', async () => {
+void test('old project formats are rejected without changing the saved file', async () => {
+  const { storage, database, backups } = fixture();
+  await storage.open('unsupported', true);
+  await storage.initialize(project());
+  for (const version of [1, 2, 3]) {
+    database.prepare('UPDATE project SET format_version=?').run(version);
+    await assert.rejects(storage.load(), /format|version/i);
+    assert.equal(
+      database.prepare('SELECT format_version FROM project').get()
+        ?.format_version,
+      version,
+    );
+  }
+  assert.deepEqual(backups, []);
+  database.close();
+});
+
+void test('format 4 extensions survive reopen and backups run only when requested', async () => {
   const { storage, database, backups, setBackupFailure } = fixture();
   await storage.open('detailed', true);
   const initial = project();
   await storage.initialize(initial);
   const next: Project = {
     ...initial,
-    formatVersion: 3,
     revision: 1,
-    construction: {
-      walls: {},
-      openings: {},
-      headers: {},
-      levels: { level: { id: 'level', name: 'Second floor', elevation: 3.5 } },
-      placements: {},
-      ceilings: {},
-    },
     review: { snippets: {}, marks: {} },
   };
   setBackupFailure(true);
-  await assert.rejects(storage.save(initial, next), /backup disk full/);
-  assert.deepEqual(await storage.load(), initial);
-  setBackupFailure(false);
   await storage.save(initial, next);
-  assert.equal(backups.length, 1);
+  assert.deepEqual(backups, []);
   assert.deepEqual(await storage.load(), next);
-  await storage.save(next, { ...next, revision: 2, name: 'Saved again' });
-  assert.equal(backups.length, 1);
+  await assert.rejects(storage.backup('recovery.bluewing'), /backup disk full/);
+  assert.deepEqual(await storage.load(), next);
+  setBackupFailure(false);
+  assert.equal(await storage.backup('recovery.bluewing'), 'recovery.bluewing');
+  assert.equal(await storage.backup(), 'test.backup.bluewing');
+  assert.deepEqual(backups, ['recovery.bluewing', 'test.backup.bluewing']);
   database.close();
 });
 

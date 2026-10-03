@@ -34,7 +34,7 @@ for (const browserType of [chromium, webkit]) {
         )) as typeof StorageModule;
         const storage = new BrowserStorage();
         const initial = {
-          formatVersion: 1 as const,
+          formatVersion: 4 as const,
           id: 'p',
           name: 'Original',
           revision: 0,

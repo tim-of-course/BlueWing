@@ -1,5 +1,7 @@
-import { constructionOutputs } from './construction-calculations';
-import type { ConstructionResult } from './construction-types';
+import { modeledOutputs } from './material-results';
+import { purchaseAmount } from './purchasing';
+import { generateConstruction } from './construction';
+import { resolveConstruction } from './applied-assemblies';
 import type {
   Assignment,
   AssemblyComponent,
@@ -194,10 +196,7 @@ function source(
     return { geometryId, inputs, value: null, diagnostic: message(error) };
   }
 }
-export function calculateProject(
-  project: Project,
-  construction?: ConstructionResult,
-): CalculationResult {
+export function calculateProject(project: Project): CalculationResult {
   const outputs: CalculationOutput[] = [];
   let complete = true;
   for (const assignment of Object.values(project.assignments)) {
@@ -243,50 +242,8 @@ export function calculateProject(
           (sum, entry) => sum + (entry.value ?? 0),
           0,
         );
-        const wastePercent = allowance.wastePercent;
-        const validAllowance =
-          Number.isFinite(wastePercent) &&
-          wastePercent >= 0 &&
-          (allowance.packageSize === undefined ||
-            (Number.isFinite(allowance.packageSize) &&
-              allowance.packageSize > 0));
-        if (!validAllowance)
-          diagnostics.push(
-            'Waste must be nonnegative and package size must be positive',
-          );
-        const wasteAmount = validAllowance
-          ? (baseAmount * wastePercent) / 100
-          : 0;
-        const adjustedAmount = baseAmount + wasteAmount;
-        // Compensate only for floating-point noise at an exact package boundary.
-        const ratio =
-          validAllowance && allowance.packageSize
-            ? adjustedAmount / allowance.packageSize
-            : null;
-        const packageCount =
-          ratio === null
-            ? null
-            : Math.max(
-                ratio > 0 ? 1 : 0,
-                Math.ceil(
-                  ratio - Number.EPSILON * Math.max(1, Math.abs(ratio)) * 8,
-                ),
-              );
-        const purchasedAmount =
-          packageCount === null
-            ? output.piece
-              ? Math.ceil(
-                  adjustedAmount -
-                    Number.EPSILON * Math.max(1, adjustedAmount) * 8,
-                )
-              : adjustedAmount
-            : packageCount * (allowance.packageSize ?? 0);
-        if (
-          ![baseAmount, wasteAmount, adjustedAmount, purchasedAmount].every(
-            Number.isFinite,
-          )
-        )
-          diagnostics.push('Quantity aggregation overflowed');
+        const amounts = purchaseAmount(baseAmount, allowance, !!output.piece);
+        diagnostics.push(...amounts.diagnostics);
         const commonCutLength = sources.every(
           (source) =>
             source.cutLength?.value.toPrecision(12) ===
@@ -295,6 +252,8 @@ export function calculateProject(
           ? sources[0]?.cutLength
           : undefined;
         const result: CalculationOutput = {
+          ...amounts,
+          modeling: 'estimate',
           groupId: assignment.groupId,
           assignmentId: assignment.id,
           recipeId: recipe.id,
@@ -309,11 +268,6 @@ export function calculateProject(
             ? { stockLength: sources[0].stockLength }
             : {}),
           baseAmount,
-          wastePercent,
-          wasteAmount,
-          adjustedAmount,
-          packageCount,
-          purchasedAmount,
           complete: diagnostics.length === 0,
           diagnostics,
         };
@@ -322,28 +276,30 @@ export function calculateProject(
       }
     }
   }
-  const positioned = constructionOutputs(project, construction);
-  for (const output of outputs) {
+  const model = generateConstruction(project, resolveConstruction(project));
+  for (const assignment of Object.values(project.assignments)) {
+    const recipe = project.recipes[assignment.recipeId];
+    const group = project.groups[assignment.groupId];
     if (
-      positioned.outputs.some(
-        (placed) =>
-          placed.materialId === output.materialId &&
-          placed.sources.some((source) =>
-            output.sources.some(
-              (estimate) => estimate.geometryId === source.geometryId,
-            ),
-          ),
+      (recipe?.wallTemplate || recipe?.ceilingTemplate) &&
+      group?.geometryIds.length &&
+      !group.geometryIds.some((id) =>
+        recipe.geometryKinds.includes(project.geometries[id]?.kind ?? 'count'),
       )
     ) {
-      output.diagnostics.push(
-        'This material has both formula and positioned quantities on the same drawing. Review the assignments to avoid counting it twice.',
-      );
-      output.complete = false;
-      complete = false;
+      model.diagnostics.push({
+        assignmentId: assignment.id,
+        recipeId: recipe.id,
+        groupId: assignment.groupId,
+        code: 'incompatible-geometry',
+        message: 'No compatible drawing objects in this modeled assembly group',
+      });
+      model.complete = false;
     }
   }
-  outputs.push(...positioned.outputs);
-  complete &&= positioned.complete;
+  const positioned = modeledOutputs(project, model);
+  outputs.push(...positioned);
+  complete &&= model.complete;
   const totals = new Map<string, QuantityTotal>();
   for (const output of outputs) {
     const key = JSON.stringify([
@@ -366,16 +322,39 @@ export function calculateProject(
     total.complete &&= output.complete;
     totals.set(key, total);
   }
-  return { outputs, totals: [...totals.values()], complete };
+  const estimateOutputs = outputs.filter(
+    (output) => output.modeling === 'estimate',
+  ).length;
+  return {
+    outputs,
+    totals: [...totals.values()],
+    complete,
+    model,
+    coverage: {
+      modeledOutputs: outputs.filter((output) => output.modeling === 'modeled')
+        .length,
+      estimateOutputs,
+      complete: complete && estimateOutputs === 0,
+    },
+  };
+}
+export function quantityReport(result: CalculationResult) {
+  return {
+    outputs: result.outputs,
+    totals: result.totals,
+    complete: result.complete,
+    coverage: result.coverage,
+  };
 }
 export function exportQuantities(
   project: Project,
   format: 'csv' | 'json',
 ): string {
   const result = calculateProject(project);
-  if (format === 'json') return JSON.stringify(result, null, 2);
+  if (format === 'json') return JSON.stringify(quantityReport(result), null, 2);
   const rows: (string | number | boolean | null)[][] = [
     [
+      'modeling',
       'groupId',
       'assignmentId',
       'recipeId',
@@ -398,6 +377,7 @@ export function exportQuantities(
   ];
   for (const output of result.outputs)
     rows.push([
+      output.modeling,
       output.groupId,
       output.assignmentId,
       output.recipeId,
@@ -446,6 +426,7 @@ export function pieceSchedule(
           materialId: output.materialId,
           role: source.pieceRole ?? output.role ?? '',
           pieceId: source.pieceId ?? '',
+          modeling: output.modeling,
           quantity: source.value,
           cutLength_m: source.cutLength?.value ?? null,
           stockLength_m: source.stockLength?.value ?? null,
@@ -468,6 +449,8 @@ export function exportPieces(project: Project, format: 'csv' | 'json'): string {
     'assembly',
     'materialId',
     'role',
+    'modeling',
+    'pieceId',
     'quantity',
     'cutLength_m',
     'stockLength_m',

@@ -57,6 +57,12 @@ export default function Quantities(props: {
       <Show when={props.controller.quantities()}>
         {(result) => (
           <>
+            <p class="muted" role="status">
+              {result().coverage.modeledOutputs} material outputs measured from
+              3D pieces or surfaces. {result().coverage.estimateOutputs} formula
+              estimates have no 3D placement. Waste and packaging are separate
+              purchasing allowances.
+            </p>
             <Show when={!result().complete}>
               <p class="warning" role="status">
                 Totals are incomplete. Review the diagnostics below before using
@@ -165,6 +171,12 @@ export default function Quantities(props: {
                     {props.controller.project()?.recipes[output().recipeId]
                       ?.name ?? output().recipeId}{' '}
                     · Material: {output().materialId}
+                    {' · '}
+                    {output().modeling === 'modeled'
+                      ? 'Measured from 3D'
+                      : output().modeling === 'estimate'
+                        ? 'Estimate only · no 3D placement'
+                        : 'Model incomplete'}
                   </p>
                   <Show when={output().cutLength}>
                     <p class="muted">

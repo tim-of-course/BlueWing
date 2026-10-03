@@ -1,5 +1,5 @@
 import { calculateProject } from '../core/calculations';
-import { quantityChanges } from '../core/construction-calculations';
+import { quantityChanges } from '../core/quantity-changes';
 import { invoke } from '@tauri-apps/api/core';
 import {
   createProject,
@@ -21,7 +21,7 @@ import type {
 } from '../core/types';
 import { createStorage } from '../platform/storage';
 import { NativeStorage } from '../platform/storage';
-import { emptyConstruction, generateConstruction } from '../core/construction';
+import { resolveConstruction } from '../core/applied-assemblies';
 import {
   buildConstructionScene,
   constructionSceneInput,
@@ -293,10 +293,8 @@ export class Application {
               !project.construction?.levels[payload.levelId as string]
             )
               throw new Error('Level not found');
-            const result = generateConstruction(
-              project,
-              project.construction ?? emptyConstruction(),
-            );
+            const result = calculateProject(project).model;
+            const resolved = resolveConstruction(project);
             const scene = buildConstructionScene(
               constructionSceneInput(result),
               {
@@ -304,8 +302,8 @@ export class Application {
                   ? {}
                   : {
                       levelGeometryIds: [
-                        ...Object.values(project.construction?.walls ?? {}),
-                        ...Object.values(project.construction?.ceilings ?? {}),
+                        ...Object.values(resolved.walls),
+                        ...Object.values(resolved.ceilings),
                       ]
                         .filter((source) => source.levelId === payload.levelId)
                         .map((source) => source.geometryId),

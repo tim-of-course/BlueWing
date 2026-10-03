@@ -104,6 +104,26 @@ void test('assembly templates and all public command examples validate', () => {
     for (const example of command.examples)
       validatePayload(command.schema, example.payload);
 });
+void test('starters distinguish modeled material layouts from unmodeled quick estimates', () => {
+  const starters = starterAssemblies();
+  for (const id of ['ceiling-grid-2x2', 'ceiling-grid-2x4']) {
+    const ceiling = starters[id];
+    assert.ok(ceiling?.ceilingTemplate?.grid);
+    assert.equal(ceiling.outputs.length, 0);
+    assert.equal(ceiling.inputs.length, 0);
+    near(ceiling.ceilingTemplate.elevation, 9 * 0.3048);
+    assert.match(ceiling.description ?? '', /Starter elevation is 9 ft/);
+  }
+  const wall = starters['steel-wall'];
+  assert.ok(wall?.wallTemplate);
+  assert.equal(wall.wallTemplate.height, undefined);
+  assert.equal(wall.wallTemplate.finishes?.length, 2);
+  for (const recipe of Object.values(starters)) {
+    if (recipe.wallTemplate || recipe.ceilingTemplate) continue;
+    assert.match(recipe.name, /estimate/i);
+    assert.match(recipe.description ?? '', /Unmodeled/);
+  }
+});
 void test('drywall deductions apply per face before layers; required dimensions stay incomplete', () => {
   const project = fixture();
   assert.equal(calculateProject(project).complete, false);
@@ -284,10 +304,10 @@ function ceilingAmounts(project: Project, purchased = true) {
     ]),
   );
 }
-void test('2x2 and 2x4 ceilings separate tees, main stock and wall angle stock', () => {
+void test('2x2 and 2x4 formula estimates separate tees, main stock and wall angle stock', () => {
   // 24 x 15 ft = 360 SF, perimeter 78 LF. Standard factors:
   // each tee: 1 per 8 SF; mains: 1 LF per 4 SF; 12 ft stock.
-  const square = fixture('ceiling-grid-2x2', 'area');
+  const square = fixture('ceiling-grid-2x2-estimate', 'area');
   assert.deepEqual(ceilingAmounts(square), {
     'ceiling-area': 360,
     'tee-2ft': 45,
@@ -297,7 +317,7 @@ void test('2x2 and 2x4 ceilings separate tees, main stock and wall angle stock',
   });
   near(ceilingAmounts(square, false).mains, 7.5);
   near(ceilingAmounts(square, false)['wall-angle'], 6.5);
-  const rectangular = fixture('ceiling-grid-2x4', 'area');
+  const rectangular = fixture('ceiling-grid-2x4-estimate', 'area');
   assert.deepEqual(ceilingAmounts(rectangular), {
     'ceiling-area': 360,
     'tee-2ft': 0,
@@ -319,7 +339,7 @@ void test('2x2 and 2x4 ceilings separate tees, main stock and wall angle stock',
     assert.ok(csv.includes(name));
 });
 void test('ceiling tile deductions leave grid intact; grid and perimeter adjustments are explicit', () => {
-  const project = fixture('ceiling-grid-2x2', 'area');
+  const project = fixture('ceiling-grid-2x2-estimate', 'area');
   assignment(project).inputs = { tileDeduction: 40 };
   assert.deepEqual(ceilingAmounts(project), {
     'ceiling-area': 320,
@@ -355,7 +375,7 @@ void test('ceiling tile deductions leave grid intact; grid and perimeter adjustm
   );
 });
 void test('ceiling stock and carton rounding follows aggregate quantities and independent waste', () => {
-  const project = fixture('ceiling-grid-2x2', 'area');
+  const project = fixture('ceiling-grid-2x2-estimate', 'area');
   const a = project.geometries.a;
   assert.ok(a);
   project.geometries.b = { ...structuredClone(a), id: 'b', name: 'Room B' };
@@ -384,7 +404,7 @@ void test('ceiling stock and carton rounding follows aggregate quantities and in
   near(ceilingAmounts(project, false)['tee-2ft'], 85);
 });
 void test('ceiling estimates handle metric calibration, irregular perimeters, zero grid and invalid deductions', () => {
-  const project = fixture('ceiling-grid-2x2', 'area');
+  const project = fixture('ceiling-grid-2x2-estimate', 'area');
   const sheet = project.sheets.s;
   const room = project.geometries.a;
   assert.ok(sheet && room);

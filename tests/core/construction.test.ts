@@ -441,9 +441,8 @@ void test('calibration and path edits preserve authored dimensions and report st
   );
   assert.equal(data.openings.door.distance, 3);
   data.walls.duplicate = { ...wall, id: 'duplicate' };
-  assert.throws(() => {
-    validateConstruction(project, data);
-  }, /one wall per geometry/);
+  // Independent applications may intentionally use the same measured trace.
+  validateConstruction(project, data);
 });
 
 void test('header physical top and opening bends remain unresolved even when rough head fits', () => {
@@ -726,7 +725,6 @@ void test('partial-height finishes deduct only covered openings, apply layers an
   const finish = present(present(wall.finishes)[0]);
   finish.height = 1.2;
   finish.thickness = 0.01;
-  finish.deduction = 0.5;
   finish.wastePercent = 10;
   finish.packageSize = 3;
   addHeader(data);
@@ -734,32 +732,26 @@ void test('partial-height finishes deduct only covered openings, apply layers an
   data.openings.window = opening('window', 4, 2, 1, 1);
   const result = generateConstruction(project, data);
   assert.equal(result.complete, true);
-  // 8*1.2 - 1*1.2 - 2*0.2 = 8 m²; (8 - .5)*2 = 15 m².
+  // 8*1.2 - 1*1.2 - 2*0.2 = 8 m²; two layers = 16 m².
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.geometricArea, 0),
     8,
   );
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
-    15,
+    16,
   );
   const purchase = present(present(result.surfacePurchases)[0]);
-  close(purchase.requiredArea, 15);
+  close(purchase.requiredArea, 16);
   close(purchase.purchasedArea, 18);
   assert.equal(purchase.packageCount, 6);
   for (const surface of result.surfaces) {
     close(present(surface.thickness), 0.02);
     assert.equal(surface.finishId, 'front');
-    assert.equal(surface.quantityMode, 'included');
+    close(surface.area, surface.geometricArea * surface.layers);
     assert.ok(surface.points.every((p) => p.z <= 1.2 + 1e-8));
     close(present(surface.points[0]).y, 0.056);
   }
-  finish.deduction = 9;
-  assert.ok(
-    generateConstruction(project, data).diagnostics.some(
-      (d) => d.code === 'excess-finish-deduction',
-    ),
-  );
   finish.height = NaN;
   assert.throws(() => {
     validateConstruction(project, data);
@@ -826,7 +818,7 @@ void test('tracks split at stock length, including sloped tracks, within configu
   });
 });
 
-void test('ceiling surfaces default to reference and only explicitly included ceilings add area purchasing', () => {
+void test('every ceiling surface contributes its measured area to purchasing', () => {
   const { project, data } = fixture();
   data.walls = {};
   project.geometries.room = {
@@ -848,13 +840,13 @@ void test('ceiling surfaces default to reference and only explicitly included ce
     materialId: 'tile',
     layers: 1,
   };
-  const reference = generateConstruction(project, data);
-  assert.equal(present(reference.surfaces[0]).quantityMode, 'reference');
-  close(present(reference.surfaces[0]).geometricArea, 12);
-  assert.equal(present(reference.surfacePurchases).length, 0);
-  data.ceilings.room.quantityMode = 'included';
-  const included = generateConstruction(project, data);
-  close(present(present(included.surfacePurchases)[0]).purchasedArea, 12);
+  const result = generateConstruction(project, data);
+  close(present(result.surfaces[0]).geometricArea, 12);
+  close(present(present(result.surfacePurchases)[0]).purchasedArea, 12);
+  assert.deepEqual(
+    present(result.surfacePurchases)[0]?.surfaceIds,
+    result.surfaces.map((s) => s.id),
+  );
 });
 
 void test('purchase provenance separates identical material and stock with different allowances', () => {

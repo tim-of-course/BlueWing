@@ -4,6 +4,7 @@ import type { Observation } from '../app/application';
 import type { PayloadSchema } from '../core/commands';
 import { constructionSchemas } from '../core/detailed-commands';
 import { emptyConstruction } from '../core/construction';
+import { resolveConstruction } from '../core/applied-assemblies';
 import type { ConstructionData } from '../core/construction-types';
 import { wallTemplateFromWall } from '../core/wall-template';
 import { displayLength } from './PieceSchedule';
@@ -23,6 +24,7 @@ const title = (key: string) =>
 const scalarKeys = new Set(['layers', 'count', 'jambCount', 'wastePercent']);
 const angleKeys = new Set(['rotation', 'sectionRotation']);
 const pageKeys = new Set(['pageOrigin']);
+const surfaceKeys = new Set(['finishes', 'ceilings']);
 function seed(schema: PayloadSchema, key = ''): unknown {
   if (schema.type === 'object')
     return Object.fromEntries(
@@ -59,6 +61,7 @@ export function ConstructionFields(props: {
   controller: WorkspaceController;
   parent?: string;
   hide?: string[];
+  inherited?: Record<string, unknown>;
 }) {
   const set = (key: string, value: unknown) => {
     const next = { ...props.value };
@@ -68,7 +71,7 @@ export function ConstructionFields(props: {
   };
   const choices = (key: string) => {
     const project = props.controller.project();
-    const data = project?.construction;
+    const data = project ? resolveConstruction(project) : undefined;
     if (key === 'geometryId')
       return Object.values(project?.geometries ?? {})
         .filter(
@@ -102,12 +105,11 @@ export function ConstructionFields(props: {
     if (
       scalarKeys.has(key) ||
       pageKeys.has(props.parent ?? '') ||
-      (key === 'packageSize' && props.parent !== 'finishes')
+      (key === 'packageSize' && !surfaceKeys.has(props.parent ?? ''))
     )
       return 1;
     return props.unit === 'ft'
-      ? key === 'deduction' ||
-        (key === 'packageSize' && props.parent === 'finishes')
+      ? key === 'packageSize' && surfaceKeys.has(props.parent ?? '')
         ? 0.09290304
         : 0.3048
       : 1;
@@ -121,9 +123,9 @@ export function ConstructionFields(props: {
           : ''
         : pageKeys.has(props.parent ?? '')
           ? ' (page units)'
-          : key === 'packageSize' && props.parent !== 'finishes'
+          : key === 'packageSize' && !surfaceKeys.has(props.parent ?? '')
             ? ' (pieces)'
-            : ` (${props.unit}${key === 'deduction' || (key === 'packageSize' && props.parent === 'finishes') ? '²' : ''})`;
+            : ` (${props.unit}${key === 'packageSize' && surfaceKeys.has(props.parent ?? '') ? '²' : ''})`;
   return (
     <div class="construction-fields">
       <For
@@ -133,90 +135,112 @@ export function ConstructionFields(props: {
       >
         {([key, schema]) => {
           const required = () => props.schema.required?.includes(key) ?? false;
-          const value = () => props.value[key];
+          const value = () =>
+            Object.hasOwn(props.value, key)
+              ? props.value[key]
+              : props.inherited?.[key];
           return (
             <Show
               when={schema.type === 'object' || schema.type === 'array'}
               fallback={
-                <label class="field">
-                  {key === 'height' && props.parent === 'walls'
-                    ? 'Wall height'
-                    : key === 'height' && props.parent === 'finishes'
-                      ? 'Finish height'
-                      : title(key)}
-                  {schema.type === 'number' ? suffix(key) : ''}
-                  {required() ? '' : ' (optional)'}
-                  <Show
-                    when={schema.enum || choices(key)}
-                    fallback={
-                      schema.type === 'number' ? (
-                        <input
-                          type="number"
-                          step="any"
-                          value={
-                            typeof value() === 'number'
-                              ? Number(
-                                  (
-                                    (value() as number) / factor(key)
-                                  ).toPrecision(12),
-                                )
-                              : ''
-                          }
-                          onInput={(e) => {
-                            set(
-                              key,
-                              e.currentTarget.value === ''
-                                ? undefined
-                                : e.currentTarget.valueAsNumber * factor(key),
-                            );
-                          }}
-                        />
-                      ) : (
-                        <input
-                          value={scalarText(value())}
-                          onInput={(e) => {
-                            set(
-                              key,
-                              e.currentTarget.value === '' && !required()
-                                ? undefined
-                                : e.currentTarget.value,
-                            );
-                          }}
-                        />
-                      )
-                    }
-                  >
-                    <select
-                      value={scalarText(value())}
-                      onChange={(e) => {
-                        set(key, e.currentTarget.value || undefined);
-                      }}
+                <div class="field">
+                  <label class="field">
+                    {key === 'height' && props.parent === 'walls'
+                      ? 'Wall height'
+                      : key === 'height' && props.parent === 'finishes'
+                        ? 'Finish height'
+                        : title(key)}
+                    {schema.type === 'number' ? suffix(key) : ''}
+                    {required() ? '' : ' (optional)'}
+                    <Show
+                      when={schema.enum || choices(key)}
+                      fallback={
+                        schema.type === 'number' ? (
+                          <input
+                            type="number"
+                            step="any"
+                            value={
+                              typeof value() === 'number'
+                                ? Number(
+                                    (
+                                      (value() as number) / factor(key)
+                                    ).toPrecision(12),
+                                  )
+                                : ''
+                            }
+                            onInput={(e) => {
+                              set(
+                                key,
+                                e.currentTarget.value === ''
+                                  ? undefined
+                                  : e.currentTarget.valueAsNumber * factor(key),
+                              );
+                            }}
+                          />
+                        ) : (
+                          <input
+                            value={scalarText(value())}
+                            onInput={(e) => {
+                              set(
+                                key,
+                                e.currentTarget.value === '' && !required()
+                                  ? undefined
+                                  : e.currentTarget.value,
+                              );
+                            }}
+                          />
+                        )
+                      }
                     >
-                      <option value="">
-                        {required() ? 'Choose…' : 'None'}
-                      </option>
-                      <For
-                        each={
-                          schema.enum?.map((option) => ({
-                            id: String(option),
-                            name: title(String(option)),
-                          })) ??
-                          choices(key) ??
-                          []
-                        }
+                      <select
+                        value={scalarText(value())}
+                        onChange={(e) => {
+                          set(key, e.currentTarget.value || undefined);
+                        }}
                       >
-                        {(option) => (
-                          <option
-                            value={option.id}
-                            selected={scalarText(value()) === option.id}
-                          >
-                            {option.name}
-                          </option>
-                        )}
-                      </For>
-                    </select>
+                        <option value="">
+                          {required() ? 'Choose…' : 'None'}
+                        </option>
+                        <For
+                          each={
+                            schema.enum?.map((option) => ({
+                              id: String(option),
+                              name: title(String(option)),
+                            })) ??
+                            choices(key) ??
+                            []
+                          }
+                        >
+                          {(option) => (
+                            <option
+                              value={option.id}
+                              selected={scalarText(value()) === option.id}
+                            >
+                              {option.name}
+                            </option>
+                          )}
+                        </For>
+                      </select>
+                    </Show>
+                  </label>
+                  <Show when={props.inherited}>
+                    <small class="muted">
+                      {Object.hasOwn(props.value, key)
+                        ? 'Override'
+                        : 'Inherited from group or assembly'}
+                    </small>
+                    <Show when={Object.hasOwn(props.value, key)}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          set(key, undefined);
+                        }}
+                      >
+                        Reset {title(key).toLowerCase()}
+                      </button>
+                    </Show>
                   </Show>
-                </label>
+                </div>
               }
             >
               <fieldset class="construction-section">
@@ -311,7 +335,8 @@ export function ConstructionFields(props: {
                         set(key, undefined);
                       }}
                     >
-                      Clear {title(key).toLowerCase()}
+                      {props.inherited ? 'Reset' : 'Clear'}{' '}
+                      {title(key).toLowerCase()}
                     </button>
                   </Show>
                 </Show>
@@ -342,9 +367,10 @@ export default function ConstructionEditor(props: {
   const [preview, setPreview] = createSignal<unknown>(null);
   const [tab, setTab] = createSignal<'edit' | 'schedule'>('edit');
   let expected: Observation | undefined;
-  const data = createMemo(
-    () => props.controller.project()?.construction ?? emptyConstruction(),
-  );
+  const data = createMemo(() => {
+    const project = props.controller.project();
+    return project ? resolveConstruction(project) : emptyConstruction();
+  });
   const entries = createMemo(() =>
     Object.entries(
       data()[kind()] as Record<
@@ -474,7 +500,6 @@ export default function ConstructionEditor(props: {
           elevation: 2.7432,
           materialId: '',
           layers: 1,
-          quantityMode: 'reference',
         };
         break;
       case 'levels':
@@ -490,7 +515,14 @@ export default function ConstructionEditor(props: {
         };
         break;
     }
-    setDraft(structuredClone(value ?? initial) as Record<string, unknown>);
+    const fields = constructionSchemas[kind()].properties ?? {};
+    setDraft(
+      Object.fromEntries(
+        Object.entries(
+          structuredClone(value ?? initial) as Record<string, unknown>,
+        ).filter(([key]) => Object.hasOwn(fields, key)),
+      ),
+    );
     setDirty(!value);
   }
   const command = () =>
@@ -644,11 +676,10 @@ export default function ConstructionEditor(props: {
                     <fieldset class="construction-section">
                       <legend>Wall templates</legend>
                       <p class="hint">
-                        Templates are independent copies. Applying a template
-                        saves its dimensions and materials to this wall. Its
-                        level, top profile, junction conditions and openings
-                        stay with the wall. Later template edits do not change
-                        walls.
+                        Walls follow their project assembly. Editing that
+                        assembly updates its walls. Changes made here override
+                        only this wall; its openings stay at their entered
+                        locations.
                       </p>
                       <label class="field">
                         Template name
@@ -729,15 +760,17 @@ export default function ConstructionEditor(props: {
                               },
                               expected,
                             );
-                            begin(
-                              props.controller.project()?.construction?.walls[
-                                String(value().id)
-                              ],
-                            );
+                            const project = props.controller.project();
+                            if (project)
+                              begin(
+                                resolveConstruction(project).walls[
+                                  String(value().id)
+                                ],
+                              );
                           });
                         }}
                       >
-                        Apply template and save wall
+                        Use assembly for this wall
                       </button>
                     </fieldset>
                   </Show>
@@ -755,6 +788,39 @@ export default function ConstructionEditor(props: {
                     }}
                   />
                   <div class="button-row">
+                    <Show when={kind() === 'walls' || kind() === 'ceilings'}>
+                      <button
+                        type="button"
+                        disabled={
+                          dirty() ||
+                          props.controller.busy() ||
+                          !data()[kind()][String(value().id)]
+                        }
+                        onClick={() => {
+                          run(async () => {
+                            await props.controller.execute(
+                              {
+                                name:
+                                  kind() === 'walls'
+                                    ? 'wall.reset'
+                                    : 'ceiling.reset',
+                                payload: { id: value().id },
+                              },
+                              expected,
+                            );
+                            const project = props.controller.project();
+                            if (project)
+                              begin(
+                                resolveConstruction(project)[kind()][
+                                  String(value().id)
+                                ],
+                              );
+                          });
+                        }}
+                      >
+                        Reset local overrides
+                      </button>
+                    </Show>
                     <button
                       type="button"
                       class="primary"

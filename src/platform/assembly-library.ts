@@ -15,15 +15,15 @@ export function libraryStorage(native: boolean): LibraryStorage {
   return native
     ? {
         read: () =>
-          invoke<string | null>('app_data_read', { key: 'assemblies.json' }),
+          invoke<string | null>('app_data_read', { key: 'assemblies-v2.json' }),
         write: (data) =>
-          invoke('app_data_write', { key: 'assemblies.json', data }),
+          invoke('app_data_write', { key: 'assemblies-v2.json', data }),
       }
     : {
         read: () =>
-          Promise.resolve(localStorage.getItem('bluewing.assemblies')),
+          Promise.resolve(localStorage.getItem('bluewing.assemblies.v2')),
         write: (data) => {
-          localStorage.setItem('bluewing.assemblies', data);
+          localStorage.setItem('bluewing.assemblies.v2', data);
           return Promise.resolve();
         },
       };

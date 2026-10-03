@@ -1,6 +1,9 @@
 import SystemComponents from './SystemComponents';
 import { ConstructionFields } from './ConstructionEditor';
-import { wallTemplateSchema } from '../core/detailed-commands';
+import {
+  wallTemplateSchema,
+  ceilingTemplateSchema,
+} from '../core/detailed-commands';
 import {
   createEffect,
   createMemo,
@@ -26,6 +29,7 @@ import type {
   RecipeOutput,
   Unit,
   WallTemplate,
+  CeilingTemplate,
 } from '../core/types';
 
 const units: Unit[] = ['scalar', 'ea', 'm', 'mm', 'ft', 'in', 'm2', 'ft2'];
@@ -49,8 +53,7 @@ export default function RecipeEditor(props: {
       const recipe = draft();
       const project = props.controller.project();
       const ids = props.controller.selection();
-      if (!recipe || recipe.wallTemplate || !project || !ids.length)
-        return null;
+      if (!recipe || !project || !ids.length) return null;
       try {
         validateAssembly(recipe);
       } catch {
@@ -269,6 +272,47 @@ export default function RecipeEditor(props: {
           onClick={() => {
             begin({
               id: crypto.randomUUID(),
+              name: 'New wall assembly',
+              geometryKinds: ['path'],
+              inputs: [],
+              outputs: [],
+              wallTemplate: {
+                baseElevation: 0,
+                studSpacing: 0.4064,
+                stud: { materialId: '', width: 0.041275, depth: 0.092075 },
+                track: { materialId: '', width: 0.092075, depth: 0.03175 },
+                finishes: [],
+                backing: [],
+              },
+            });
+            setDirty(true);
+          }}
+        >
+          New wall assembly
+        </button>
+        <button
+          type="button"
+          disabled={saving() || dirty()}
+          onClick={() => {
+            begin({
+              id: crypto.randomUUID(),
+              name: 'New ceiling assembly',
+              geometryKinds: ['area'],
+              inputs: [],
+              outputs: [],
+              ceilingTemplate: { elevation: 2.7432, materialId: '', layers: 1 },
+            });
+            setDirty(true);
+          }}
+        >
+          New ceiling assembly
+        </button>
+        <button
+          type="button"
+          disabled={saving() || dirty()}
+          onClick={() => {
+            begin({
+              id: crypto.randomUUID(),
               name: 'New system',
               geometryKinds: ['path'],
               inputs: [],
@@ -457,20 +501,49 @@ export default function RecipeEditor(props: {
                 }}
               />
             </label>
+            <Show when={preview()}>
+              {(result) => (
+                <details class="formula-reference">
+                  <summary>Preview on selected drawing</summary>
+                  <p>
+                    Base quantities using this assembly's default inputs, before
+                    waste and package rounding. Preview does not save or assign
+                    the assembly.
+                  </p>
+                  <For each={result().outputs}>
+                    {(output) => (
+                      <div>
+                        <strong>
+                          {output.name}:{' '}
+                          {output.complete
+                            ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
+                            : 'Unavailable'}
+                        </strong>
+                        <For each={output.diagnostics}>
+                          {(message) => <p class="warning">{message}</p>}
+                        </For>
+                      </div>
+                    )}
+                  </For>
+                </details>
+              )}
+            </Show>
             <Show when={recipe().wallTemplate}>
               {(template) => (
                 <fieldset disabled={saving()}>
-                  <legend>Wall template</legend>
+                  <legend>Wall assembly</legend>
                   <p class="muted">
-                    Apply this template in Construction. Each wall gets an
-                    independent copy; editing this template does not change
-                    existing walls. Dimensions below use metres.
+                    Assign this assembly to a group of wall paths. Changes here
+                    update its walls, quantities and 3D together. Group and wall
+                    overrides keep their entered values. Dimensions below use
+                    metres.
                   </p>
                   <ConstructionFields
                     schema={wallTemplateSchema}
                     value={template()}
                     unit="m"
                     controller={props.controller}
+                    parent="walls"
                     onChange={(next) => {
                       change((current) => ({
                         ...current,
@@ -481,7 +554,36 @@ export default function RecipeEditor(props: {
                 </fieldset>
               )}
             </Show>
-            <Show when={!recipe().wallTemplate}>
+            <Show when={recipe().ceilingTemplate}>
+              {(template) => (
+                <fieldset disabled={saving()}>
+                  <legend>Ceiling assembly</legend>
+                  <p class="muted">
+                    Assign this assembly to ceiling areas. Its measured surfaces
+                    and grid pieces supply both quantities and 3D. Dimensions
+                    below use metres.
+                  </p>
+                  <ConstructionFields
+                    schema={ceilingTemplateSchema}
+                    value={template()}
+                    unit="m"
+                    parent="ceilings"
+                    controller={props.controller}
+                    onChange={(next) => {
+                      change((current) => ({
+                        ...current,
+                        ceilingTemplate: next as unknown as CeilingTemplate,
+                      }));
+                    }}
+                  />
+                </fieldset>
+              )}
+            </Show>
+            <Show when={!recipe().wallTemplate && !recipe().ceilingTemplate}>
+              <p class="muted">
+                Formula estimates calculate quantities without placing materials
+                in 3D.
+              </p>
               <fieldset disabled={saving()}>
                 <legend>Compatible geometry</legend>
                 <div class="button-row">
@@ -726,33 +828,6 @@ export default function RecipeEditor(props: {
                   or area unit.
                 </p>
               </details>
-              <Show when={preview()}>
-                {(result) => (
-                  <details class="formula-reference">
-                    <summary>Preview on selected drawing</summary>
-                    <p>
-                      Base quantities using this assembly's default inputs,
-                      before waste and package rounding. Preview does not save
-                      or assign the assembly.
-                    </p>
-                    <For each={result().outputs}>
-                      {(output) => (
-                        <div>
-                          <strong>
-                            {output.name}:{' '}
-                            {output.complete
-                              ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
-                              : 'Unavailable'}
-                          </strong>
-                          <For each={output.diagnostics}>
-                            {(message) => <p class="warning">{message}</p>}
-                          </For>
-                        </div>
-                      )}
-                    </For>
-                  </details>
-                )}
-              </Show>
               <Show when={recipe().components}>
                 <SystemComponents
                   recipe={recipe()}
@@ -761,7 +836,10 @@ export default function RecipeEditor(props: {
                     ...Object.values(
                       props.controller.library()?.assemblies ?? {},
                     ),
-                  ].filter((assembly) => !assembly.wallTemplate)}
+                  ].filter(
+                    (assembly) =>
+                      !assembly.wallTemplate && !assembly.ceilingTemplate,
+                  )}
                   onChange={(next) => {
                     change(() => next);
                   }}

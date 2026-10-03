@@ -1,4 +1,6 @@
 import type { Point, Project } from './types';
+import { resolveConstruction } from './applied-assemblies';
+import type { ConstructionData } from './construction-types';
 
 export interface SourceReference {
   kind: 'geometry' | 'wall' | 'opening' | 'assembly' | 'header' | 'ceiling';
@@ -30,6 +32,7 @@ export const emptyReview = (): ReviewData => ({ snippets: {}, marks: {} });
 export function sourceEntity(
   project: Project,
   source: SourceReference,
+  construction: ConstructionData = resolveConstruction(project),
 ): unknown {
   switch (source.kind) {
     case 'geometry':
@@ -37,13 +40,13 @@ export function sourceEntity(
     case 'assembly':
       return project.recipes[source.id];
     case 'wall':
-      return project.construction?.walls[source.id];
+      return construction.walls[source.id];
     case 'opening':
-      return project.construction?.openings[source.id];
+      return construction.openings[source.id];
     case 'header':
-      return project.construction?.headers[source.id];
+      return construction.headers[source.id];
     case 'ceiling':
-      return project.construction?.ceilings[source.id];
+      return construction.ceilings[source.id];
   }
 }
 
@@ -64,16 +67,16 @@ const byId = <T extends { id: string }>(
 export function reviewFingerprint(
   project: Project,
   target: SourceReference,
+  construction: ConstructionData = resolveConstruction(project),
 ): string {
-  const entity = sourceEntity(project, target);
+  const entity = sourceEntity(project, target, construction);
   if (!entity) throw new Error('Review source no longer exists');
-  const construction = project.construction;
   const geometryIds = new Set<string>();
   const sources: SourceReference[] = [target];
   const levels = new Set<string>();
   const related: unknown[] = [entity];
   const includeWall = (id: string) => {
-    const wall = construction?.walls[id];
+    const wall = construction.walls[id];
     if (!wall) return;
     related.push(wall);
     sources.push({ kind: 'wall', id });
@@ -94,24 +97,24 @@ export function reviewFingerprint(
   };
   if (target.kind === 'wall') includeWall(target.id);
   if (target.kind === 'opening') {
-    const opening = construction?.openings[target.id];
+    const opening = construction.openings[target.id];
     if (opening) includeWall(opening.wallId);
   }
   if (target.kind === 'geometry') {
     geometryIds.add(target.id);
-    for (const wall of Object.values(construction?.walls ?? {}))
+    for (const wall of Object.values(construction.walls))
       if (wall.geometryId === target.id) includeWall(wall.id);
     related.push(
-      ...Object.values(construction?.ceilings ?? {}).filter(
+      ...Object.values(construction.ceilings).filter(
         (c) => c.geometryId === target.id,
       ),
     );
   }
   if (target.kind === 'ceiling') {
-    const ceiling = construction?.ceilings[target.id];
+    const ceiling = construction.ceilings[target.id];
     if (ceiling) geometryIds.add(ceiling.geometryId);
   }
-  for (const ceiling of Object.values(construction?.ceilings ?? {}))
+  for (const ceiling of Object.values(construction.ceilings))
     if (geometryIds.has(ceiling.geometryId) && ceiling.levelId)
       levels.add(ceiling.levelId);
   for (const geometryId of [...geometryIds].sort()) {
@@ -122,7 +125,7 @@ export function reviewFingerprint(
       const sheet = project.sheets[geometry.sheetId];
       related.push(
         sheet?.calibration,
-        Object.values(construction?.placements ?? {}).find(
+        Object.values(construction.placements).find(
           (placement) => placement.sheetId === geometry.sheetId,
         ),
       );
@@ -134,6 +137,7 @@ export function reviewFingerprint(
         {
           ...assignment,
           geometryInputs: assignment.geometryInputs?.[geometryId],
+          geometryDetails: assignment.geometryDetails?.[geometryId],
         },
         project.recipes[assignment.recipeId],
       );
@@ -141,7 +145,7 @@ export function reviewFingerprint(
     }
   }
   // Elevations affect member position even when wall dimensions are unchanged.
-  for (const id of [...levels].sort()) related.push(construction?.levels[id]);
+  for (const id of [...levels].sort()) related.push(construction.levels[id]);
   related.push(
     ...byId(project.review?.snippets).filter((snippet) =>
       snippet.sources.some((source) =>
@@ -157,39 +161,40 @@ export function reviewFingerprint(
 export function reviewStatus(
   project: Project,
   mark: ReviewMark,
+  construction: ConstructionData = resolveConstruction(project),
 ): ReviewMark['status'] | 'changed' | 'missing' {
-  if (!sourceEntity(project, mark.target)) return 'missing';
+  if (!sourceEntity(project, mark.target, construction)) return 'missing';
   if (mark.status !== 'reviewed') return mark.status;
-  return mark.fingerprint === reviewFingerprint(project, mark.target)
+  return mark.fingerprint ===
+    reviewFingerprint(project, mark.target, construction)
     ? 'reviewed'
     : 'changed';
 }
 
 export function inspectReview(project: Project) {
+  const construction = resolveConstruction(project);
   const marks = Object.values(project.review?.marks ?? {}).map((mark) => ({
     ...mark,
-    effectiveStatus: reviewStatus(project, mark),
+    effectiveStatus: reviewStatus(project, mark, construction),
   }));
   const targets: SourceReference[] = [
-    ...Object.keys(project.construction?.walls ?? {}).map((id) => ({
+    ...Object.keys(construction.walls).map((id) => ({
       kind: 'wall' as const,
       id,
     })),
-    ...Object.keys(project.construction?.openings ?? {}).map((id) => ({
+    ...Object.keys(construction.openings).map((id) => ({
       kind: 'opening' as const,
       id,
     })),
-    ...Object.keys(project.construction?.ceilings ?? {}).map((id) => ({
+    ...Object.keys(construction.ceilings).map((id) => ({
       kind: 'ceiling' as const,
       id,
     })),
     ...Object.keys(project.geometries)
       .filter(
         (id) =>
-          !Object.values(project.construction?.walls ?? {}).some(
-            (w) => w.geometryId === id,
-          ) &&
-          !Object.values(project.construction?.ceilings ?? {}).some(
+          !Object.values(construction.walls).some((w) => w.geometryId === id) &&
+          !Object.values(construction.ceilings).some(
             (c) => c.geometryId === id,
           ),
       )
@@ -213,6 +218,7 @@ export function inspectReview(project: Project) {
 }
 
 export function validateReview(project: Project, review: ReviewData): void {
+  const construction = resolveConstruction(project);
   for (const [id, snippet] of Object.entries(review.snippets)) {
     if (id !== snippet.id || !snippet.name.trim())
       throw new Error('Snippet needs an id and name');
@@ -247,7 +253,7 @@ export function validateReview(project: Project, review: ReviewData): void {
         throw new Error('Annotation points must fit the snippet');
     }
     for (const source of snippet.sources)
-      if (!sourceEntity(project, source))
+      if (!sourceEntity(project, source, construction))
         throw new Error('Snippet source not found');
   }
   const targets = new Set<string>();
@@ -257,7 +263,7 @@ export function validateReview(project: Project, review: ReviewData): void {
     if (targets.has(key))
       throw new Error('A source may have only one review mark');
     targets.add(key);
-    if (!sourceEntity(project, mark.target))
+    if (!sourceEntity(project, mark.target, construction))
       throw new Error('Review source not found');
   }
 }
@@ -265,6 +271,7 @@ export function validateReview(project: Project, review: ReviewData): void {
 /** Explicit deletes prune references in the same undoable command. */
 export function pruneReview(project: Project): void {
   if (!project.review) return;
+  const construction = resolveConstruction(project);
   for (const [id, snippet] of Object.entries(project.review.snippets)) {
     if (!project.sheets[snippet.sheetId]) {
       Reflect.deleteProperty(project.review.snippets, id);
@@ -274,10 +281,10 @@ export function pruneReview(project: Project): void {
       (id) => project.geometries[id],
     );
     snippet.sources = snippet.sources.filter((source) =>
-      sourceEntity(project, source),
+      sourceEntity(project, source, construction),
     );
   }
   for (const [id, mark] of Object.entries(project.review.marks))
-    if (!sourceEntity(project, mark.target))
+    if (!sourceEntity(project, mark.target, construction))
       Reflect.deleteProperty(project.review.marks, id);
 }

@@ -14,7 +14,7 @@ export function newId(): string {
 }
 export function createProject(name: string, id = newId()): Project {
   return {
-    formatVersion: 2,
+    formatVersion: 4,
     id,
     name,
     revision: 0,

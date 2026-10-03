@@ -1,4 +1,5 @@
 import type { Point } from './types';
+import type { CeilingGridSpec } from './ceiling-grid';
 
 /** Physical lengths are metres, rotation is radians, world Z points up. */
 export interface Vec3 {
@@ -49,8 +50,6 @@ export interface WallFinish {
   height?: number;
   /** Thickness of each layer. */
   thickness?: number;
-  /** Additional unpositioned deduction in square metres per layer, after openings. */
-  deduction?: number;
   wastePercent?: number;
   /** Square metres per purchased package. */
   packageSize?: number;
@@ -60,7 +59,7 @@ export interface BackingRun {
   height: number;
   member: MemberSpec;
 }
-export interface Wall {
+export interface Wall extends ConstructionSource {
   id: string;
   geometryId: string;
   levelId?: string;
@@ -127,25 +126,35 @@ export interface SheetPlacement {
   worldOffset: Vec3;
   rotation: number;
 }
-export interface Ceiling {
+export interface Ceiling extends ConstructionSource {
   id: string;
   geometryId: string;
   levelId?: string;
+  /** Finished underside above the level; grid envelopes and finish thickness extend upward. */
   elevation: number;
   materialId: string;
   layers: number;
-  /** Reference surfaces render but do not add quantities; reference is the default. */
-  quantityMode?: 'reference' | 'included';
+  thickness?: number;
+  wastePercent?: number;
+  packageSize?: number;
+  grid?: Omit<CeilingGridSpec, 'tile'>;
 }
-export interface ConstructionData {
-  walls: Record<string, Wall>;
+export interface ConstructionContext {
   openings: Record<string, Opening>;
   headers: Record<string, HeaderDetail>;
   levels: Record<string, Level>;
   placements: Record<string, SheetPlacement>;
+}
+/** Resolved applications, never stored alongside their assembly definitions. */
+export interface ConstructionData extends ConstructionContext {
+  walls: Record<string, Wall>;
   ceilings: Record<string, Ceiling>;
 }
 export interface ConstructionSource {
+  assignmentId?: string;
+  recipeId?: string;
+  groupId?: string;
+  componentId?: string;
   wallId?: string;
   geometryId?: string;
   openingId?: string;
@@ -165,13 +174,15 @@ export interface ConstructionPiece extends ConstructionSource {
   /** Length of the displayed piece. Unresolved connection diagnostics make schedules provisional. */
   cutLength: number;
   stockLength?: number;
+  wastePercent?: number;
+  packageSize?: number;
   width: number;
   depth: number;
   sectionRotation: number;
   /** Unit world vector for section width, including sectionRotation. */
   widthAxis?: Vec3;
 }
-/** Opening-free patches. area includes layers and authored deductions; geometricArea is one layer before unpositioned deductions. */
+/** Opening-free patches. Area is always geometricArea multiplied by layers. */
 export interface ConstructionSurface extends ConstructionSource {
   id: string;
   materialId: string;
@@ -182,11 +193,11 @@ export interface ConstructionSurface extends ConstructionSource {
   area: number;
   /** Total thickness across all layers. */
   thickness?: number;
-  quantityMode?: 'reference' | 'included';
   wastePercent?: number;
   packageSize?: number;
 }
-export interface ConstructionPurchase {
+export interface ConstructionPurchase extends ConstructionSource {
+  role: string;
   materialId: string;
   stockLength: number;
   requiredCount: number;
@@ -198,6 +209,7 @@ export interface ConstructionPurchase {
   packageCount: number | null;
 }
 export interface ConstructionSurfacePurchase extends ConstructionSource {
+  surfaceIds: string[];
   materialId: string;
   requiredArea: number;
   wastePercent: number;

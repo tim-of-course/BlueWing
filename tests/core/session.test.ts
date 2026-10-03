@@ -5,7 +5,7 @@ import type { CommandCall, Project } from '../../src/core/types';
 
 function project(): Project {
   return {
-    formatVersion: 1,
+    formatVersion: 4,
     id: 'project',
     name: 'Original',
     revision: 0,

@@ -26,7 +26,6 @@ export interface SceneSurface extends SceneSource {
   points: readonly Point3[];
   /** Total thickness, centred on the generated surface points. */
   thickness?: number;
-  quantityMode?: 'reference' | 'included';
 }
 export interface SceneInput {
   members: readonly SceneMember[];
@@ -478,10 +477,6 @@ export function renderConstruction(
   if (
     scene.faces.some((face) => face.surface && face.source.role === 'ceiling')
   )
-    context.fillText(
-      'Ceiling extents / area estimates · no placed grid',
-      14,
-      22,
-    );
+    context.fillText('Ceiling surfaces show calculated installed area', 14, 22);
   return projected;
 }

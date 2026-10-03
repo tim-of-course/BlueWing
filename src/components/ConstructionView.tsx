@@ -22,6 +22,7 @@ import './construction-view.css';
 
 export interface ConstructionViewProps {
   result: ConstructionResult;
+  estimateOutputs?: number;
   onViewport?: (port: ViewportPort<ModelView>) => void;
   interactionDisabled?: boolean;
   presentationActive?: boolean;
@@ -348,6 +349,12 @@ export default function ConstructionView(props: ConstructionViewProps) {
       </div>
       <div class="construction-status" aria-live="polite">
         <span>Section envelopes; framing shown through finishes.</span>
+        <Show when={props.estimateOutputs}>
+          <span>
+            {props.estimateOutputs} estimated material outputs have no 3D
+            placement.
+          </span>
+        </Show>
         <span>
           {scene().count.toLocaleString()} objects shown. Drag to orbit · Scroll
           to zoom
@@ -386,7 +393,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
                 const value = item();
                 return 'cutLength' in value
                   ? `Cut length: ${lengthLabel(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : lengthLabel(value.stockLength)} · Section ${(value.width * 1000).toFixed(1)} × ${(value.depth * 1000).toFixed(1)} mm. Purchase totals include waste and rounding.`
-                  : `${value.face === 'ceiling' ? (value.quantityMode === 'included' ? 'Ceiling area estimate' : 'Ceiling reference extent (excluded from quantities)') : 'Finish net area'}: ${value.area.toFixed(3)} m² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${(value.thickness * 1000).toFixed(1)} mm`}${value.face === 'ceiling' ? ' · No placed grid' : ''}`;
+                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${value.area.toFixed(3)} m² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${(value.thickness * 1000).toFixed(1)} mm`}`;
               })()}
             </span>
           </aside>

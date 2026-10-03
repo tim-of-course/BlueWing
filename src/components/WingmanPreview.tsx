@@ -2,6 +2,7 @@ import { createEffect, createSignal, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
+import { resolveConstruction } from '../core/applied-assemblies';
 import { paintTakeoff } from './canvas/paint';
 import {
   buildConstructionScene,
@@ -99,10 +100,11 @@ export default function WingmanPreview(props: {
         const geometryIds = view.selectedOnly
           ? (view.geometryIds ?? [...selected]).filter((id) => selected.has(id))
           : view.geometryIds;
+        const construction = resolveConstruction(project);
         const levelGeometryIds = view.levelId
           ? [
-              ...Object.values(project.construction?.walls ?? {}),
-              ...Object.values(project.construction?.ceilings ?? {}),
+              ...Object.values(construction.walls),
+              ...Object.values(construction.ceilings),
             ]
               .filter((source) => source.levelId === view.levelId)
               .map((source) => source.geometryId)

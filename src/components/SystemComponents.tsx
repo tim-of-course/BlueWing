@@ -33,7 +33,13 @@ export default function SystemComponents(props: {
   };
   function add() {
     const original = props.available.find((recipe) => recipe.id === source());
-    if (!original || original.components || original.wallTemplate) return;
+    if (
+      !original ||
+      original.components ||
+      original.wallTemplate ||
+      original.ceilingTemplate
+    )
+      return;
     const bindings: Record<string, string> = {};
     const inputs = [...props.recipe.inputs];
     for (const input of original.inputs) {
@@ -73,7 +79,7 @@ export default function SystemComponents(props: {
       <p class="hint">
         Each component is an independent copy. Shared inputs connect dimensions
         across the system. Add a second drywall component for the other wall
-        face.
+        face. These formula estimates do not place materials in 3D.
       </p>
       <div class="button-row">
         <label class="field">
@@ -88,6 +94,7 @@ export default function SystemComponents(props: {
                 (recipe) =>
                   !recipe.components &&
                   !recipe.wallTemplate &&
+                  !recipe.ceilingTemplate &&
                   recipe.id !== props.recipe.id,
               )}
             >

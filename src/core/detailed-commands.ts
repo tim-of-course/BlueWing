@@ -1,11 +1,16 @@
 import type { CommandDefinition, PayloadSchema } from './commands';
 import type { CommandCall, Project } from './types';
+import { validateConstruction } from './construction';
+import type { ConstructionData, Wall, Ceiling } from './construction-types';
 import {
-  emptyConstruction,
-  generateConstruction,
-  validateConstruction,
-} from './construction';
-import type { ConstructionData } from './construction-types';
+  applyMaterialAssembly,
+  deleteAppliedMaterial,
+  emptyConstructionContext,
+  putAppliedMaterial,
+  resetAppliedMaterial,
+  resolveConstruction,
+} from './applied-assemblies';
+import { calculateProject } from './calculations';
 import {
   emptyReview,
   inspectReview,
@@ -57,7 +62,6 @@ const finish = object(
     offset: number,
     thickness: positive,
     height: positive,
-    deduction: nonnegative,
     wastePercent: nonnegative,
     packageSize: positive,
   },
@@ -160,7 +164,21 @@ export const constructionSchemas = {
       geometryId: text,
       levelId: text,
       elevation: number,
-      quantityMode: { type: 'string', enum: ['reference', 'included'] },
+      thickness: positive,
+      wastePercent: nonnegative,
+      packageSize: positive,
+      grid: object(
+        {
+          system: { type: 'string', enum: ['2x2', '2x4'] },
+          origin: point,
+          rotation: number,
+          main: member,
+          crossTee4: member,
+          crossTee2: member,
+          wallAngle: member,
+        },
+        ['system', 'origin', 'rotation', 'main', 'crossTee4', 'wallAngle'],
+      ),
       materialId: text,
       layers: positive,
     },
@@ -184,6 +202,35 @@ export const wallTemplateSchema: PayloadSchema = object(
     (key) => !wallInstanceFields.has(key),
   ),
 );
+export const ceilingTemplateSchema: PayloadSchema = object(
+  Object.fromEntries(
+    Object.entries(constructionSchemas.ceilings.properties ?? {}).filter(
+      ([key]) => !['id', 'geometryId', 'levelId'].includes(key),
+    ),
+  ),
+  (constructionSchemas.ceilings.required ?? []).filter(
+    (key) => !['id', 'geometryId', 'levelId'].includes(key),
+  ),
+);
+function overrides(schema: PayloadSchema): PayloadSchema {
+  return {
+    ...schema,
+    required: [],
+    properties: Object.fromEntries(
+      Object.entries(schema.properties ?? {})
+        .filter(([key]) => !['id', 'geometryId'].includes(key))
+        .map(([key, value]) => [
+          key,
+          {
+            ...(value.type === 'object' ? overrides(value) : value),
+            ...(!schema.required?.includes(key) ? { nullable: true } : {}),
+          },
+        ]),
+    ),
+  };
+}
+export const wallOverrideSchema = overrides(constructionSchemas.walls);
+export const ceilingOverrideSchema = overrides(constructionSchemas.ceilings);
 export const sourceSchema = object({
   kind: {
     type: 'string',
@@ -220,10 +267,9 @@ const recordOf = (schema: PayloadSchema): PayloadSchema => ({
 });
 export const constructionSchema = object(
   Object.fromEntries(
-    Object.entries(constructionSchemas).map(([key, schema]) => [
-      key,
-      recordOf(schema),
-    ]),
+    Object.entries(constructionSchemas)
+      .filter(([key]) => !['walls', 'ceilings'].includes(key))
+      .map(([key, schema]) => [key, recordOf(schema)]),
   ),
 );
 export const reviewSchema = object({
@@ -271,13 +317,27 @@ const kinds: Record<string, keyof ConstructionData> = {
 export const detailedCommands: CommandDefinition[] = [
   definition(
     'wall.fromAssembly',
-    'Create or replace an authored wall with an independent wall-template snapshot. Lengths use metres.',
+    'Apply a live project wall assembly to a trace. Later definition edits update this wall; optional height is a local override. Lengths use metres.',
     object({ assemblyId: text, geometryId: text, id: text, height: positive }, [
       'assemblyId',
       'geometryId',
       'id',
     ]),
     true,
+  ),
+  definition(
+    'ceiling.fromAssembly',
+    'Apply a live project ceiling assembly to an area trace.',
+    object({ assemblyId: text, geometryId: text, id: text }),
+    true,
+  ),
+  ...(['wall', 'ceiling'] as const).map((kind) =>
+    definition(
+      `${kind}.reset`,
+      'Clear local material overrides and inherit the applied assembly settings.',
+      object({ id: text }),
+      true,
+    ),
   ),
   ...Object.entries(kinds).flatMap(([kind, collection]) => [
     definition(
@@ -340,50 +400,58 @@ export const detailedCommands: CommandDefinition[] = [
 ];
 
 export function validateDetailed(project: Project): void {
-  if (project.construction) validateConstruction(project, project.construction);
+  validateConstruction(project, resolveConstruction(project));
   if (project.review) validateReview(project, project.review);
 }
 
 export function executeDetailed(project: Project, call: CommandCall): unknown {
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const id = payload.id as string;
-  if (call.name === 'wall.fromAssembly') {
-    const template =
-      project.recipes[payload.assemblyId as string]?.wallTemplate;
-    if (!template) throw new Error('Wall template assembly not found');
-    const data = (project.construction ??= emptyConstruction());
-    const previous = data.walls[id];
-    const wall = {
-      ...structuredClone(template),
-      ...(previous?.levelId === undefined ? {} : { levelId: previous.levelId }),
-      ...(previous?.topProfile === undefined || payload.height !== undefined
-        ? {}
-        : { topProfile: structuredClone(previous.topProfile) }),
-      ...(previous?.conditions === undefined
-        ? {}
-        : { conditions: structuredClone(previous.conditions) }),
+  if (
+    call.name === 'wall.fromAssembly' ||
+    call.name === 'ceiling.fromAssembly'
+  ) {
+    const kind = call.name === 'wall.fromAssembly' ? 'wall' : 'ceiling';
+    applyMaterialAssembly(
+      project,
+      kind,
+      payload.assemblyId as string,
+      payload.geometryId as string,
       id,
-      geometryId: payload.geometryId as string,
-      ...(payload.height === undefined
-        ? {}
-        : { height: payload.height as number }),
-    };
-    data.walls[id] = wall;
-    return wall;
+      payload.height as number | undefined,
+    );
+    return (
+      kind === 'wall'
+        ? resolveConstruction(project).walls
+        : resolveConstruction(project).ceilings
+    )[id];
   }
   const [kind, action] = call.name.split('.');
+  if (kind === 'wall' || kind === 'ceiling') {
+    if (action === 'put')
+      putAppliedMaterial(project, kind, payload as unknown as Wall | Ceiling);
+    else if (action === 'reset') resetAppliedMaterial(project, kind, id);
+    else deleteAppliedMaterial(project, kind, id);
+    return (
+      (kind === 'wall'
+        ? resolveConstruction(project).walls
+        : resolveConstruction(project).ceilings)[id] ?? { deleted: id }
+    );
+  }
   const collection = kinds[kind ?? ''];
-  if (collection) {
-    const data = (project.construction ??= emptyConstruction());
+  if (collection && collection !== 'walls' && collection !== 'ceilings') {
+    const data = (project.construction ??= emptyConstructionContext());
     const records = data[collection] as Record<string, unknown>;
     if (action === 'put') records[id] = structuredClone(payload);
     else {
       if (!records[id]) throw new Error(`${kind ?? 'Record'} not found`);
+      const resolved = resolveConstruction(project);
       if (
         collection === 'levels' &&
-        [...Object.values(data.walls), ...Object.values(data.ceilings)].some(
-          (item) => item.levelId === id,
-        )
+        [
+          ...Object.values(resolved.walls),
+          ...Object.values(resolved.ceilings),
+        ].some((item) => item.levelId === id)
       )
         throw new Error('Remove level assignments before deleting the level');
       if (
@@ -391,28 +459,16 @@ export function executeDetailed(project: Project, call: CommandCall): unknown {
         Object.values(data.openings).some((item) => item.headerId === id)
       )
         throw new Error('Remove header assignments before deleting the detail');
-      if (collection === 'walls') {
-        for (const opening of Object.values(data.openings))
-          if (opening.wallId === id)
-            Reflect.deleteProperty(data.openings, opening.id);
-        for (const wall of Object.values(data.walls))
-          if (
-            wall.conditions?.some((condition) => condition.ownerWallId === id)
-          )
-            throw new Error(
-              'Reassign shared member ownership before deleting this wall',
-            );
-      }
       Reflect.deleteProperty(records, id);
     }
     return records[id] ?? { deleted: id };
   }
   switch (call.name) {
     case 'construction.inspect':
-      return generateConstruction(
-        project,
-        project.construction ?? emptyConstruction(),
-      );
+      return {
+        ...calculateProject(project).model,
+        applications: resolveConstruction(project),
+      };
     case 'construction.export':
       return exportConstruction(
         project,
@@ -449,24 +505,13 @@ export function executeDetailed(project: Project, call: CommandCall): unknown {
 export function pruneDetailed(project: Project): void {
   const data = project.construction;
   if (data) {
-    for (const [id, wall] of Object.entries(data.walls))
-      if (!project.geometries[wall.geometryId])
-        Reflect.deleteProperty(data.walls, id);
+    const resolved = resolveConstruction(project);
     for (const [id, opening] of Object.entries(data.openings))
-      if (!data.walls[opening.wallId])
+      if (!resolved.walls[opening.wallId])
         Reflect.deleteProperty(data.openings, id);
-    for (const [id, ceiling] of Object.entries(data.ceilings))
-      if (!project.geometries[ceiling.geometryId])
-        Reflect.deleteProperty(data.ceilings, id);
     for (const [id, placement] of Object.entries(data.placements))
       if (!project.sheets[placement.sheetId])
         Reflect.deleteProperty(data.placements, id);
-    for (const wall of Object.values(data.walls))
-      if (wall.conditions)
-        wall.conditions = wall.conditions.filter(
-          (condition) =>
-            !condition.ownerWallId || data.walls[condition.ownerWallId],
-        );
   }
   pruneReview(project);
 }
@@ -476,41 +521,61 @@ export function copyDetailedGeometry(
   sourceId: string,
   newGeometryId: string,
 ): void {
-  const data = project.construction;
-  if (!data) return;
-  for (const source of Object.values(data.walls).filter(
-    (wall) => wall.geometryId === sourceId,
-  )) {
-    const wall = structuredClone(source);
-    wall.id = crypto.randomUUID();
-    wall.geometryId = newGeometryId;
-    if (wall.conditions)
-      wall.conditions = wall.conditions.map((condition) => {
-        const copy = { ...condition };
-        delete copy.ownerWallId;
-        return copy;
-      });
-    data.walls[wall.id] = wall;
-    for (const opening of Object.values(data.openings).filter(
-      (opening) => opening.wallId === source.id,
-    )) {
+  const resolved = resolveConstruction(project);
+  for (const assignment of Object.values(project.assignments)) {
+    const group = project.groups[assignment.groupId];
+    const recipe = project.recipes[assignment.recipeId];
+    if (
+      !group?.geometryIds.includes(sourceId) ||
+      !(recipe?.wallTemplate || recipe?.ceilingTemplate)
+    )
+      continue;
+    const id = crypto.randomUUID();
+    const originalId =
+      assignment.geometryDetails?.[sourceId]?.id ??
+      `${assignment.id}/${sourceId}`;
+    const sourceWall = resolved.walls[originalId];
+    const groupId = crypto.randomUUID(),
+      assignmentId = crypto.randomUUID();
+    project.groups[groupId] = {
+      id: groupId,
+      name: `${group.name} copy`,
+      geometryIds: [newGeometryId],
+    };
+    const details = structuredClone(
+      assignment.geometryDetails?.[sourceId] ?? {},
+    );
+    details.id = id;
+    if (sourceWall?.conditions)
+      details.wall = {
+        ...details.wall,
+        conditions: sourceWall.conditions.map((condition) => {
+          const copy = { ...condition };
+          delete copy.ownerWallId;
+          return copy;
+        }),
+      };
+    project.assignments[assignmentId] = {
+      ...structuredClone(assignment),
+      id: assignmentId,
+      groupId,
+      geometryInputs: {
+        [newGeometryId]: structuredClone(
+          assignment.geometryInputs?.[sourceId] ?? {},
+        ),
+      },
+      geometryDetails: { [newGeometryId]: details },
+    };
+    for (const opening of Object.values(project.construction?.openings ?? {})) {
+      if (opening.wallId !== originalId) continue;
       const copy = {
         ...structuredClone(opening),
         id: crypto.randomUUID(),
-        wallId: wall.id,
+        wallId: id,
       };
-      data.openings[copy.id] = copy;
+      const context = (project.construction ??= emptyConstructionContext());
+      context.openings[copy.id] = copy;
     }
-  }
-  for (const ceiling of Object.values(data.ceilings).filter(
-    (ceiling) => ceiling.geometryId === sourceId,
-  )) {
-    const copy = {
-      ...structuredClone(ceiling),
-      id: crypto.randomUUID(),
-      geometryId: newGeometryId,
-    };
-    data.ceilings[copy.id] = copy;
   }
 }
 
@@ -528,10 +593,7 @@ export function exportConstruction(
   format: 'csv' | 'json',
   schedule: 'pieces' | 'lengths' | 'materials' = 'pieces',
 ): string {
-  const result = generateConstruction(
-    project,
-    project.construction ?? emptyConstruction(),
-  );
+  const result = calculateProject(project).model;
   if (format === 'json')
     return JSON.stringify(
       { projectId: project.id, revision: project.revision, ...result },

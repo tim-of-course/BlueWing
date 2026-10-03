@@ -1,4 +1,10 @@
-import type { ConstructionData, Wall } from './construction-types';
+import type {
+  ConstructionContext,
+  ConstructionResult,
+  Wall,
+  Ceiling,
+  ConstructionSource,
+} from './construction-types';
 import type { ReviewData } from './review';
 
 /** Coordinates are unzoomed PDF viewport units (72/in), origin top-left, +y down. */
@@ -72,7 +78,29 @@ export interface RecipeOutput {
 }
 export type WallTemplate = Omit<
   Wall,
-  'id' | 'geometryId' | 'levelId' | 'topProfile' | 'conditions'
+  | 'id'
+  | 'geometryId'
+  | 'levelId'
+  | 'topProfile'
+  | 'conditions'
+  | keyof ConstructionSource
+>;
+export type CeilingTemplate = Omit<
+  Ceiling,
+  'id' | 'geometryId' | 'levelId' | keyof ConstructionSource
+>;
+export type MaterialOverrides<T> = {
+  [K in keyof T]?: NonNullable<T[K]> extends readonly unknown[]
+    ? T[K]
+    : NonNullable<T[K]> extends object
+      ? MaterialOverrides<NonNullable<T[K]>>
+      : T[K] | null;
+};
+export type WallOverrides = MaterialOverrides<
+  Omit<Wall, 'id' | 'geometryId' | keyof ConstructionSource>
+>;
+export type CeilingOverrides = MaterialOverrides<
+  Omit<Ceiling, 'id' | 'geometryId' | keyof ConstructionSource>
 >;
 
 export interface Recipe {
@@ -87,8 +115,9 @@ export interface Recipe {
   outputs: RecipeOutput[];
   /** Systems have components and no direct outputs. Nested systems are unsupported. */
   components?: AssemblyComponent[];
-  /** Independent construction snapshot, applied explicitly with wall.fromAssembly. */
+  /** Typed material generator. Applications resolve these defaults on every calculation. */
   wallTemplate?: WallTemplate;
+  ceilingTemplate?: CeilingTemplate;
 }
 export interface AssemblyComponent {
   /** Stable identity within the system, independent of the snapshot's recipe id. */
@@ -100,7 +129,7 @@ export interface AssemblyComponent {
 /** Assemblies extend the existing project recipe records without duplicating calculations. */
 export type Assembly = Recipe;
 export interface AssemblyLibrary {
-  version: 1;
+  version: 2;
   revision: number;
   assemblies: Record<string, Assembly>;
 }
@@ -111,9 +140,15 @@ export interface Assignment {
   inputs: Record<string, number | boolean>;
   allowances: Record<string, OutputAllowance>;
   geometryInputs?: Record<string, Record<string, number | boolean>>;
+  wallOverrides?: WallOverrides;
+  ceilingOverrides?: CeilingOverrides;
+  geometryDetails?: Record<
+    string,
+    { id?: string; wall?: WallOverrides; ceiling?: CeilingOverrides }
+  >;
 }
 export interface Project {
-  formatVersion: 1 | 2 | 3;
+  formatVersion: 4;
   id: string;
   name: string;
   revision: number;
@@ -122,7 +157,7 @@ export interface Project {
   groups: Record<string, Group>;
   recipes: Record<string, Recipe>;
   assignments: Record<string, Assignment>;
-  construction?: ConstructionData;
+  construction?: ConstructionContext;
   review?: ReviewData;
 }
 export interface Measurement {
@@ -134,6 +169,7 @@ export interface Measurement {
 }
 export interface CalculationSource {
   pieceId?: string;
+  surfaceId?: string;
   pieceRole?: string;
   geometryId: string;
   inputs: Record<string, number | boolean>;
@@ -143,6 +179,8 @@ export interface CalculationSource {
   stockLength?: Quantity;
 }
 export interface CalculationOutput {
+  /** Formula estimates have no invented material geometry. */
+  modeling: 'modeled' | 'estimate' | 'unresolved';
   groupId: string;
   assignmentId: string;
   recipeId: string;
@@ -172,6 +210,12 @@ export interface QuantityTotal {
   complete: boolean;
 }
 export interface CalculationResult {
+  model: ConstructionResult;
+  coverage: {
+    modeledOutputs: number;
+    estimateOutputs: number;
+    complete: boolean;
+  };
   outputs: CalculationOutput[];
   totals: QuantityTotal[];
   complete: boolean;

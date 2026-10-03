@@ -3,6 +3,7 @@ import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import type { PlanSnippet, SourceReference } from '../core/review';
 import { inspectReview, sourceEntity } from '../core/review';
+import { resolveConstruction } from '../core/applied-assemblies';
 
 export default function ReviewPanel(props: {
   controller: WorkspaceController;
@@ -25,6 +26,10 @@ export default function ReviewPanel(props: {
   let expected: Observation | undefined;
   let imageRequest = 0;
   let corner: { x: number; y: number } | undefined;
+  const construction = createMemo(() => {
+    const project = props.controller.project();
+    return project ? resolveConstruction(project) : undefined;
+  });
   const review = createMemo(() => {
     const project = props.controller.project();
     return project ? inspectReview(project) : null;
@@ -32,12 +37,12 @@ export default function ReviewPanel(props: {
   function sourceName(source: SourceReference): string {
     const project = props.controller.project();
     if (!project) return source.id;
-    const item = sourceEntity(project, source) as
+    const item = sourceEntity(project, source, construction()) as
       { name?: string; geometryId?: string; wallId?: string } | undefined;
     const geometryId =
       item?.geometryId ??
       (item?.wallId
-        ? project.construction?.walls[item.wallId]?.geometryId
+        ? construction()?.walls[item.wallId]?.geometryId
         : undefined);
     return (
       item?.name ??
@@ -47,7 +52,7 @@ export default function ReviewPanel(props: {
   }
   const sourceChoices = createMemo(() => {
     const project = props.controller.project();
-    const data = project?.construction;
+    const data = construction();
     return (
       [
         ['geometry', project?.geometries],
@@ -110,14 +115,14 @@ export default function ReviewPanel(props: {
   function showSource(source: SourceReference) {
     const project = props.controller.project();
     if (!project) return;
-    const entity = sourceEntity(project, source) as
+    const entity = sourceEntity(project, source, construction()) as
       { geometryId?: string; wallId?: string } | undefined;
     const id =
       source.kind === 'geometry'
         ? source.id
         : (entity?.geometryId ??
           (entity?.wallId
-            ? project.construction?.walls[entity.wallId]?.geometryId
+            ? construction()?.walls[entity.wallId]?.geometryId
             : undefined));
     const geometry = id ? project.geometries[id] : undefined;
     if (geometry) {

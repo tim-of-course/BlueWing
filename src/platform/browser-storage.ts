@@ -124,14 +124,6 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
       const pending: Promise<unknown>[] = [
         request(projects.put({ project: metadata(next) }, this.path)),
       ];
-      if (previous && previous.formatVersion < 3 && next.formatVersion === 3)
-        pending.push(
-          request(
-            transaction
-              .objectStore('records')
-              .put(previous, [this.path, 'recovery', 'before-format-3']),
-          ),
-        );
       const records = transaction.objectStore('records');
       for (const change of recordChanges(previous, next)) {
         const key = [this.path, change.collection, change.id];
