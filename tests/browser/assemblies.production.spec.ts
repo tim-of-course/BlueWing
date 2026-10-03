@@ -1,5 +1,9 @@
 import { test } from '@playwright/test';
-import { assemblyWorkflow, ceilingWorkflow } from './assemblies';
+import {
+  assemblyWorkflow,
+  ceilingWorkflow,
+  ceilingLayoutWorkflow,
+} from './assemblies';
 
 test('built assemblies persist copies and overrides and export piece schedules', async ({
   page,
@@ -19,4 +23,10 @@ test('built ceiling assemblies export distinct grid materials and reopen', async
     path: info.outputPath('ceiling-quantities.png'),
     fullPage: true,
   });
+});
+
+test('built ceiling layouts share measured quantities and 3D members', async ({
+  page,
+}) => {
+  await ceilingLayoutWorkflow(page);
 });

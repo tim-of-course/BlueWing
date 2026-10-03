@@ -1,5 +1,6 @@
 """Native assembly/library workflow with isolated projects and app data."""
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -67,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         start()
         library = call('library.inspect')
         assert 'drywall-face' in library['assemblies']
-        # Simulate a saved library predating the new ceiling starters.
+        # Explicitly restoring deleted starters preserves unrelated library definitions.
         for ident in ['ceiling-grid-2x2', 'ceiling-grid-2x4']:
             library = call('library.delete', {'id': ident, 'expectedLibraryRevision': library['revision']})
         old_revision = library['revision']
@@ -96,6 +97,9 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         call('batch', {'commands': commands}, True)
         totals = quantities()
         assert totals['complete']
+        assert not totals['coverage']['complete']
+        assert all(row['modeling'] == 'estimate' for row in totals['outputs'])
+        assert call('construction.inspect')['pieces'] == []
         assert abs(next(t['amount'] for t in totals['totals'] if t['materialId'] == 'drywall-unspecified') - 630) < 1e-8
         assert next(t['amount'] for t in totals['totals'] if t['materialId'] == 'steel-stud-unspecified') == 42
         pieces = schedule()
@@ -142,7 +146,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         call('geometry.put', {'id': 'ceiling', 'name': 'Ceiling room', 'sheetId': sheet, 'kind': 'area', 'points': [{'x': 72, 'y': 144}, {'x': 360, 'y': 144}, {'x': 360, 'y': 324}, {'x': 72, 'y': 324}]}, True)
         call('group.put', {'id': 'ceilings', 'name': 'Ceilings', 'geometryIds': ['ceiling']}, True)
         for size in ['2x2', '2x4']:
-            call('assembly.import', {'libraryId': 'ceiling-grid-' + size, 'id': size}, True)
+            call('assembly.import', {'libraryId': 'ceiling-grid-' + size + '-estimate', 'id': size}, True)
             call('assignment.put', {'id': size, 'groupId': 'ceilings', 'recipeId': size, 'inputs': {'tileDeduction': 40}, 'allowances': {}}, True)
             rows = {row['outputId']: row['purchasedAmount'] for row in quantities()['outputs'] if row['assignmentId'] == size}
             assert abs(rows.pop('ceiling-area') - 320) < 1e-8
@@ -151,10 +155,65 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         for name in ['2 ft cross tees', '4 ft cross tees', 'Main runner stock lengths', 'Wall angle stock lengths']:
             assert name in csv
         (EVIDENCE / 'ceilings.csv').write_text(csv)
+        # A corner-aligned 8 x 8 ft layout has independently countable members.
+        # Boundaries receive angle, not another row of mains or tees.
+        call('geometry.put', {'id': 'layout-room', 'name': '8 ft ceiling layout', 'sheetId': sheet,
+                              'kind': 'area', 'points': [{'x': 72, 'y': 360}, {'x': 168, 'y': 360},
+                                                        {'x': 168, 'y': 456}, {'x': 72, 'y': 456}]}, True)
+        call('group.put', {'id': 'layout-group', 'name': 'Ceiling layout', 'geometryIds': ['layout-room']}, True)
+        assignment = {'id': 'layout-assignment', 'groupId': 'layout-group', 'recipeId': '2x2',
+                      'inputs': {}, 'allowances': {}}
+        call('assignment.put', assignment, True)
+        assert all(row['modeling'] == 'estimate' for row in quantities()['outputs']
+                   if row['assignmentId'] == assignment['id'])
+        assert not call('construction.inspect')['pieces']
+        for size in ['2x2', '2x4']:
+            assembly = call('assembly.import', {'libraryId': 'ceiling-grid-' + size, 'id': size + '-layout'}, True)
+            assembly['ceilingTemplate']['grid']['origin'] = {'x': 72 * 0.0254, 'y': -456 * 0.0254}
+            call('assembly.put', assembly, True)
+            # Replacing this assignment replaces its estimate or prior layout contribution.
+            assignment['recipeId'] = assembly['id']
+            call('assignment.put', assignment, True)
+            model = call('construction.inspect')
+            assert model['complete'] and not model['diagnostics'], model['diagnostics']
+            expected = {'ceiling-main': (1, 8), 'ceiling-tee-4ft': (6, 4),
+                        'ceiling-wall-angle': (4, 8)}
+            if size == '2x2':
+                expected['ceiling-tee-2ft'] = (8, 2)
+            assert {piece['role'] for piece in model['pieces']} == expected.keys()
+            for role, (count, feet) in expected.items():
+                members = [piece for piece in model['pieces'] if piece['role'] == role]
+                assert len(members) == count, (role, members)
+                assert all(math.isclose(piece['cutLength'], feet * 0.3048, abs_tol=1e-8) for piece in members)
+            assert len(model['surfaces']) == (16 if size == '2x2' else 8)
+            assert math.isclose(sum(surface['area'] for surface in model['surfaces']), 64 * 0.09290304, abs_tol=1e-8)
+            outputs = [row for row in quantities()['outputs'] if row['assignmentId'] == assignment['id']]
+            assert outputs and all(row['modeling'] == 'modeled' for row in outputs)
+            sources = [source for row in outputs for source in row['sources']]
+            assert {source['pieceId'] for source in sources if 'pieceId' in source} == {p['id'] for p in model['pieces']}
+            assert {source['surfaceId'] for source in sources if 'surfaceId' in source} == {s['id'] for s in model['surfaces']}
+            assert math.isclose(sum(row['baseAmount'] for row in outputs if row['unit'] == 'ft2'), 64, abs_tol=1e-8)
+            for role, (count, _) in expected.items():
+                assert sum(row['purchasedAmount'] for row in outputs if row.get('role') == role) == count
+            # Waste changes orders, never the installed layout or its cut schedule.
+            assembly['ceilingTemplate']['grid']['crossTee4']['wastePercent'] = 10
+            call('assembly.put', assembly, True)
+            with_waste = call('construction.inspect')
+            assert len(with_waste['pieces']) == len(model['pieces'])
+            assert [(piece['id'], piece['start'], piece['end'], piece['cutLength']) for piece in with_waste['pieces']] == [
+                (piece['id'], piece['start'], piece['end'], piece['cutLength']) for piece in model['pieces']]
+            assert next(row['purchasedCount'] for row in with_waste['purchases']
+                        if row['role'] == 'ceiling-tee-4ft') == 7
+            call('history.undo', mutates=True)
+            assert call('construction.inspect') == model
+        call('construction.render', {'path': str(EVIDENCE / 'ceiling-layout.png'), 'width': 800, 'height': 500,
+                                     'geometryIds': ['layout-room']})
         ceiling_totals = quantities()
+        ceiling_model = call('construction.inspect')
         call('project.close', mutates=True)
         call('project.open', {'path': project_path})
         assert quantities() == ceiling_totals
+        assert call('construction.inspect') == ceiling_model
         call('sheet.render', {'sheetId': sheet, 'path': str(EVIDENCE / 'assemblies.png'), 'maxDimension': 1224})
         call('project.close', mutates=True)
     finally:
@@ -163,4 +222,4 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             desktop.terminate()
             desktop.wait(timeout=10)
         log.close()
-print('PASS: native assemblies, object overrides, piece CSV, global/project independence, conflicts, Undo, restart, two-project reuse, ceiling grid estimates and library starter upgrades')
+print('PASS: native assemblies, object overrides, piece CSV, global/project independence, conflicts, Undo, restart, two-project reuse, ceiling estimates, positioned 2x2/2x4 layouts and starter restoration')

@@ -161,7 +161,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         start()
         commands = {entry['name'] for entry in call('commands.list')['commands']}
         assert {'wall.put', 'opening.put', 'header.put', 'construction.inspect', 'construction.render',
-                'snippet.render', 'review.inspect', 'preview', 'wall.fromAssembly'} <= commands
+                'snippet.render', 'review.inspect', 'preview', 'wall.fromAssembly', 'wall.reset',
+                'ceiling.fromAssembly', 'ceiling.reset'} <= commands
         project_path = data / 'detailed.bluewing'
         call('project.create', {'name': 'Detailed native fixture', 'path': str(project_path)})
         before_invalid = inspect()
@@ -178,10 +179,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         geometry = {'id': 'wall-path', 'name': 'Wall W1', 'sheetId': sheet, 'kind': 'path',
                     'points': [{'x': 72, 'y': 144}, {'x': 372, 'y': 144}]}
         call('geometry.put', geometry, True)
-        legacy = inspect()
-        assert legacy['formatVersion'] == 2
-        saved_legacy = database_snapshot(project_path)
-        before_backups = set(data.glob('detailed.backup-*.bluewing'))
+        assert inspect()['formatVersion'] == 4
         member = {'materialId': 'stud-40x90', 'width': 0.04, 'depth': 0.09, 'stockLength': 4}
         wall = {'id': 'wall', 'geometryId': 'wall-path', 'baseElevation': 0, 'height': 3,
                 'studSpacing': 0.5, 'stud': member, 'bottomAllowance': 0.02, 'topAllowance': 0.03,
@@ -189,12 +187,10 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
                 'finishes': [{'id': 'front', 'materialId': 'front-board', 'face': 'front', 'layers': 2},
                              {'id': 'back', 'materialId': 'back-board', 'face': 'back', 'layers': 1}]}
         call('wall.put', wall, True)
-        backups = set(data.glob('detailed.backup-*.bluewing')) - before_backups
-        assert len(backups) == 1, backups
-        upgrade_backup = backups.pop()
-        assert database_snapshot(upgrade_backup) == saved_legacy
-        assert inspect()['formatVersion'] == 3
         plain = call('construction.inspect')
+        assert 'walls' not in inspect().get('construction', {})
+        application = plain['applications']['walls']['wall']
+        assert inspect()['recipes'][application['recipeId']]['wallTemplate']['height'] == 3
         assert plain['complete'] and not plain['diagnostics'], plain['diagnostics']
         studs = [piece for piece in plain['pieces'] if piece['role'] == 'stud']
         assert len(studs) == 13  # endpoints plus eleven interior half-metre stations
@@ -205,7 +201,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         near(finish_area(plain, 'front-board'), 36)
         near(finish_area(plain, 'back-board'), 18)
         call('history.undo', mutates=True)
-        assert not inspect().get('construction')
+        assert not call('construction.inspect')['pieces']
         call('history.redo', mutates=True)
         assert call('construction.inspect') == plain
 
@@ -235,6 +231,15 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         near(finish_area(detailed, 'back-board'), 6 * 3 - 2 * 2)
         quantities = call('quantities.inspect')
         assert quantities['complete']
+        assert quantities['coverage']['complete'] and quantities['coverage']['estimateOutputs'] == 0
+        sources = [source for output in quantities['outputs'] for source in output['sources']]
+        assert {source['pieceId'] for source in sources if 'pieceId' in source} == {p['id'] for p in detailed['pieces']}
+        assert {source['surfaceId'] for source in sources if 'surfaceId' in source} == {s['id'] for s in detailed['surfaces']}
+        for piece in detailed['pieces']:
+            source = next(source for source in sources if source.get('pieceId') == piece['id'])
+            near(source['cutLength']['value'], math.dist([piece['start'][axis] for axis in ('x', 'y', 'z')],
+                                                        [piece['end'][axis] for axis in ('x', 'y', 'z')]))
+            assert source['value'] == 1
         for material, area in [('front-board', 28), ('back-board', 14)]:
             near(sum(row['amount'] for row in quantities['totals'] if row['materialId'] == material), area / 0.09290304)
 
@@ -253,7 +258,9 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         saved = database_snapshot(project_path)
         taller = dict(wall, height=3.5)
         preview = call('preview', {'commands': [{'name': 'wall.put', 'payload': taller}]}, True)
-        assert preview['preview'] and preview['project']['construction']['walls']['wall']['height'] == 3.5
+        assert preview['preview']
+        assignment = preview['project']['assignments'][application['assignmentId']]
+        assert assignment['geometryDetails']['wall-path']['wall'] == {'height': 3.5}
         for material, extra_area in [('front-board', 6), ('back-board', 3)]:
             near(sum(row['delta'] for row in preview['quantityChanges'] if row['materialId'] == material), extra_area / 0.09290304)
         assert inspect() == before and database_snapshot(project_path) == saved
@@ -325,7 +332,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         equivalent(exported['pieces'], detailed['pieces'])
         equivalent(exported['surfaces'], detailed['surfaces'])
 
-        # Systems and positioned wall templates retain independent component snapshots.
+        # Global imports are independent copies; project applications inherit live defaults.
         library = call('library.inspect')
         face_a = copy.deepcopy(library['assemblies']['drywall-face'])
         face_b = copy.deepcopy(face_a)
@@ -351,7 +358,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         call('geometry.put', dict(geometry, id='template-path', name='Template instance',
                                   points=[{'x': 72, 'y': 300}, {'x': 372, 'y': 300}]), True)
         call('wall.fromAssembly', {'assemblyId': 'local-global-wall', 'geometryId': 'template-path', 'id': 'template-wall'}, True)
-        instance = inspect()['construction']['walls']['template-wall']
+        instance = call('construction.inspect')['applications']['walls']['template-wall']
         assert instance['height'] == 3 and instance['finishes'] == wall['finishes']
         local_system = copy.deepcopy(inspect()['recipes']['local-global-system'])
         local_template = copy.deepcopy(inspect()['recipes']['local-global-wall'])
@@ -363,8 +370,24 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert inspect()['recipes']['local-global-wall'] == local_template
         assert system_amounts() == amounts
         local_template['wallTemplate']['height'] = 5
+        local_template['wallTemplate']['stud']['stockLength'] = 8
         call('assembly.put', local_template, True)
-        assert inspect()['construction']['walls']['template-wall'] == instance
+        inherited = call('construction.inspect')['applications']['walls']['template-wall']
+        assert inherited['height'] == 5 and inherited['recipeId'] == instance['recipeId']
+        # A local height stays put while another inherited field follows a definition edit.
+        call('wall.put', dict(local_template['wallTemplate'], id='template-wall', geometryId='template-path', height=5.5), True)
+        local_template['wallTemplate']['height'] = 6
+        local_template['wallTemplate']['stud']['width'] = 0.05
+        call('assembly.put', local_template, True)
+        overridden = call('construction.inspect')['applications']['walls']['template-wall']
+        assert overridden['height'] == 5.5 and overridden['stud']['width'] == 0.05
+        call('wall.reset', {'id': 'template-wall'}, True)
+        reset = call('construction.inspect')['applications']['walls']['template-wall']
+        assert reset['height'] == 6 and reset['stud']['width'] == 0.05
+        call('history.undo', mutates=True)
+        assert call('construction.inspect')['applications']['walls']['template-wall'] == overridden
+        call('history.redo', mutates=True)
+        assert call('construction.inspect')['applications']['walls']['template-wall'] == reset
         local_system['components'][0]['assembly']['outputs'][0]['formula'] = 'length * height * 3'
         call('assembly.put', local_system, True)
         near(system_amounts()['face-a/board-area'], 54 / 0.09290304)
@@ -402,10 +425,6 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert call('quantities.inspect') == final_quantities
         assert call('review.inspect') == final_review
         call('project.close', mutates=True)
-        call('project.open', {'path': str(upgrade_backup)})
-        assert inspect() == legacy
-        call('project.close', mutates=True)
-        assert database_snapshot(upgrade_backup) == saved_legacy
         (EVIDENCE / 'construction.json').write_text(json.dumps(final_construction, indent=2))
 
         large_plan = os.environ.get('BLUEWING_TEST_DETAILED_PLAN')
@@ -435,6 +454,6 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         (EVIDENCE / 'commands.json').write_text(json.dumps(transcript, indent=2))
         stop()
         log.close()
-print('PASS: native detailed pieces, finishes, preview, undo/redo, PNGs, snippets, review, systems/templates, restart and upgrade backup')
+print('PASS: native detailed pieces, finishes, preview, undo/redo, PNGs, snippets, review, live assemblies, overrides/reset, restart and explicit backup')
 print('Source picking is not exposed by construction.render; positioned source IDs and filtered scene counts were checked.')
 print('Large-plan import/render: ' + ('PASS' if os.environ.get('BLUEWING_TEST_DETAILED_PLAN') else 'SKIPPED (BLUEWING_TEST_DETAILED_PLAN unset)'))

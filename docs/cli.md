@@ -29,19 +29,20 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 `web.stage` accepts a manifest URL and verifies the complete web release before caching it. `web.activate` accepts the staged version and reloads the web application after acknowledging the terminal response. Close the project and finish or cancel drafts first. These commands do not rebuild the Rust shell.
 
-Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-compatibility). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
+Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
 
 ## Detailed takeoff
 
-The structured Construction and Review panels use the same commands below. Consult `commands.list` for complete required fields; `put` commands replace full records. All examples use the usual `payload` envelope, with project identity and expected revision on mutations.
+The structured Construction and Review panels use the same commands below. Consult `commands.list` for complete required fields. Most `put` commands replace full records; `wall.put` and `ceiling.put` accept a resolved specification and store its local differences from the applied project assembly. All examples use the usual `payload` envelope, with project identity and expected revision on mutations.
 
 | Commands                                          | Purpose                                                                                                                                                                               |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `assembly.put`, `library.put`, `assembly.import`  | Save/import component systems and wall templates as independent copies through the existing library path.                                                                             |
-| `wall.fromAssembly`                               | Apply a wall template with `assemblyId`, `geometryId`, `id`, and optional `height`; later template edits do not change the wall.                                                      |
-| `wall.put`, `opening.put`, `header.put`           | Author walls, rough openings, and project-specific header components. Each has a matching `.delete`.                                                                                  |
+| `assembly.put`, `library.put`, `assembly.import`  | Edit project definitions or save/import independent global copies, including formula systems and modeled wall/ceiling assemblies.                                                     |
+| `wall.fromAssembly`, `ceiling.fromAssembly`       | Apply a live project definition with `assemblyId`, `geometryId`, and `id`; walls accept optional local `height`. Later project definition edits update inherited settings.            |
+| `wall.put`, `opening.put`, `header.put`           | Create/edit wall applications, rough openings, and project-specific header components. Each has a matching `.delete`.                                                                 |
 | `level.put`, `placement.put`, `ceiling.put`       | Set elevations, sheet alignment, and ceiling surfaces. Each has a matching `.delete`.                                                                                                 |
-| `construction.inspect`                            | Return positioned pieces, finish surfaces, purchases, diagnostics, and completeness.                                                                                                  |
+| `wall.reset`, `ceiling.reset`                     | Clear per-trace material overrides to inherit the applied assembly settings.                                                                                                          |
+| `construction.inspect`                            | Return resolved `applications`, calculated pieces/surfaces, purchases, diagnostics, and completeness.                                                                                 |
 | `construction.export`                             | Return CSV or JSON text. CSV `schedule` is `pieces` (default), `lengths`, or `materials`.                                                                                             |
 | `construction.render`                             | Write a bounded 3D PNG to `path`; optional `width`, `height`, `geometryIds`, `levelId`, `materialId`, `role`, `azimuth`, and `elevation` control the view. Returns omission metadata. |
 | `snippet.put`, `snippet.delete`, `snippet.render` | Save/delete a source-linked highlighted crop or export its PNG. Render takes `id`, `path`, and optional `maxDimension`.                                                               |
@@ -50,21 +51,37 @@ The structured Construction and Review panels use the same commands below. Consu
 
 Construction physical lengths and world positions use metres, areas use square metres, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Recipe inputs still use their declared units.
 
-Systems have `components: [{id, assembly, bindings}]`, where `assembly` is a copied component definition and `bindings` maps component input names to shared system inputs. Systems have no direct outputs or nested systems. Wall templates use `wallTemplate` with empty inputs/outputs and are applied through `wall.fromAssembly`, not `assignment.put`.
+Systems have `components: [{id, assembly, bindings}]`, where `assembly` is a copied component definition and `bindings` maps component input names to shared system inputs. Systems have no direct outputs or nested systems. Modeled definitions use `wallTemplate` or `ceilingTemplate` with empty inputs/outputs. They use the ordinary `assignment.put` path; the `fromAssembly` commands are single-trace conveniences. `assignment.put` supports group-wide `wallOverrides`/`ceilingOverrides` and per-trace `geometryDetails: { GEOMETRY_ID: { id, wall: {...} } }` (or `ceiling`). Overrides are sparse: nested member fields inherit separately, arrays replace their collection, and `null` clears an optional inherited value.
 
-Reapplying `wall.fromAssembly` to an existing wall ID copies the template specification while retaining the wall's `levelId`, `topProfile`, `conditions`, and openings. An explicit `height` removes the old `topProfile` so the override takes effect. Always supply the intended `geometryId`; the command uses that geometry. A new wall starts without contextual relationships excluded from the template. Later template edits never update walls automatically.
+`construction.inspect` returns `applications.walls` and `applications.ceilings` with resolved settings and their assignment, group, and recipe IDs. `project.inspect` stores definitions and assignments; its `construction` collection contains only contextual openings, headers, levels, and placements. There is no separately persisted wall/ceiling copy to drift away from the assembly.
+
+When preparing a `wall.put` or `ceiling.put` from an inspected application, send the authored settings, `id`, and `geometryId`. Omit derived provenance fields such as `assignmentId`, `recipeId`, and `groupId`; the application resolves them.
+
+For a new ID, `wall.put` or `ceiling.put` creates a project-local definition and application. For an existing ID, it records the differences from inherited settings as per-trace overrides. `wall.reset` and `ceiling.reset` remove those overrides. Reapplying `wall.fromAssembly` retains the wall's level, top profile, conditions, and openings; an explicit `height` removes its top profile. Global edits never change imported project definitions.
+
+For example, after importing the `ceiling-grid-2x2` starter and drawing an area, apply it with:
+
+```sh
+bluewing ceiling.fromAssembly '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"assemblyId":"PROJECT_CEILING_ID","geometryId":"ROOM_AREA_ID","id":"room-ceiling"}}'
+bluewing construction.inspect
+bluewing quantities.inspect
+```
+
+Inspect the next revision before another edit. In the project definition or local ceiling settings, enter the actual elevation, grid origin/direction, and member specifications. `grid.origin` is world XY at the intersection of a main and a 4 ft tee row; `grid.rotation` is the main direction in radians from world +X. Ceiling elevation is the finished underside above its level, before sheet placement. Member envelopes extend upward from that datum; a specified tile thickness does the same. Unknown tile thickness is a measured plane, not an invented thickness.
 
 Stud and jamb cuts use explicit top/bottom allowances against local wall height. Channel flange envelopes do not impose deductions. Header cuts use rough opening width plus component `startExtension` and `endExtension`; `verticalOffset`, `faceOffset`, and `sectionRotation` locate their sections. Jamb centres sit outside the rough width by half the rotated section width plus authored offsets. Shared conditions use `ownerWallId`; multiple members require explicit positions. Rectangular member envelopes do not describe fabricated metal profiles or infer engineering. Bent/stepped track joints still need project details and report incomplete schedules.
 
-Generated pieces and surfaces supply ordinary `quantities.inspect`/`export` as well as construction schedules and 3D. Ceiling surfaces default to `quantityMode: "reference"` and add no area; `included` explicitly adds it. Existing 2x2/2x4 ceiling grid estimates are unchanged. Do not duplicate their tile scope with an included surface.
+Calculated pieces and surfaces supply ordinary `quantities.inspect`/`export`, construction schedules, and 3D. Member cuts come from endpoints, and surface quantities come from polygon area and layers. Surface/piece source IDs connect every modeled output to the displayed record. Waste and package rounding affect purchases without adding installed material.
+
+`quantities.inspect` marks outputs with `modeling: "modeled"`, `"estimate"`, or `"unresolved"`, and returns `coverage` with modeled/estimate output counts and completeness. Formula estimates create no model objects. The `ceiling-grid-2x2` and `ceiling-grid-2x4` starters are actual layouts; their `-estimate` counterparts retain area/perimeter factors. Replacing an assignment replaces its contribution. There is no `quantityMode: "reference"`, and modeled finishes reject numeric unlocated deductions.
 
 Generation has a shared 50,000-piece/surface budget; hitting it reports incomplete results. The scene has a separate 4,000-object cap with visible omissions. Render filters and selection do not limit CSV: exports include every generated piece, even if hidden by the scene cap, but cannot recover generation-budget omissions.
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Formats 1 and 2 remain readable. Using construction, review, systems, or wall templates saves format 3; ordinary formula-only edits use format 2. Before the first desktop upgrade to format 3, storage automatically creates a sibling backup. Current web releases require native bridge 5 for backups, bounded PDF transfers, and Wingman attachment exports. Older apps need the pre-upgrade copy rather than the format-3 file.
+Only project format 4 is supported. Recreate older development takeoffs; the app does not load or migrate them. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 5.
 
-See [detailed-takeoff verification](detailed-takeoff.md) for current results and pending checks. Earlier dated assembly/ceiling passes do not establish verification of these commands.
+See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 
 ## Wingman messages and presentation
 

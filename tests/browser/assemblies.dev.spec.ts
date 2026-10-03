@@ -2,7 +2,11 @@ import { writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
-import { assemblyWorkflow, ceilingWorkflow } from './assemblies';
+import {
+  assemblyWorkflow,
+  ceilingWorkflow,
+  ceilingLayoutWorkflow,
+} from './assemblies';
 
 test('assemblies support project copies, object overrides and piece schedules', async ({
   page,
@@ -44,7 +48,7 @@ test('assemblies support project copies, object overrides and piece schedules', 
   expect(errors).toEqual([]);
 });
 
-test('ceiling assemblies upgrade saved libraries and estimate separate grid materials', async ({
+test('ceiling estimates restore missing starters and calculate separate grid materials', async ({
   page,
 }, info) => {
   const errors: string[] = [];
@@ -80,5 +84,14 @@ test('ceiling assemblies upgrade saved libraries and estimate separate grid mate
   expect(artifact.attribution?.reruns.length).toBeGreaterThan(0);
   expectNoDiagnostics(artifact);
   expectNoSilentHolds(artifact);
+  expect(errors).toEqual([]);
+});
+
+test('modeled ceiling quantities match the positioned grid and survive reopening', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await ceilingLayoutWorkflow(page);
   expect(errors).toEqual([]);
 });

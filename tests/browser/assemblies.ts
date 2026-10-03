@@ -198,13 +198,13 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   await page.goto('/');
   const { createLibrary } = await import('../../src/core/assemblies');
   const old = createLibrary();
-  delete old.assemblies['ceiling-grid-2x2'];
-  delete old.assemblies['ceiling-grid-2x4'];
+  delete old.assemblies['ceiling-grid-2x2-estimate'];
+  delete old.assemblies['ceiling-grid-2x4-estimate'];
   const finish = old.assemblies['ceiling-finish'];
   if (!finish) throw new Error('Missing finish starter');
   finish.name = 'Company ceiling finish';
   await page.evaluate((library) => {
-    localStorage.setItem('bluewing.assemblies', JSON.stringify(library));
+    localStorage.setItem('bluewing.assemblies.v2', JSON.stringify(library));
   }, old);
   await startProject(page);
   await drawWall(page);
@@ -236,7 +236,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   );
   await editor
     .getByLabel('Choose assembly', { exact: true })
-    .selectOption('ceiling-grid-2x4');
+    .selectOption('ceiling-grid-2x4-estimate');
   await expect(
     editor
       .getByRole('group', { name: 'Output 2', exact: true })
@@ -244,7 +244,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   ).toHaveValue('extraTwoFootTees');
   await editor
     .getByLabel('Choose assembly', { exact: true })
-    .selectOption('ceiling-grid-2x2');
+    .selectOption('ceiling-grid-2x2-estimate');
   await editor
     .getByRole('button', { name: 'Import into project', exact: true })
     .click();
@@ -307,4 +307,81 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
       .getByRole('row')
       .filter({ hasText: 'ceiling-main-12ft-unspecified' }),
   ).toContainText('8 ea');
+}
+
+export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
+  await startProject(page);
+  await drawWall(page);
+  await page.getByRole('button', { name: 'Area (F)', exact: true }).click();
+  // A 12 × 8 ft room, aligned to the starter's 2 ft grid module.
+  for (const [x, y] of [
+    [72, 144],
+    [216, 144],
+    [216, 240],
+    [72, 240],
+  ] as const)
+    await pagePoint(page, x, y);
+  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+  await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Assembly editor' });
+  await editor
+    .getByRole('button', { name: 'Global library', exact: true })
+    .click();
+  await editor
+    .getByLabel('Choose assembly', { exact: true })
+    .selectOption('ceiling-grid-2x2');
+  await expect(
+    editor.getByRole('group', { name: 'Ceiling assembly', exact: true }),
+  ).toBeVisible();
+  await editor
+    .getByRole('button', { name: 'Import into project', exact: true })
+    .click();
+  await expect(
+    editor.getByRole('button', { name: 'Project assemblies', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  const id = await editor
+    .getByLabel('Choose assembly', { exact: true })
+    .inputValue();
+  await editor.getByRole('button', { name: 'Close', exact: true }).click();
+  await page
+    .getByLabel('New group name', { exact: true })
+    .fill('Ceiling layout');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page
+    .getByRole('combobox', { name: 'Assembly to assign', exact: true })
+    .selectOption(id);
+  await page
+    .getByRole('button', { name: 'Assign assembly', exact: true })
+    .click();
+  await page.getByRole('button', { name: 'Quantities', exact: true }).click();
+  const totals = page.getByRole('table', { name: 'Material totals' });
+  for (const [material, amount] of [
+    ['ceiling-tile-2x2-unspecified', '96 ft2'],
+    ['ceiling-main-12ft-unspecified', '1 ea'],
+    ['ceiling-tee-4ft-unspecified', '10 ea'],
+    ['ceiling-tee-2ft-unspecified', '12 ea'],
+    ['ceiling-wall-angle-12ft-unspecified', '4 ea'],
+  ] as const)
+    await expect(
+      totals.getByRole('row').filter({ hasText: material }),
+    ).toContainText(amount);
+  await page
+    .getByLabel('Workspace view', { exact: true })
+    .selectOption('split');
+  const viewer = page.getByRole('region', { name: '3D construction viewer' });
+  await viewer
+    .getByRole('combobox', { name: 'Role', exact: true })
+    .selectOption('ceiling-main');
+  await expect(viewer).toContainText('1 objects shown');
+  await viewer.getByRole('img').click();
+  await expect(
+    viewer.getByRole('complementary', { name: 'Selected construction item' }),
+  ).toContainText('Cut length: 12 ft 0 in');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await page.getByRole('button', { name: 'Quantities', exact: true }).click();
+  await expect(
+    totals.getByRole('row').filter({ hasText: 'ceiling-tile-2x2-unspecified' }),
+  ).toContainText('96 ft2');
 }
