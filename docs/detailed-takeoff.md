@@ -21,11 +21,11 @@ Formula estimates remain available and explicitly unmodeled. Calculation validit
 
 The original blueprint PDFs remain reusable. The private Bingham Elementary School set belongs in ignored `tmp/reference-plans/`; it is never committed.
 
-## Verification of this refactor
+## Initial refactor verification
 
-The final lightweight checks and platform suite passed. Browser verification is partial and native verification remains pending because macOS reported memory pressure. Earlier detailed-takeoff and assembly passes do not verify this implementation. Only the integrating agent runs heavy checks, through the README resource guard with one browser worker. A resource refusal is an unrun check, not a pass.
+At checkpoint `28b9b3b`, lightweight checks and the platform suite had passed, while memory pressure interrupted browser verification and held native checks. The table records that checkpoint; the Three.js follow-up below records the later completed checks. Only the integrating agent runs heavy checks, through the README resource guard with one browser worker. A resource refusal is an unrun check, not a pass.
 
-| Check                                                     | Current result                                                                                                                                                                          |
+| Check                                                     | Result at the initial checkpoint                                                                                                                                                        |
 | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript, lint, formatting                              | Pass: `bun run check`                                                                                                                                                                   |
 | Core calculated materials and assemblies                  | Pass: 157 tests across 23 files after source/review fixes                                                                                                                               |
@@ -63,10 +63,19 @@ Verification of this follow-up is separate from the historical results above:
 
 - TypeScript, lint, and formatting passed with `bun run check`.
 - Core tests passed: 156 tests across 23 files, including calculated material/report agreement, physical bounds, fitted camera targets, and all 6,000 members reaching a scene.
-- Added browser regressions for stud/tee occlusion and picking from both sides, matching live/export pixels, concave finishes, display modes, 6,000 instanced members with bounded draw calls and GPU resource cleanup, high-density output, and screenshot capture after idle frames. Existing detailed/Wingman workflows now exercise presets, fitting, panning, camera restoration, and rejected camera requests.
-- The focused Chromium rendering run and production build were refused by the resource guard with exit 75 because macOS reported warning memory pressure. These GPU tests have **not passed yet**. WebKit, production workflows, and native CLI renders of the real blueprint also remain pending for this renderer.
+- GPU regressions passed: all 4 cases in `construction-rendering.dev.spec.ts` on both Chromium and WebKit, 8 passes total. They cover stud/tee occlusion and picking from both sides, matching live/export pixels, concave finishes, display modes, 6,000 instanced members with bounded draw calls and GPU resource cleanup, high-density output, and screenshot capture after idle frames.
+- Detailed/Wingman development workflows passed: 16 tests across Chromium and WebKit, including presets, fitting, panning, camera restoration, rejected camera requests, screenshot attachments, and Solid diagnostics.
+- The separate assembly development checks now pass too. The initial rerun passed 5 of 6 cases and exposed a startup race in the Chromium ceiling-selection case: the click occurred about 103 ms before the lazy Three.js module loaded. The viewer now retains its loading status through the first successful render, and the workflow waits for that status before clicking. The affected case then passed three consecutive runs in each browser. The previously corrected assembly-name selectors also passed.
+- The production build passed. Detailed/Wingman production workflows passed: 10 tests across Chromium and WebKit.
+- After the first-frame readiness fix, the production assets were rebuilt and all 12 assembly/detailed production cases passed across both browsers. This also completes the separate assembly production coverage.
+- `bun run native:build` passed. Fresh native binaries with the production web assets passed `tests/desktop/detailed.py` and `tests/desktop/wingman.py`, covering real CLI material reports, exports, live assemblies, overrides/reset, save/reopen, Wingman publication, messages, attachments, and wait renewal.
+- The real CLI reopened the 1.6 MB Bingham A7-0 office-section project and exported the traced plan plus isometric/opposite/top framing-grid views and an opaque ceiling view. The scene contains 222 calculated members and 109 surfaces; framing mode shows 222 objects and solid mode shows all 331. Each object appears exactly once in the quantity sources, and every member cut matches its endpoints. The isometric framing/grid and solid images were visually inspected. Files and command transcripts are in ignored `output/threejs-blueprint-demo/`. The takeoff's existing height assumptions and unresolved header details remain; this is renderer evidence, not a finished job estimate.
 
-Resume with the focused rendering spec through `bun run test:dev tests/browser/construction-rendering.dev.spec.ts`, then the detailed/Wingman development workflows, `bun run build`, their production workflows, and the native detailed/real-plan CLI checks. Keep browser workers at one and the resource guard enabled. Source review and core passes do not establish driver or native-webview correctness.
+The initial GPU runs were refused or stopped at warning pressure. Checkpoint `02a96c8` changes warning pressure to a logged warning, retaining the critical stop, memory-pool thresholds, shared job lock, and one browser worker. All 11 guard tests passed, including warning startup/runtime completion, critical cancellation, and competing-job refusal. Type checking and scoped lint/format checks passed. The macOS reading is now explicitly labeled as a non-compressed memory pool, which includes active pages and is not unused RAM.
+
+Measured process-tree footprint for the focused GPU suite peaked at 757.4 MiB in Chromium and 1,088.0 MiB in WebKit. These successful runs stayed at normal memory pressure; injected guard tests verified continuation at warning pressure without deliberately stressing the machine. Measurements include compressed allocations and are not a whole-machine RAM total. Evidence is in ignored `tmp/memory-profile/three-renderer-warning-allowed.json` and `three-renderer-webkit.json`.
+
+All browser/build/native commands above retained the resource guard. The optional full 164-page import was skipped; the smaller real-plan excerpt was used instead. The release installer and Windows native runtime were not rebuilt or exercised for this follow-up.
 
 ## Limits requiring project judgment
 
@@ -80,4 +89,4 @@ Resume with the focused rendering spec through `bun run test:dev tests/browser/c
 
 Recovery for this development change is through the branch and Git checkpoints. `project.backup` remains a user-requested copy of a current project, not a migration mechanism.
 
-Follow-up verification: the focused development run passed four Chromium ceiling/framing/system checks, then the guard stopped it at warning pressure before WebKit completed. The remaining assembly test reached its diagnostics step and found a second outdated assembly-name selector, now corrected; its rerun remains pending. Process inspection found no running Android emulator, Bluewing app, or leftover test browser. Attempts to inspect other apps for safe cleanup timed out, so no unrelated app was force-quit.
+Before the Three.js follow-up, warning pressure interrupted the earlier assembly checks. The completed checks and the first-frame readiness fix are recorded above. Process inspection found no running Android emulator, Bluewing app, or leftover test browser before verification. No unrelated app was force-quit.

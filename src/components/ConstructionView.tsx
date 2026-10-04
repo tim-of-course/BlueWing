@@ -175,7 +175,6 @@ export default function ConstructionView(props: ConstructionViewProps) {
           },
         });
         setRenderer(active);
-        setRendererStatus('');
       })
       .catch((error: unknown) => {
         if (!cancelled)

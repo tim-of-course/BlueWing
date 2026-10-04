@@ -373,6 +373,7 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
     .getByRole('combobox', { name: 'Role', exact: true })
     .selectOption('ceiling-main');
   await expect(viewer).toContainText('1 objects shown');
+  await expect(viewer.getByRole('status')).toBeHidden();
   await viewer.getByRole('img').click();
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
