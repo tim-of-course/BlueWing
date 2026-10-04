@@ -13,7 +13,8 @@ const gib = 1024 ** 3;
 const execute = promisify(execFile);
 
 export interface Resources {
-  availableBytes: number;
+  memoryBytes: number;
+  memoryMetric: 'available' | 'non-compressed-pool';
   pressure: number;
   load: number;
   cores: number;
@@ -21,7 +22,7 @@ export interface Resources {
 export function parseMacResources(
   pressure: string,
   memory: string,
-): Pick<Resources, 'availableBytes' | 'pressure'> {
+): Pick<Resources, 'memoryBytes' | 'memoryMetric' | 'pressure'> {
   const percent = /System-wide memory free percentage:\s*(\d+)%/.exec(
     memory,
   )?.[1];
@@ -32,12 +33,18 @@ export function parseMacResources(
       'Cannot read macOS memory pressure; heavy work was not started.',
     );
   return {
-    availableBytes: (Number(bytes) * Number(percent)) / 100,
+    // This kernel pool includes active pages, not just unused or reclaimable RAM.
+    memoryBytes: (Number(bytes) * Number(percent)) / 100,
+    memoryMetric: 'non-compressed-pool',
     pressure: level,
   };
 }
 export async function sampleResources(): Promise<Resources> {
-  let memory = { availableBytes: freemem(), pressure: 1 };
+  let memory: Pick<Resources, 'memoryBytes' | 'memoryMetric' | 'pressure'> = {
+    memoryBytes: freemem(),
+    memoryMetric: 'available',
+    pressure: 1,
+  };
   if (platform() === 'darwin') {
     const [pressure, free] = await Promise.all([
       execute(
@@ -56,7 +63,7 @@ export async function sampleResources(): Promise<Resources> {
       throw new Error(
         'Cannot read available memory; heavy work was not started.',
       );
-    memory.availableBytes = Number(available) * 1024;
+    memory.memoryBytes = Number(available) * 1024;
   }
   return { ...memory, load: loadavg()[0] ?? 0, cores: cpus().length };
 }
@@ -64,14 +71,18 @@ export function resourceProblem(
   resources: Resources,
   starting: boolean,
 ): string | null {
-  if (resources.pressure !== 1)
-    return `macOS memory pressure is ${resources.pressure === 4 ? 'critical' : 'warning'}`;
+  if (resources.pressure === 4) return 'macOS memory pressure is critical';
   const minimum = starting ? 2 * gib : gib;
-  if (resources.availableBytes < minimum)
-    return `only ${(resources.availableBytes / gib).toFixed(1)} GiB available; ${starting ? '2' : '1'} GiB required`;
+  if (resources.memoryBytes < minimum)
+    return `only ${(resources.memoryBytes / gib).toFixed(1)} GiB ${resources.memoryMetric === 'non-compressed-pool' ? 'in the macOS non-compressed memory pool' : 'available'}; ${starting ? '2' : '1'} GiB required`;
   if (starting && resources.load > resources.cores * 2)
     return `system load ${resources.load.toFixed(1)} exceeds twice the ${String(resources.cores)} CPU cores`;
   return null;
+}
+function resourceWarning(resources: Resources): string | null {
+  return resources.pressure === 2
+    ? 'macOS memory pressure is warning. Critical pressure will still stop heavy work.'
+    : null;
 }
 interface Owner {
   pid: number;
@@ -181,13 +192,23 @@ export async function runGuarded(
     ? null
     : await acquireSlot(command.join(' '), options.port);
   const sample = options.sample ?? sampleResources;
+  let warned = false;
+  const warnOnce = (resources: Resources) => {
+    const warning = resourceWarning(resources);
+    if (warning && !warned) {
+      console.warn(`[resource guard] ${warning}`);
+      warned = true;
+    }
+  };
   try {
     if (!nested) {
-      const problem = resourceProblem(await sample(), true);
+      const resources = await sample();
+      const problem = resourceProblem(resources, true);
       if (problem)
         throw new Error(
           `Heavy work blocked: ${problem}. Retry after resources recover.`,
         );
+      warnOnce(resources);
     }
     const child = spawn(program, args, {
       stdio: 'inherit',
@@ -279,6 +300,7 @@ export async function runGuarded(
             .then((resources) => {
               const problem = resourceProblem(resources, false);
               if (problem) stop(blockedExitCode, problem);
+              else warnOnce(resources);
             })
             .catch((error: unknown) => {
               stop(blockedExitCode, String(error));
@@ -317,6 +339,7 @@ export async function printResourceStatus(): Promise<void> {
         ...resources,
         totalBytes: totalmem(),
         problem: resourceProblem(resources, true),
+        warning: resourceWarning(resources),
         running: (await inspectSlot().catch(() => null))?.owner ?? null,
       },
       null,

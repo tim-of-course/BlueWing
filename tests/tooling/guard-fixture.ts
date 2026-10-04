@@ -9,7 +9,8 @@ const mode = process.argv[2];
 const port = Number(process.argv[3]);
 const marker = process.argv[4] ?? '';
 const healthy = {
-  availableBytes: 4 * 1024 ** 3,
+  memoryBytes: 4 * 1024 ** 3,
+  memoryMetric: 'available' as const,
   pressure: 1,
   load: 1,
   cores: 8,
@@ -44,15 +45,27 @@ try {
         '-e',
         `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`,
       ];
+    if (mode === 'warning-start' || mode === 'warning-runtime')
+      command = [
+        process.execPath,
+        '-e',
+        `setTimeout(() => { require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'completed'); process.exit(7); }, 200)`,
+      ];
+    let samples = 0;
     const code = await runGuarded(command, {
       port,
       intervalMs: 30,
-      sample: () =>
-        Promise.resolve(
+      sample: () => {
+        samples++;
+        return Promise.resolve(
           mode === 'blocked' || (mode === 'pressure' && existsSync(marker))
             ? { ...healthy, pressure: 4 }
-            : healthy,
-        ),
+            : mode === 'warning-start' ||
+                (mode === 'warning-runtime' && samples > 1)
+              ? { ...healthy, pressure: 2 }
+              : healthy,
+        );
+      },
     });
     process.exitCode = code;
   }

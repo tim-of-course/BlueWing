@@ -19,7 +19,8 @@ import type { FullConfig } from '@playwright/test';
 
 const fixture = resolve('tests/tooling/guard-fixture.ts');
 const healthy = {
-  availableBytes: 4 * 1024 ** 3,
+  memoryBytes: 4 * 1024 ** 3,
+  memoryMetric: 'available' as const,
   pressure: 1,
   load: 1,
   cores: 8,
@@ -65,28 +66,28 @@ function alive(pid: number) {
   }
 }
 
-void test('preflight and runtime thresholds stop before macOS memory exhaustion', () => {
+void test('warning pressure is allowed while critical pressure and memory thresholds stop work', () => {
   assert.equal(resourceProblem(healthy, true), null);
+  assert.equal(resourceProblem({ ...healthy, pressure: 2 }, true), null);
+  assert.equal(resourceProblem({ ...healthy, pressure: 2 }, false), null);
   assert.match(
-    resourceProblem({ ...healthy, pressure: 2 }, true) ?? '',
-    /warning/,
+    resourceProblem({ ...healthy, pressure: 4 }, true) ?? '',
+    /critical/,
   );
   assert.match(
     resourceProblem({ ...healthy, pressure: 4 }, false) ?? '',
     /critical/,
   );
   assert.match(
-    resourceProblem({ ...healthy, availableBytes: 1.5 * 1024 ** 3 }, true) ??
-      '',
+    resourceProblem({ ...healthy, memoryBytes: 1.5 * 1024 ** 3 }, true) ?? '',
     /2 GiB/,
   );
   assert.equal(
-    resourceProblem({ ...healthy, availableBytes: 1.5 * 1024 ** 3 }, false),
+    resourceProblem({ ...healthy, memoryBytes: 1.5 * 1024 ** 3 }, false),
     null,
   );
   assert.match(
-    resourceProblem({ ...healthy, availableBytes: 0.5 * 1024 ** 3 }, false) ??
-      '',
+    resourceProblem({ ...healthy, memoryBytes: 0.5 * 1024 ** 3 }, false) ?? '',
     /1 GiB/,
   );
   assert.match(resourceProblem({ ...healthy, load: 100 }, true) ?? '', /load/);
@@ -95,10 +96,46 @@ void test('preflight and runtime thresholds stop before macOS memory exhaustion'
       '1\n',
       'The system has 8589934592 (524288 pages with a page size of 16384).\nSystem-wide memory free percentage: 50%',
     ),
-    { availableBytes: 4 * 1024 ** 3, pressure: 1 },
+    {
+      memoryBytes: 4 * 1024 ** 3,
+      memoryMetric: 'non-compressed-pool',
+      pressure: 1,
+    },
+  );
+  assert.match(
+    resourceProblem(
+      {
+        ...healthy,
+        memoryMetric: 'non-compressed-pool',
+        memoryBytes: 0.5 * 1024 ** 3,
+      },
+      false,
+    ) ?? '',
+    /macOS non-compressed memory pool/,
   );
   assert.throws(() => parseMacResources('1', 'unexpected'), /Cannot read/);
 });
+for (const mode of ['warning-start', 'warning-runtime']) {
+  void test(`${mode} warns once and lets the child finish with its own exit code`, async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bluewing-guard-'));
+    const marker = join(directory, 'completed');
+    const port = await unusedPort();
+    try {
+      const running = job(mode, port, marker);
+      assert.equal(await running.exited, 7, running.output());
+      assert.equal(await readFile(marker, 'utf8'), 'completed');
+      assert.equal(
+        running.output().match(/memory pressure is warning/g)?.length,
+        1,
+      );
+      assert.doesNotMatch(running.output(), /Stopping heavy work/);
+      const slot = await acquireSlot('after warning', port);
+      await slot.close();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+}
 void test('OS-owned slot excludes competing processes from a different checkout', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'bluewing-guard-'));
   const marker = join(directory, 'started');
