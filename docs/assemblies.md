@@ -133,3 +133,16 @@ Review snippets retain source references, page bounds, geometry highlights, anno
 Generation has a shared 50,000-piece/surface budget and reports incomplete calculations when exhausted. The Three.js viewer displays all generated objects matching its filters. Exports retain all generated records, including objects hidden by scene filters; they cannot recover generation-budget omissions.
 
 The current checks and remaining verification are recorded in [Detailed takeoff](detailed-takeoff.md). Test scripts and historical passes alone do not establish that the new implementation passed. Representative job sections still need comparison with manually checked dimensions, counts, and project-specific details.
+
+### Modeled catalog verification, October 4, 2026
+
+The 17 additional starters and standalone material layouts passed:
+
+- Type checking, ESLint, formatting, production build, and all 177 core tests.
+- Twelve development browser cases across Chromium and WebKit, including Solid diagnostics for a live finish-height edit. The final new-material rerun passed both browsers after correcting test locators and reopening the Quantities panel; earlier development reloads interrupted two cases while code was being edited.
+- Fourteen production browser cases across Chromium and WebKit, covering assemblies, ceiling layouts, the new finish/header workflow, persistence, detailed takeoff, review, component systems and failed-import cleanup.
+- `python3 tests/desktop/assemblies.py` through the guarded native app and real CLI. It checked installed FRP area of 171 ft², acoustic treatment of 96 ft², a 5 ft kick, five 8 ft joists, four 6 ft header components, independent header detail copying, exact model/source correspondence, 3D capture, and unchanged results after closing/reopening.
+
+The new core cases cover all 17 starters, opening union deductions, layers/thickness, rotated and concave joist boundaries, true-axis brace extensions, stock shortfalls, missing heights/calibration, shared generation limits, group/per-trace inheritance, invalid overrides on empty groups, copy/delete/Undo, level-dependent review changes, and library restoration without replacing company edits. Every retained generated object is checked against its quantity source; waste and packages change purchasing without changing installed geometry.
+
+Heavy checks ran sequentially with the resource guard enabled and one browser worker. macOS warning pressure occurred and the updated guard allowed the jobs to complete. No Rust code changed; native verification used the current debug shell with the fresh production web assets. Release installers and Windows native checks were not rerun for this catalog change.

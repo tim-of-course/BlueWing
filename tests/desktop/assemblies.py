@@ -214,6 +214,53 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         call('project.open', {'path': project_path})
         assert quantities() == ceiling_totals
         assert call('construction.inspect') == ceiling_model
+        # Standalone finishes and framing use the same live CLI, persisted model and renderer.
+        for ident in ['frp-wall', 'acoustical-wall-surface', 'steel-joists', 'steel-kick', 'steel-box-header']:
+            call('assembly.import', {'libraryId': ident, 'id': ident}, True)
+        call('batch', {'commands': [
+            {'name': 'geometry.put', 'payload': {'id': 'kick-run', 'name': '4 ft plan run / 3 ft rise',
+                'sheetId': sheet, 'kind': 'path', 'points': [{'x': 72, 'y': 400}, {'x': 120, 'y': 400}]}},
+            {'name': 'geometry.put', 'payload': {'id': 'header-run', 'name': '6 ft box header',
+                'sheetId': sheet, 'kind': 'path', 'points': [{'x': 72, 'y': 440}, {'x': 144, 'y': 440}]}},
+            *[{'name': 'group.put', 'payload': {'id': ident, 'name': ident, 'geometryIds': [geometry]}}
+              for ident, geometry in [('frp', 'a'), ('acoustic', 'b'), ('kick', 'kick-run'), ('joists', 'layout-room'), ('box', 'header-run')]],
+        ]}, True)
+        modeled = [
+            ('frp', 'frp-wall', {'height': 8 * 0.3048, 'openings': [
+                {'id': 'door', 'distance': 6 * 0.3048, 'width': 3 * 0.3048, 'sill': 0, 'height': 7 * 0.3048}]}),
+            ('acoustic', 'acoustical-wall-surface', {'height': 4 * 0.3048, 'elevation': 4 * 0.3048}),
+            ('kick', 'steel-kick', {}),
+            ('joists', 'steel-joists', {'spacing': 2 * 0.3048, 'origin': {'x': 72 * 0.0254, 'y': -456 * 0.0254}}),
+            ('box', 'steel-box-header', {}),
+        ]
+        for ident, recipe, overrides in modeled:
+            call('assignment.put', {'id': ident, 'groupId': ident, 'recipeId': recipe,
+                'inputs': {}, 'allowances': {}, 'materialOverrides': overrides}, True)
+        detail = call('header.fromAssembly', {'assemblyId': 'steel-box-header', 'id': 'H1'}, True)
+        assert len(detail['components']) == 4
+        model = call('construction.inspect')
+        assert model['complete'], model['diagnostics']
+        assert len(model['applications']['materials']) == 5
+        for ident, expected in [('frp', 171), ('acoustic', 96)]:
+            surfaces = [s for s in model['surfaces'] if s['assignmentId'] == ident]
+            assert math.isclose(sum(s['area'] for s in surfaces) / 0.09290304, expected, abs_tol=1e-8)
+        for ident, count, length in [('kick', 1, 5), ('joists', 5, 8), ('box', 4, 6)]:
+            members = [p for p in model['pieces'] if p['assignmentId'] == ident]
+            assert len(members) == count
+            assert all(math.isclose(p['cutLength'], length * 0.3048, abs_tol=1e-8) for p in members)
+        reports = [row for row in quantities()['outputs'] if row['assignmentId'] in {item[0] for item in modeled}]
+        sources = [source for row in reports for source in row['sources']]
+        expected_ids = {p['id'] for p in model['pieces'] + model['surfaces'] if p['assignmentId'] in {item[0] for item in modeled}}
+        actual_ids = [s.get('pieceId', s.get('surfaceId')) for s in sources]
+        assert set(actual_ids) == expected_ids and len(actual_ids) == len(expected_ids)
+        assert all(row['modeling'] == 'modeled' for row in reports)
+        call('construction.render', {'path': str(EVIDENCE / 'modeled-starters.png'), 'width': 1000, 'height': 700,
+            'geometryIds': ['a', 'b', 'kick-run', 'header-run', 'layout-room'], 'displayMode': 'solid'})
+        saved_quantities = quantities()
+        call('project.close', mutates=True)
+        call('project.open', {'path': project_path})
+        assert call('construction.inspect') == model
+        assert quantities() == saved_quantities
         call('sheet.render', {'sheetId': sheet, 'path': str(EVIDENCE / 'assemblies.png'), 'maxDimension': 1224})
         call('project.close', mutates=True)
     finally:
@@ -222,4 +269,4 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             desktop.terminate()
             desktop.wait(timeout=10)
         log.close()
-print('PASS: native assemblies, object overrides, piece CSV, global/project independence, conflicts, Undo, restart, two-project reuse, ceiling estimates, positioned 2x2/2x4 layouts and starter restoration')
+print('PASS: native assemblies, overrides, CSV, library independence, Undo/restart, ceiling layouts, modeled FRP/acoustic surfaces, joists, kicks, headers, source linkage and 3D capture')
