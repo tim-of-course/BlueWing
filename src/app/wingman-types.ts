@@ -1,5 +1,5 @@
 import type { PlanSnippet } from '../core/review';
-import type { SceneCamera } from '../three/scene';
+import type { DisplayMode, SceneCamera } from '../three/scene';
 import type { DrawingTool, WorkspaceContext } from './contracts';
 
 export interface ViewBounds {
@@ -20,6 +20,7 @@ export interface PlanView {
 export interface ModelView {
   kind: '3d';
   camera: SceneCamera;
+  displayMode?: DisplayMode;
   geometryIds?: string[];
   levelId?: string;
   materialId?: string;

@@ -162,7 +162,7 @@ export const applicationCommands = [
   ),
   entry(
     'construction.render',
-    'Render the positioned construction as a bounded 3D PNG.',
+    'Render calculated construction as a depth-tested 3D PNG, up to 8192 pixels per side. Use a named view or explicit azimuth/elevation in radians. Returns the resolved camera and display mode for Wingman or another export.',
     {
       path: string,
       caption: string,
@@ -173,11 +173,34 @@ export const applicationCommands = [
       materialId: string,
       role: string,
       azimuth: { type: 'number' },
-      elevation: { type: 'number' },
+      elevation: { type: 'number', minimum: -Math.PI / 2 },
+      view: {
+        type: 'string',
+        enum: ['isometric', 'top', 'front', 'back', 'left', 'right'],
+      },
+      zoom: { type: 'number', minimum: 0.01 },
+      target: {
+        type: 'object',
+        properties: {
+          x: { type: 'number' },
+          y: { type: 'number' },
+          z: { type: 'number' },
+        },
+        required: ['x', 'y', 'z'],
+        additionalProperties: false,
+      },
+      span: { type: 'number', minimum: Number.MIN_VALUE },
+      displayMode: { type: 'string', enum: ['solid', 'framing', 'xray'] },
     },
     ['path'],
     false,
-    { path: '/path/framing.png', width: 1600, height: 1000 },
+    {
+      path: '/path/framing.png',
+      width: 1600,
+      height: 1000,
+      view: 'isometric',
+      displayMode: 'framing',
+    },
   ),
   entry(
     'library.inspect',

@@ -104,6 +104,6 @@ Project format 4 is the only supported format. Older development takeoffs must b
 
 Review snippets retain source references, page bounds, geometry highlights, annotations, and notes. A reviewed source records a dependency fingerprint; relevant changes make its effective status `changed`. Review is estimator status, not engineering approval. See [CLI commands](cli.md#detailed-takeoff).
 
-Generation has a shared 50,000-piece/surface budget and reports incomplete calculations when exhausted. The scene displays at most 4,000 filtered objects and reports omissions. Exports retain all generated records, even when filtered or omitted from the scene; they cannot recover generation-budget omissions.
+Generation has a shared 50,000-piece/surface budget and reports incomplete calculations when exhausted. The Three.js viewer displays all generated objects matching its filters. Exports retain all generated records, including objects hidden by scene filters; they cannot recover generation-budget omissions.
 
 The current checks and remaining verification are recorded in [Detailed takeoff](detailed-takeoff.md). Test scripts and historical passes alone do not establish that the new implementation passed. Representative job sections still need comparison with manually checked dimensions, counts, and project-specific details.

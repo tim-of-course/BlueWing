@@ -1,14 +1,11 @@
-import { createEffect, createSignal, Show } from 'solid-js';
+import { createEffect, createSignal, onCleanup, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
 import { paintTakeoff } from './canvas/paint';
-import {
-  buildConstructionScene,
-  constructionSceneInput,
-  renderConstruction,
-} from '../three/scene';
+import { buildConstructionScene, constructionSceneInput } from '../three/scene';
+import type { acquireConstructionSnapshot } from '../three/renderer';
 
 /** Presentation marks never become editing selections. Coordinates are page units. */
 export function paintPlanPresentation(
@@ -69,7 +66,9 @@ export default function WingmanPreview(props: {
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let raster: { key: string; image: Promise<HTMLCanvasElement> } | undefined;
+  let snapshot: ReturnType<typeof acquireConstructionSnapshot> | undefined;
   const [status, setStatus] = createSignal('');
+  onCleanup(() => snapshot?.dispose());
   createEffect(
     () => ({
       project: props.controller.project(),
@@ -115,20 +114,42 @@ export default function WingmanPreview(props: {
           ...(view.materialId ? { materialId: view.materialId } : {}),
           ...(view.role ? { role: view.role } : {}),
         });
-        renderConstruction(element, scene, {
-          width: 640,
-          height: 400,
-          pixelRatio: 1,
-          camera: view.camera,
-          selectedGeometryIds: view.selectedGeometryIds ?? [],
-          selectedPieceId: view.selectedPieceId ?? null,
-        });
-        if (!scene.count) setStatus('No construction matches this view.');
-        else if (scene.omitted)
-          setStatus(
-            `${String(scene.omitted)} objects omitted from this preview.`,
-          );
-        return;
+        setStatus('Loading 3D preview…');
+        void import('../three/renderer')
+          .then(({ acquireConstructionSnapshot }) => {
+            if (cancelled) return;
+            snapshot ??= acquireConstructionSnapshot();
+            snapshot.render(element, scene, {
+              width: 640,
+              height: 400,
+              pixelRatio: 1,
+              camera: view.camera,
+              displayMode: view.displayMode ?? 'solid',
+              selectedGeometryIds: view.selectedGeometryIds ?? [],
+              selectedPieceId: view.selectedPieceId ?? null,
+            });
+            if (
+              !scene.members.length &&
+              (view.displayMode === 'framing' || !scene.surfaces.length)
+            )
+              setStatus('No construction matches this view.');
+            else if (scene.omitted)
+              setStatus(
+                `${String(scene.omitted)} objects omitted from this preview.`,
+              );
+            else setStatus('');
+          })
+          .catch((error: unknown) => {
+            if (!cancelled)
+              setStatus(
+                error instanceof Error
+                  ? error.message
+                  : '3D preview unavailable.',
+              );
+          });
+        return () => {
+          cancelled = true;
+        };
       }
       const sheet = project.sheets[view.sheetId];
       if (!sheet) return;

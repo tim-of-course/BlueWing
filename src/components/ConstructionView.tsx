@@ -12,13 +12,24 @@ import {
   buildConstructionScene,
   constructionSceneInput,
   defaultCamera,
+  fitCamera,
   orbitCamera,
-  pickConstruction,
-  renderConstruction,
+  viewPresets,
   zoomCamera,
 } from '../three/scene';
-import type { ProjectedScene } from '../three/scene';
+import type { DisplayMode, ViewPreset } from '../three/scene';
+import type { createConstructionRenderer } from '../three/renderer';
 import './construction-view.css';
+
+type ConstructionRenderer = ReturnType<typeof createConstructionRenderer>;
+const viewOptions: readonly { value: ViewPreset; label: string }[] = [
+  { value: 'isometric', label: 'Isometric' },
+  { value: 'top', label: 'Top' },
+  { value: 'front', label: 'Front' },
+  { value: 'back', label: 'Back' },
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+];
 
 export interface ConstructionViewProps {
   result: ConstructionResult;
@@ -46,10 +57,12 @@ function lengthLabel(metres: number): string {
 
 export default function ConstructionView(props: ConstructionViewProps) {
   let canvas: HTMLCanvasElement | undefined;
-  let projected: ProjectedScene | undefined;
-  let drag:
-    | { x: number; y: number; startX: number; startY: number; moved: boolean }
-    | undefined;
+  const [renderer, setRenderer] = createSignal<ConstructionRenderer | null>(
+    null,
+  );
+  const [rendererStatus, setRendererStatus] =
+    createSignal('Loading 3D viewer…');
+  const [displayMode, setDisplayMode] = createSignal<DisplayMode>('solid');
   const [camera, setCamera] = createSignal(defaultCamera);
   const [viewport, setViewport] = createSignal({
     width: 640,
@@ -108,7 +121,11 @@ export default function ConstructionView(props: ConstructionViewProps) {
     { name: 'construction.scene' },
   );
   const selected = createMemo(() => {
-    if (!scene().faces.some((face) => face.source.id === selectedId()))
+    if (
+      !scene().members.some((member) => member.id === selectedId()) &&
+      (displayMode() === 'framing' ||
+        !scene().surfaces.some((surface) => surface.id === selectedId()))
+    )
       return undefined;
     return (
       props.result.pieces.find((piece) => piece.id === selectedId()) ??
@@ -116,23 +133,94 @@ export default function ConstructionView(props: ConstructionViewProps) {
     );
   });
 
+  // Fit only visible materials, while the renderer retains shared buffers when
+  // toggling finishes on and off.
+  const fittingScene = createMemo(() =>
+    displayMode() === 'framing'
+      ? buildConstructionScene({ members: scene().members, surfaces: [] })
+      : scene(),
+  );
+  const visibleCount = createMemo(
+    () =>
+      scene().members.length +
+      (displayMode() === 'framing' ? 0 : scene().surfaces.length),
+  );
+  const preset = createMemo(() => {
+    const current = camera();
+    return (
+      viewOptions.find(({ value }) => {
+        const view = viewPresets[value];
+        return (
+          Math.abs(Math.sin((current.yaw - view.yaw) / 2)) < 1e-6 &&
+          Math.abs(current.pitch - view.pitch) < 1e-6
+        );
+      })?.value ?? ''
+    );
+  });
+
+  onSettled(() => {
+    const element = canvas;
+    if (!element) return;
+    let cancelled = false;
+    let active: ConstructionRenderer | undefined;
+    void import('../three/renderer')
+      .then(({ createConstructionRenderer }) => {
+        if (cancelled) return;
+        active = createConstructionRenderer(element, {
+          onCameraChange: (value) => setCamera(value),
+          onSelect: (source) => {
+            setSelectedId(source?.id ?? null);
+            if (source?.geometryId)
+              props.onSelect(source.geometryId, source.id);
+          },
+        });
+        setRenderer(active);
+        setRendererStatus('');
+      })
+      .catch((error: unknown) => {
+        if (!cancelled)
+          setRendererStatus(
+            error instanceof Error ? error.message : '3D viewer unavailable.',
+          );
+      });
+    return () => {
+      cancelled = true;
+      active?.dispose();
+    };
+  });
+
+  createEffect(
+    () => ({ renderer: renderer(), disabled: props.interactionDisabled }),
+    ({ renderer, disabled }) => renderer?.setInteractionEnabled(!disabled),
+    { name: 'construction.interaction' },
+  );
   createEffect(
     () => ({
+      renderer: renderer(),
       scene: scene(),
       camera: camera(),
       viewport: viewport(),
       ids: displayIds(),
       selected: selectedId(),
+      displayMode: displayMode(),
     }),
     (state) => {
       const frame = requestAnimationFrame(() => {
-        if (canvas)
-          projected = renderConstruction(canvas, state.scene, {
+        if (!state.renderer) return;
+        try {
+          state.renderer.render(state.scene, {
             ...state.viewport,
             camera: state.camera,
+            displayMode: state.displayMode,
             selectedGeometryIds: state.ids,
             selectedPieceId: state.selected,
           });
+          setRendererStatus('');
+        } catch (error: unknown) {
+          setRendererStatus(
+            error instanceof Error ? error.message : '3D viewer unavailable.',
+          );
+        }
       });
       return () => {
         cancelAnimationFrame(frame);
@@ -145,6 +233,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       read: () => ({
         kind: '3d',
         camera: { ...camera() },
+        displayMode: displayMode(),
         ...((
           props.presentationActive
             ? presentation()?.geometryIds
@@ -168,6 +257,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       apply(view) {
         setPresentation(view);
         setCamera({ ...view.camera });
+        setDisplayMode(view.displayMode ?? 'solid');
         setMaterial(view.materialId ?? '');
         setRole(view.role ?? '');
         setLevelId(view.levelId ?? '');
@@ -191,24 +281,23 @@ export default function ConstructionView(props: ConstructionViewProps) {
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(element);
-    const wheel = (event: WheelEvent) => {
-      event.preventDefault();
-      if (props.interactionDisabled) return;
-      setCamera((old) => zoomCamera(old, Math.exp(-event.deltaY * 0.001)));
-    };
-    element.addEventListener('wheel', wheel, { passive: false });
+    window.addEventListener('resize', resize);
     return () => {
       observer.disconnect();
-      element.removeEventListener('wheel', wheel);
+      window.removeEventListener('resize', resize);
     };
   });
-  function pick(x: number, y: number) {
-    const hit = projected ? pickConstruction(projected, x, y) : null;
-    setSelectedId(hit?.id ?? null);
-    if (hit?.geometryId) props.onSelect(hit.geometryId, hit.id);
-  }
   function reset() {
-    setCamera({ ...defaultCamera });
+    setCamera(fitCamera(fittingScene(), defaultCamera));
+  }
+  function focusSelection() {
+    setCamera((current) =>
+      fitCamera(fittingScene(), current, displayIds(), selected()?.id),
+    );
+  }
+  function applyPreset(value: ViewPreset) {
+    const view = viewPresets[value];
+    setCamera((current) => ({ ...current, yaw: view.yaw, pitch: view.pitch }));
   }
   function keydown(event: KeyboardEvent) {
     if (props.interactionDisabled) return;
@@ -240,6 +329,35 @@ export default function ConstructionView(props: ConstructionViewProps) {
     >
       <div class="construction-toolbar">
         <strong>Construction · 3D</strong>
+        <label>
+          View{' '}
+          <select
+            value={preset()}
+            onChange={(event) => {
+              applyPreset(event.currentTarget.value as ViewPreset);
+            }}
+          >
+            <option value="" disabled>
+              Custom angle
+            </option>
+            <For each={viewOptions}>
+              {(view) => <option value={view.value}>{view.label}</option>}
+            </For>
+          </select>
+        </label>
+        <label>
+          Display{' '}
+          <select
+            value={displayMode()}
+            onChange={(event) =>
+              setDisplayMode(event.currentTarget.value as DisplayMode)
+            }
+          >
+            <option value="solid">Solid</option>
+            <option value="framing">Framing only</option>
+            <option value="xray">X-ray</option>
+          </select>
+        </label>
         <Show when={props.levels?.length}>
           <label>
             Level{' '}
@@ -286,6 +404,13 @@ export default function ConstructionView(props: ConstructionViewProps) {
           />
           Selected sources only
         </label>
+        <button
+          type="button"
+          onClick={focusSelection}
+          disabled={!selected() && !displayIds().length}
+        >
+          Fit selection
+        </button>
         <button type="button" onClick={reset}>
           Reset / fit
         </button>
@@ -297,50 +422,15 @@ export default function ConstructionView(props: ConstructionViewProps) {
           }}
           tabindex="0"
           role="img"
-          aria-label="Construction model. Drag to orbit; scroll to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Click a member to select its source."
+          aria-label="Construction model. Drag to orbit; right-drag or Shift-drag to pan; scroll to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Click a member to select its source."
           onKeyDown={keydown}
-          onPointerDown={(event) => {
-            if (props.interactionDisabled || event.button !== 0) return;
-            event.currentTarget.focus();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            drag = {
-              x: event.clientX,
-              y: event.clientY,
-              startX: event.clientX,
-              startY: event.clientY,
-              moved: false,
-            };
-          }}
-          onPointerMove={(event) => {
-            if (!drag) return;
-            const dx = event.clientX - drag.x,
-              dy = event.clientY - drag.y;
-            drag.moved ||=
-              Math.hypot(
-                event.clientX - drag.startX,
-                event.clientY - drag.startY,
-              ) > 4;
-            if (drag.moved) setCamera((old) => orbitCamera(old, dx, dy));
-            drag.x = event.clientX;
-            drag.y = event.clientY;
-          }}
-          onPointerUp={(event) => {
-            if (!drag) return;
-            if (!drag.moved) {
-              const bounds = event.currentTarget.getBoundingClientRect();
-              pick(event.clientX - bounds.left, event.clientY - bounds.top);
-            }
-            drag = undefined;
-            event.currentTarget.releasePointerCapture(event.pointerId);
-          }}
-          onPointerCancel={() => {
-            drag = undefined;
-          }}
-          onLostPointerCapture={() => {
-            drag = undefined;
-          }}
         />
-        <Show when={!scene().count}>
+        <Show when={rendererStatus()}>
+          <p class="construction-empty" role="status">
+            {rendererStatus()}
+          </p>
+        </Show>
+        <Show when={!rendererStatus() && !visibleCount()}>
           <p class="construction-empty">
             No construction matches this view. Add construction to calibrated
             drawing objects or clear the filters.
@@ -348,7 +438,14 @@ export default function ConstructionView(props: ConstructionViewProps) {
         </Show>
       </div>
       <div class="construction-status" aria-live="polite">
-        <span>Section envelopes; framing shown through finishes.</span>
+        <span>
+          {displayMode() === 'xray'
+            ? 'X-ray: finish outlines remain visible through framing.'
+            : displayMode() === 'framing'
+              ? 'Framing only; finishes hidden.'
+              : 'Solid view; materials hide objects behind them.'}{' '}
+          Members show calculated section envelopes.
+        </span>
         <Show when={props.estimateOutputs}>
           <span>
             {props.estimateOutputs} estimated material outputs have no 3D
@@ -356,8 +453,8 @@ export default function ConstructionView(props: ConstructionViewProps) {
           </span>
         </Show>
         <span>
-          {scene().count.toLocaleString()} objects shown. Drag to orbit · Scroll
-          to zoom
+          {visibleCount().toLocaleString()} objects shown. Drag to orbit ·
+          Right-drag to pan · Scroll to zoom
         </span>
         <Show when={scene().omitted}>
           <strong>

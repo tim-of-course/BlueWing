@@ -18,6 +18,9 @@ import {
 export function createWorkspace(
   app = new Application(isTauri()),
 ): WorkspaceController {
+  onCleanup(() => {
+    app.disposeConstructionRenderer();
+  });
   const [cliConnection, setCliConnection] = createSignal(app.cliConnection);
   const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
   const [project, setProject] = createSignal<Project | null>(null, {

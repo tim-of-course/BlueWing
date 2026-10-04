@@ -51,6 +51,23 @@ Native workflow coverage in `tests/desktop/assemblies.py` and `tests/desktop/det
 
 The optional `BLUEWING_TEST_DETAILED_PLAN` run imports the private 164-page set, renders first/middle/last sheets, and compares a reopened render. Run it only when resources permit. Local evidence is under ignored `tmp/assembly-workflow/`, `tmp/detailed-workflow/`, and `test-results/`.
 
+## Three.js viewer follow-up
+
+The Canvas 2D painter has been replaced by a shared Three.js/WebGL 2 renderer. Opaque members and finishes use the GPU depth buffer, including edge lines and source picking. Rectangular sections and surface thickness come from the calculated records; the renderer adds no material. Concave finishes are triangulated in their own plane. Solid, framing, and X-ray finish-outline modes affect visibility only.
+
+Members use one instanced mesh and one instanced edge draw. Finish triangles and edges are merged. The interactive viewer renders when its state changes, preserves its GPU buffers while navigating, and fits selections from physical bounds. It uses native display density subject to the GPU's limits. CLI and Wingman share a separate snapshot renderer; screenshots copy or refresh the drawing buffer immediately instead of enabling persistent framebuffer storage. Closing viewers/projects disposes their resources. The former 4,000-object display limit is removed; the separate 50,000-object generation budget remains.
+
+New controls include orbit, pan, zoom, six standard views, fit selection, reset, and display mode. CLI exports accept the same camera target, span, zoom, angles, and mode, with matching Wingman swaps. The renderer loads only when a 3D view or export is requested.
+
+Verification of this follow-up is separate from the historical results above:
+
+- TypeScript, lint, and formatting passed with `bun run check`.
+- Core tests passed: 156 tests across 23 files, including calculated material/report agreement, physical bounds, fitted camera targets, and all 6,000 members reaching a scene.
+- Added browser regressions for stud/tee occlusion and picking from both sides, matching live/export pixels, concave finishes, display modes, 6,000 instanced members with bounded draw calls and GPU resource cleanup, high-density output, and screenshot capture after idle frames. Existing detailed/Wingman workflows now exercise presets, fitting, panning, camera restoration, and rejected camera requests.
+- The focused Chromium rendering run and production build were refused by the resource guard with exit 75 because macOS reported warning memory pressure. These GPU tests have **not passed yet**. WebKit, production workflows, and native CLI renders of the real blueprint also remain pending for this renderer.
+
+Resume with the focused rendering spec through `bun run test:dev tests/browser/construction-rendering.dev.spec.ts`, then the detailed/Wingman development workflows, `bun run build`, their production workflows, and the native detailed/real-plan CLI checks. Keep browser workers at one and the resource guard enabled. Source review and core passes do not establish driver or native-webview correctness.
+
 ## Limits requiring project judgment
 
 - Heights, sections, gauges, openings, header components, allowances, and connections come from project requirements. Successful arithmetic does not establish engineering adequacy or a complete building takeoff.
@@ -58,7 +75,7 @@ The optional `BLUEWING_TEST_DETAILED_PLAN` run imports the private 164-page set,
 - ACT layouts use nominal member centerlines with the finished underside as the ceiling elevation datum. Hangers, connector tabs, seismic accessories, fixture supports, and offcut reuse are not inferred. Tile purchasing uses area, not optimized tile-piece reuse.
 - Bent/stepped track joints remain explicitly unresolved. Multiple jambs and shared junction members require offsets and ownership.
 - Formula estimates for additional trades remain unmodeled until the necessary placement is supplied by an appropriate generator.
-- Generation stops at 50,000 pieces/surfaces and marks results incomplete. The scene displays at most 4,000 filtered objects and reports omissions; schedules retain all generated records.
+- Generation stops at 50,000 pieces/surfaces and marks results incomplete. The Three.js viewer displays all generated objects matching its filters; schedules retain all generated records.
 - Native PDF transfer/storage is bounded, but PDF.js still holds a complete PDF buffer. Large imports are not constant-memory operations.
 
 Recovery for this development change is through the branch and Git checkpoints. `project.backup` remains a user-requested copy of a current project, not a migration mechanism.

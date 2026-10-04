@@ -3,6 +3,7 @@ import { drawWall, pagePoint } from './takeoff';
 import type { Project } from '../../src/core/types';
 import type { Message, MessageWait } from '../../src/app/messaging';
 import type {
+  ModelView,
   WingmanVisual,
   WorkspaceViewSnapshot,
 } from '../../src/app/wingman-types';
@@ -475,22 +476,97 @@ export async function modelWorkflow(page: Page) {
   await viewer
     .getByRole('combobox', { name: 'Role', exact: true })
     .selectOption('stud');
+  await expect(viewer.getByRole('status')).toBeHidden();
+  const view = viewer.getByRole('combobox', { name: 'View', exact: true });
+  const display = viewer.getByRole('combobox', {
+    name: 'Display',
+    exact: true,
+  });
+  await view.selectOption('front');
+  await display.selectOption('framing');
+  await viewer
+    .getByRole('button', { name: 'Fit selection', exact: true })
+    .click();
+  const fitted = (await inspect(page)).data.main.model;
+  if (!fitted?.camera.target || !fitted.camera.span)
+    throw new Error(
+      'Fit selection did not set a physical camera target and span',
+    );
+  expect(fitted.camera.yaw).toBe(-Math.PI / 2);
+  expect(fitted.camera.pitch).toBe(0);
+  expect(fitted.camera.zoom).toBe(1);
+  expect(fitted.camera.span).toBeGreaterThan(3);
+  expect(fitted.displayMode).toBe('framing');
+  const bounds = await viewer.getByRole('img').boundingBox();
+  if (!bounds) throw new Error('Missing construction canvas');
+  await page.mouse.move(
+    bounds.x + bounds.width / 2,
+    bounds.y + bounds.height / 2,
+  );
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(
+    bounds.x + bounds.width / 2 + 35,
+    bounds.y + bounds.height / 2 + 20,
+    { steps: 4 },
+  );
+  await page.mouse.up({ button: 'right' });
+  await expect
+    .poll(async () => (await inspect(page)).data.main.model?.camera.target)
+    .not.toEqual(fitted.camera.target);
   await viewer.getByRole('img').press('ArrowLeft');
+  await viewer.getByRole('img').press('+');
+  await expect(view).toHaveValue('');
   const before = (await inspect(page)).data.main;
   expect(before.model?.role).toBe('stud');
-  expect(
-    (
-      await cli(page, 'construction.render', {
-        path: 'model.png',
-        width: 640,
-        height: 480,
-        role: 'top-track',
-        azimuth: 0.7,
-        elevation: 0.6,
-        caption: 'Track detail',
-      })
-    ).exitCode,
-  ).toBe(0);
+  expect(before.model?.camera.span).toBe(fitted.camera.span);
+  expect(before.model?.camera.zoom).toBeCloseTo(1.2);
+  const target = { ...fitted.camera.target, z: 2.75 };
+  const span = fitted.camera.span * 1.25;
+  const rendered = await cli<{
+    camera: ModelView['camera'];
+    displayMode: string;
+  }>(page, 'construction.render', {
+    path: 'model.png',
+    width: 640,
+    height: 480,
+    role: 'top-track',
+    view: 'front',
+    target,
+    span,
+    zoom: 1.3,
+    displayMode: 'xray',
+    caption: 'Track detail',
+  });
+  expect(rendered.exitCode).toBe(0);
+  expect(rendered.response.data.camera).toEqual({
+    yaw: -Math.PI / 2,
+    pitch: 0,
+    target,
+    span,
+    zoom: 1.3,
+  });
+  expect(rendered.response.data.displayMode).toBe('xray');
+  const validView = await inspect(page);
+  expect(validView.data.agent?.view).toMatchObject({
+    kind: '3d',
+    camera: rendered.response.data.camera,
+    displayMode: 'xray',
+  });
+  for (const invalid of [
+    { zoom: 0.001 },
+    { zoom: 10_001 },
+    { elevation: -2 },
+    { elevation: 2 },
+  ]) {
+    const rejected = await cli(page, 'construction.render', {
+      path: 'invalid-camera.png',
+      ...invalid,
+    });
+    expect(rejected.exitCode).not.toBe(0);
+    expect(rejected.response.ok).toBe(false);
+    expect(rejected.response.revision).toBe(validView.revision);
+  }
+  expect((await inspect(page)).data).toEqual(validView.data);
   await cli(page, 'wingman.flash');
   const preview = page.getByRole('img', { name: 'Live workspace preview' });
   await expect(preview).toBeVisible();
@@ -517,6 +593,11 @@ export async function modelWorkflow(page: Page) {
   await expect(
     viewer.getByRole('combobox', { name: 'Role', exact: true }),
   ).toHaveValue('top-track');
+  await expect(view).toHaveValue('front');
+  await expect(display).toHaveValue('xray');
+  await expect
+    .poll(async () => (await inspect(page)).data.main.model?.camera)
+    .toEqual(rendered.response.data.camera);
   await page
     .getByRole('button', { name: 'Return to your view', exact: true })
     .click();

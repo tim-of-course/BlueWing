@@ -42,8 +42,7 @@ export interface SceneFace {
   source: SceneSource;
   surface: boolean;
 }
-export interface ConstructionScene {
-  faces: SceneFace[];
+export interface ConstructionScene extends SceneInput {
   bounds: { min: Point3; max: Point3 };
   count: number;
   omitted: number;
@@ -52,29 +51,21 @@ export interface SceneCamera {
   yaw: number;
   pitch: number;
   zoom: number;
+  target?: Point3;
+  /** World span across the shorter viewport axis at zoom 1. */
+  span?: number;
 }
-export const defaultCamera: SceneCamera = {
-  yaw: -Math.PI / 4,
-  pitch: Math.PI / 5,
-  zoom: 1,
-};
-export const MAX_SCENE_OBJECTS = 4000;
-export interface ScreenPoint {
-  x: number;
-  y: number;
-  depth: number;
-}
-export interface ProjectedFace extends Omit<SceneFace, 'points'> {
-  points: ScreenPoint[];
-  depth: number;
-  light: number;
-}
-export interface ProjectedScene {
-  faces: ProjectedFace[];
-  width: number;
-  height: number;
-  scale: number;
-}
+export type DisplayMode = 'solid' | 'framing' | 'xray';
+export const viewPresets = {
+  isometric: { yaw: -Math.PI / 4, pitch: Math.PI / 5 },
+  top: { yaw: -Math.PI / 2, pitch: Math.PI / 2 },
+  front: { yaw: -Math.PI / 2, pitch: 0 },
+  back: { yaw: Math.PI / 2, pitch: 0 },
+  left: { yaw: Math.PI, pitch: 0 },
+  right: { yaw: 0, pitch: 0 },
+} as const;
+export type ViewPreset = keyof typeof viewPresets;
+export const defaultCamera: SceneCamera = { ...viewPresets.isometric, zoom: 1 };
 
 const add = (a: Point3, b: Point3): Point3 => ({
   x: a.x + b.x,
@@ -100,8 +91,11 @@ const cross = (a: Point3, b: Point3): Point3 => ({
 const unit = (a: Point3): Point3 =>
   mul(a, 1 / (Math.hypot(a.x, a.y, a.z) || 1));
 
-export function memberFaces(member: SceneMember): SceneFace[] {
-  const along = unit(sub(member.end, member.start));
+/** A unit box transformed by these axes has exactly the calculated member envelope. */
+export function memberFrame(member: SceneMember) {
+  const delta = sub(member.end, member.start);
+  const length = Math.hypot(delta.x, delta.y, delta.z);
+  const along = unit(delta);
   const reference =
     Math.abs(along.z) > 0.9 ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
   const baseWidth = unit(member.widthAxis ?? cross(reference, along));
@@ -111,9 +105,21 @@ export function memberFaces(member: SceneMember): SceneFace[] {
       mul(baseWidth, Math.cos(rotation)),
       mul(cross(along, baseWidth), Math.sin(rotation)),
     ),
-    member.width / 2,
+    member.width,
   );
-  const depth = mul(unit(cross(along, width)), member.depth / 2);
+  const depth = mul(unit(cross(along, width)), member.depth);
+  return {
+    center: mul(add(member.start, member.end), 0.5),
+    width,
+    depth,
+    length,
+    along: delta,
+  };
+}
+export function memberFaces(member: SceneMember): SceneFace[] {
+  const frame = memberFrame(member);
+  const width = mul(frame.width, 0.5),
+    depth = mul(frame.depth, 0.5);
   const vertices = [member.start, member.end].flatMap((end) => [
     add(add(end, width), depth),
     add(sub(end, width), depth),
@@ -230,57 +236,110 @@ export function surfaceFaces(surface: SceneSurface): SceneFace[] {
   ];
 }
 
+function boundsOf(input: SceneInput): ConstructionScene['bounds'] {
+  const min = { x: Infinity, y: Infinity, z: Infinity };
+  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  const include = (point: Point3) => {
+    for (const axis of ['x', 'y', 'z'] as const) {
+      min[axis] = Math.min(min[axis], point[axis]);
+      max[axis] = Math.max(max[axis], point[axis]);
+    }
+  };
+  for (const member of input.members) {
+    const frame = memberFrame(member);
+    const half = { x: 0, y: 0, z: 0 };
+    for (const axis of ['x', 'y', 'z'] as const)
+      half[axis] =
+        (Math.abs(frame.width[axis]) +
+          Math.abs(frame.depth[axis]) +
+          Math.abs(frame.along[axis])) /
+        2;
+    include(sub(frame.center, half));
+    include(add(frame.center, half));
+  }
+  for (const surface of input.surfaces)
+    for (const face of surfaceFaces(surface))
+      for (const point of face.points) include(point);
+  return Number.isFinite(min.x)
+    ? { min, max }
+    : { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+}
+
+/** Filtering retains original records. No renderer-specific object cap or duplicate face graph. */
 export function buildConstructionScene(
   input: SceneInput,
   filter: SceneFilter = {},
-  limit = MAX_SCENE_OBJECTS,
+  limit = Infinity,
 ): ConstructionScene {
-  const faces: SceneFace[] = [];
-  const min = { x: Infinity, y: Infinity, z: Infinity };
-  const max = { x: -Infinity, y: -Infinity, z: -Infinity };
-  let count = 0;
-  let omitted = 0;
   const selected = filter.geometryIds ? new Set(filter.geometryIds) : null;
   const level = filter.levelGeometryIds
     ? new Set(filter.levelGeometryIds)
     : null;
-  const include = (source: SceneSource) =>
-    (!filter.materialId || source.materialId === filter.materialId) &&
-    (!filter.role || source.role === filter.role) &&
-    (!selected || selected.has(source.geometryId)) &&
-    (!level || level.has(source.geometryId));
-  const append = (source: SceneSource, getFaces: () => SceneFace[]) => {
-    if (!include(source)) return;
-    if (count >= Math.max(0, Math.min(MAX_SCENE_OBJECTS, limit))) {
+  let count = 0,
+    omitted = 0;
+  const include = (source: SceneSource) => {
+    if (
+      (filter.materialId && source.materialId !== filter.materialId) ||
+      (filter.role && source.role !== filter.role) ||
+      (selected && !selected.has(source.geometryId)) ||
+      (level && !level.has(source.geometryId))
+    )
+      return false;
+    if (count >= Math.max(0, limit)) {
       omitted++;
-      return;
+      return false;
     }
-    const next = getFaces();
-    for (const face of next)
-      for (const point of face.points) {
-        min.x = Math.min(min.x, point.x);
-        min.y = Math.min(min.y, point.y);
-        min.z = Math.min(min.z, point.z);
-        max.x = Math.max(max.x, point.x);
-        max.y = Math.max(max.y, point.y);
-        max.z = Math.max(max.z, point.z);
-      }
-    faces.push(...next);
     count++;
+    return true;
   };
-  for (const member of input.members) append(member, () => memberFaces(member));
-  for (const surface of input.surfaces)
-    append(surface, () => surfaceFaces(surface));
-  if (!faces.length)
-    return {
-      faces,
-      bounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } },
-      count,
-      omitted,
-    };
-  return { faces, bounds: { min, max }, count, omitted };
+  const members = input.members.filter(include);
+  const surfaces = input.surfaces.filter(include);
+  return {
+    members,
+    surfaces,
+    bounds: boundsOf({ members, surfaces }),
+    count,
+    omitted,
+  };
 }
 
+export function fitCamera(
+  scene: ConstructionScene,
+  camera: SceneCamera = defaultCamera,
+  geometryIds?: readonly string[],
+  pieceId?: string | null,
+): SceneCamera & { target: Point3; span: number } {
+  let bounds = scene.bounds;
+  if (pieceId || geometryIds) {
+    const ids = new Set(geometryIds);
+    const include = (source: SceneSource) =>
+      pieceId ? source.id === pieceId : ids.has(source.geometryId);
+    const members = scene.members.filter(include),
+      surfaces = scene.surfaces.filter(include);
+    if (members.length || surfaces.length)
+      bounds = boundsOf({ members, surfaces });
+  }
+  const size = sub(bounds.max, bounds.min);
+  return {
+    ...camera,
+    zoom: 1,
+    target: mul(add(bounds.min, bounds.max), 0.5),
+    span: Math.max(0.1, Math.hypot(size.x, size.y, size.z)) * 1.08,
+  };
+}
+export function resolveCamera(
+  scene: ConstructionScene,
+  camera: SceneCamera,
+): SceneCamera & { target: Point3; span: number } {
+  if (camera.target && camera.span !== undefined)
+    return { ...camera, target: camera.target, span: camera.span };
+  const fitted = fitCamera(scene, camera);
+  return {
+    ...camera,
+    target: camera.target ?? fitted.target,
+    span: camera.span ?? fitted.span,
+  };
+}
 export function orbitCamera(
   camera: SceneCamera,
   dx: number,
@@ -289,194 +348,15 @@ export function orbitCamera(
   return {
     ...camera,
     yaw: camera.yaw + dx * 0.008,
-    pitch: Math.max(-1.45, Math.min(1.45, camera.pitch + dy * 0.008)),
+    pitch: Math.max(
+      -Math.PI / 2,
+      Math.min(Math.PI / 2, camera.pitch + dy * 0.008),
+    ),
   };
 }
 export function zoomCamera(camera: SceneCamera, factor: number): SceneCamera {
   return {
     ...camera,
-    zoom: Math.max(0.15, Math.min(15, camera.zoom * factor)),
+    zoom: Math.max(0.01, Math.min(10000, camera.zoom * factor)),
   };
-}
-export function projectPoint(point: Point3, camera: SceneCamera): ScreenPoint {
-  const s = Math.sin(camera.yaw),
-    c = Math.cos(camera.yaw);
-  const sp = Math.sin(camera.pitch),
-    cp = Math.cos(camera.pitch);
-  return {
-    x: -s * point.x + c * point.y,
-    y: sp * (c * point.x + s * point.y) - cp * point.z,
-    depth: cp * (c * point.x + s * point.y) + sp * point.z,
-  };
-}
-export function projectConstruction(
-  scene: ConstructionScene,
-  width: number,
-  height: number,
-  camera: SceneCamera = defaultCamera,
-): ProjectedScene {
-  const center = mul(add(scene.bounds.min, scene.bounds.max), 0.5);
-  // Fit a bounding sphere so orbiting does not continually change the scale.
-  const size = sub(scene.bounds.max, scene.bounds.min);
-  const diameter = Math.max(0.1, Math.hypot(size.x, size.y, size.z));
-  const scale =
-    (Math.max(1, Math.min(width, height) - 64) / diameter) * camera.zoom;
-  const faces = scene.faces
-    .map((face) => {
-      const points = face.points.map((point) => {
-        const projected = projectPoint(sub(point, center), camera);
-        return {
-          x: width / 2 + projected.x * scale,
-          y: height / 2 + projected.y * scale,
-          depth: projected.depth,
-        };
-      });
-      const [a, b, c] = face.points;
-      const normal =
-        a && b && c ? unit(cross(sub(b, a), sub(c, a))) : { x: 0, y: 0, z: 1 };
-      const light =
-        55 + Math.abs(dot(normal, unit({ x: 0.4, y: 0.6, z: 1 }))) * 22;
-      return {
-        ...face,
-        points,
-        light,
-        depth:
-          points.reduce((sum, point) => sum + point.depth, 0) / points.length,
-      };
-    })
-    .sort((a, b) => a.depth - b.depth);
-  return { faces, width, height, scale };
-}
-export function pickConstruction(
-  scene: ProjectedScene,
-  x: number,
-  y: number,
-): SceneSource | null {
-  let nearest:
-    { source: SceneSource; depth: number; surface: boolean } | undefined;
-  for (let index = scene.faces.length - 1; index >= 0; index--) {
-    const face = scene.faces[index];
-    if (!face) continue;
-    let inside = false;
-    for (
-      let i = 0, j = face.points.length - 1;
-      i < face.points.length;
-      j = i++
-    ) {
-      const a = face.points[i],
-        b = face.points[j];
-      if (!a || !b) continue;
-      if (
-        a.y > y !== b.y > y &&
-        x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x
-      )
-        inside = !inside;
-    }
-    if (!inside) continue;
-    // Orthographic depth is a plane, so compare it at the click rather than at
-    // each polygon's centre. Inspection rendering puts members over finishes.
-    const a = face.points[0];
-    if (!a) continue;
-    for (let i = 1; i + 1 < face.points.length; i++) {
-      const b = face.points[i],
-        c = face.points[i + 1];
-      if (!b || !c) continue;
-      const determinant = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-      if (Math.abs(determinant) < 1e-10) continue;
-      const u =
-        ((x - a.x) * (c.y - a.y) - (y - a.y) * (c.x - a.x)) / determinant;
-      const v =
-        ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x)) / determinant;
-      const depth = a.depth + u * (b.depth - a.depth) + v * (c.depth - a.depth);
-      if (
-        !nearest ||
-        (nearest.surface && !face.surface) ||
-        (nearest.surface === face.surface && depth > nearest.depth)
-      )
-        nearest = { source: face.source, depth, surface: face.surface };
-      break;
-    }
-  }
-  return nearest?.source ?? null;
-}
-function materialHue(material: string): number {
-  let hash = 0;
-  for (let i = 0; i < material.length; i++)
-    hash = (hash * 31 + material.charCodeAt(i)) | 0;
-  return Math.abs(hash) % 360;
-}
-export interface RenderConstructionOptions {
-  width?: number;
-  height?: number;
-  pixelRatio?: number;
-  camera?: SceneCamera;
-  selectedGeometryIds?: readonly string[];
-  selectedPieceId?: string | null;
-}
-/** Renders synchronously; callers can export canvas.toDataURL() for CLI images. */
-export function renderConstruction(
-  canvas: HTMLCanvasElement,
-  scene: ConstructionScene,
-  options: RenderConstructionOptions = {},
-): ProjectedScene {
-  const width = options.width ?? (canvas.clientWidth || canvas.width);
-  const height = options.height ?? (canvas.clientHeight || canvas.height);
-  const ratio = Math.min(2, options.pixelRatio ?? 1);
-  canvas.width = Math.max(1, Math.round(width * ratio));
-  canvas.height = Math.max(1, Math.round(height * ratio));
-  const projected = projectConstruction(scene, width, height, options.camera);
-  const context = canvas.getContext('2d');
-  if (!context) return projected;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.fillStyle = '#edf1f5';
-  context.fillRect(0, 0, width, height);
-  const selection = new Set(options.selectedGeometryIds);
-  // Translucent finish surfaces provide context without hiding the framing
-  // being checked. Material and role filters can isolate either representation.
-  const faces = [
-    ...projected.faces.filter((face) => face.surface),
-    ...projected.faces.filter((face) => !face.surface),
-  ];
-  for (const face of faces) {
-    if (!face.points.length) continue;
-    context.beginPath();
-    face.points.forEach((point, index) => {
-      if (index === 0) context.moveTo(point.x, point.y);
-      else context.lineTo(point.x, point.y);
-    });
-    context.closePath();
-    const active = options.selectedPieceId === face.source.id;
-    context.globalAlpha = face.surface ? 0.3 : 1;
-    context.fillStyle = active
-      ? '#ffbd66'
-      : `hsl(${String(materialHue(face.source.materialId))} 28% ${String(face.surface ? face.light + 8 : face.light)}%)`;
-    context.fill();
-    context.lineWidth = active
-      ? 2
-      : selection.has(face.source.geometryId)
-        ? 1.5
-        : 0.65;
-    context.strokeStyle = active
-      ? '#9b4c00'
-      : selection.has(face.source.geometryId)
-        ? '#196cb3'
-        : '#526375';
-    context.stroke();
-  }
-  context.globalAlpha = 1;
-  context.fillStyle = '#526375';
-  context.font = '12px sans-serif';
-  context.fillText('Plan XY · Elevation Z · metres', 14, height - 14);
-  if (scene.faces.some((face) => face.surface))
-    context.fillText(
-      'Framing shown through translucent finishes',
-      14,
-      height - 30,
-      width - 28,
-    );
-  if (
-    scene.faces.some((face) => face.surface && face.source.role === 'ceiling')
-  )
-    context.fillText('Ceiling surfaces show calculated installed area', 14, 22);
-  return projected;
 }

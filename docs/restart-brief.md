@@ -202,7 +202,7 @@ Shared conditions name their owning wall and multiple members need explicit posi
 
 Review stores source references, highlighted snippets, annotations, notes, and status. Relevant source/dependency edits invalidate a reviewed fingerprint and show changed status. Preview quantities calculates material changes without saving. Neither review status nor successful arithmetic establishes engineering adequacy or a complete building takeoff.
 
-Generation shares a 50,000-piece/surface budget and reports incomplete results at the limit. The 3D scene displays at most 4,000 objects and visibly reports omissions. Construction CSV includes all generated pieces regardless of scene filters or selection, but cannot include pieces omitted by the generation budget. Current validation and pending checks belong in [the detailed-takeoff report](detailed-takeoff.md), separate from older verification records.
+Generation shares a 50,000-piece/surface budget and reports incomplete results at the limit. The Three.js viewer displays all generated objects matching its filters, with instanced members, merged finishes, depth-tested selection, and rendering on demand. Its orthographic camera supports orbit, pan, zoom, standard views, and fitting selections. Solid, framing, and X-ray finish-outline modes change visibility without changing quantities. Desktop, Wingman, and CLI share the renderer and camera state. Construction CSV includes all generated pieces regardless of scene filters or selection, but cannot include pieces omitted by the generation budget. Current validation and pending checks belong in [the detailed-takeoff report](detailed-takeoff.md), separate from older verification records.
 
 ## Wingman collaboration
 

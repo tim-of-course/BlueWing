@@ -1,4 +1,5 @@
 import { domToCanvas } from 'modern-screenshot';
+import { prepareCanvasCapture } from './canvas-capture';
 
 export interface ScreenshotAttachment {
   dataUrl: string;
@@ -21,10 +22,17 @@ export async function captureViewport(): Promise<ViewportCapture> {
     height,
     scale: window.devicePixelRatio || 1,
     backgroundColor: getComputedStyle(document.documentElement).backgroundColor,
-    filter: (node) =>
-      !(
-        node instanceof Element && node.hasAttribute('data-screenshot-overlay')
-      ),
+    filter: (node) => {
+      if (
+        node instanceof Element &&
+        node.hasAttribute('data-screenshot-overlay')
+      )
+        return false;
+      // modern-screenshot clones each included canvas with toDataURL immediately
+      // after this filter, before yielding. Refresh GPU pixels at that boundary.
+      if (node instanceof HTMLCanvasElement) prepareCanvasCapture(node);
+      return true;
+    },
     features: { restoreScrollPosition: true },
     fetch: {
       placeholderImage: () => {

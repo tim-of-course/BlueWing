@@ -26,7 +26,11 @@ import {
   buildConstructionScene,
   constructionSceneInput,
   defaultCamera,
-  renderConstruction,
+  fitCamera,
+  viewPresets,
+  type DisplayMode,
+  type Point3,
+  type ViewPreset,
 } from '../three/scene';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
@@ -43,6 +47,7 @@ import {
 import { messagingStorage } from '../platform/messaging-storage';
 import type { WingmanPresentation } from './wingman-types';
 import type { PlanSnippet } from '../core/review';
+import type { acquireConstructionSnapshot } from '../three/renderer';
 
 export interface Observation {
   projectId: string;
@@ -72,6 +77,10 @@ export class Application {
   draftPending = false;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
+  private constructionRenderer: ReturnType<
+    typeof acquireConstructionSnapshot
+  > | null = null;
+  private constructionRendererEpoch = 0;
 
   constructor(readonly native: boolean) {
     this.messaging = new Messaging(messagingStorage(native));
@@ -94,6 +103,11 @@ export class Application {
   setCliConnection(connection: CliConnection): void {
     this.cliConnection = connection;
     this.publish();
+  }
+  disposeConstructionRenderer(): void {
+    this.constructionRendererEpoch++;
+    this.constructionRenderer?.dispose();
+    this.constructionRenderer = null;
   }
   private publish() {
     this.listeners.forEach((listener) => {
@@ -167,6 +181,7 @@ export class Application {
             coordinates:
               'Rotated PDF viewport at scale 1; top-left origin, x right, y down.',
             imageLimit: 4096,
+            modelImageLimit: 8192,
           },
         };
       else if (!isApplication) {
@@ -289,6 +304,28 @@ export class Application {
             const project = this.project;
             if (!project) throw new Error('Open a project first');
             if (
+              payload.view !== undefined &&
+              (payload.azimuth !== undefined || payload.elevation !== undefined)
+            )
+              throw new Error(
+                'Use a named view or explicit azimuth/elevation, not both',
+              );
+            if (payload.zoom !== undefined && (payload.zoom as number) > 10000)
+              throw new Error('3D zoom must be between 0.01 and 10000');
+            if (
+              payload.elevation !== undefined &&
+              (payload.elevation as number) > Math.PI / 2
+            )
+              throw new Error(
+                '3D elevation must be between -π/2 and π/2 radians',
+              );
+            const width = (payload.width as number | undefined) ?? 1600;
+            const height = (payload.height as number | undefined) ?? 1000;
+            if (width > 8192 || height > 8192)
+              throw new Error(
+                '3D image width and height must not exceed 8192 pixels',
+              );
+            if (
               payload.levelId !== undefined &&
               !project.construction?.levels[payload.levelId as string]
             )
@@ -319,25 +356,48 @@ export class Application {
                   : { role: payload.role as string }),
               },
             );
-            const canvas = document.createElement('canvas');
-            renderConstruction(canvas, scene, {
-              width: Math.min(
-                4096,
-                (payload.width as number | undefined) ?? 1600,
-              ),
-              height: Math.min(
-                4096,
-                (payload.height as number | undefined) ?? 1000,
-              ),
-              camera: {
+            const camera = {
+              ...fitCamera(scene, {
                 ...defaultCamera,
+                ...(payload.view === undefined
+                  ? {}
+                  : viewPresets[payload.view as ViewPreset]),
                 ...(payload.azimuth === undefined
                   ? {}
                   : { yaw: payload.azimuth as number }),
                 ...(payload.elevation === undefined
                   ? {}
                   : { pitch: payload.elevation as number }),
-              },
+              }),
+              ...(payload.zoom === undefined
+                ? {}
+                : { zoom: payload.zoom as number }),
+              ...(payload.target === undefined
+                ? {}
+                : { target: payload.target as Point3 }),
+              ...(payload.span === undefined
+                ? {}
+                : { span: payload.span as number }),
+            };
+            const displayMode =
+              (payload.displayMode as DisplayMode | undefined) ?? 'solid';
+            if (!this.constructionRenderer) {
+              const epoch = this.constructionRendererEpoch;
+              const { acquireConstructionSnapshot } =
+                await import('../three/renderer');
+              if (epoch !== this.constructionRendererEpoch)
+                throw new Error(
+                  '3D export was cancelled because the viewer closed',
+                );
+              this.constructionRenderer = acquireConstructionSnapshot();
+            }
+            const canvas = document.createElement('canvas');
+            this.constructionRenderer.render(canvas, scene, {
+              width,
+              height,
+              pixelRatio: 1,
+              camera,
+              displayMode,
             });
             const blob = await new Promise<Blob>((resolve, reject) => {
               canvas.toBlob((value) => {
@@ -356,9 +416,13 @@ export class Application {
               width: canvas.width,
               height: canvas.height,
               revision: project.revision,
+              camera,
+              displayMode,
               complete: result.complete,
               diagnostics: result.diagnostics,
-              displayedObjects: scene.count,
+              displayedObjects:
+                scene.members.length +
+                (displayMode === 'framing' ? 0 : scene.surfaces.length),
               omittedObjects: scene.omitted,
             };
             if (request.origin === 'cli')
@@ -367,15 +431,8 @@ export class Application {
                 revision: project.revision,
                 view: {
                   kind: '3d',
-                  camera: {
-                    ...defaultCamera,
-                    yaw:
-                      (payload.azimuth as number | undefined) ??
-                      defaultCamera.yaw,
-                    pitch:
-                      (payload.elevation as number | undefined) ??
-                      defaultCamera.pitch,
-                  },
+                  camera,
+                  displayMode,
                   ...(payload.geometryIds === undefined
                     ? {}
                     : { geometryIds: payload.geometryIds as string[] }),
@@ -467,6 +524,7 @@ export class Application {
               );
             await this.storage.close();
             this.session = null;
+            this.disposeConstructionRenderer();
             await this.messaging.bind(null);
             await this.pdf.clear();
             this.publish();

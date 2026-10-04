@@ -8,21 +8,20 @@ test('production detailed takeoff and review workflow', async ({
   page.on('pageerror', (error) => errors.push(error.message));
   await detailedWorkflow(page);
   await page.getByLabel('Workspace view').selectOption('split');
-  // The reopened model paints on the next animation frame. Capture actual
-  // canvas output, rather than the CSS background before that frame.
-  await expect
-    .poll(() =>
-      page
-        .getByRole('region', { name: '3D construction viewer' })
-        .getByRole('img')
-        .evaluate(
-          (element) =>
-            (element as HTMLCanvasElement)
-              .getContext('2d')
-              ?.getImageData(0, 0, 1, 1).data[3],
+  const viewer = page.getByRole('region', { name: '3D construction viewer' });
+  await expect(viewer.getByRole('status')).toBeHidden();
+  // GPU frames use a transient drawing buffer. Let the reopened view paint,
+  // then capture its presented pixels through the browser compositor.
+  await viewer.getByRole('img').evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            resolve();
+          }),
         ),
-    )
-    .toBe(255);
+      ),
+  );
   await page.screenshot({ path: info.outputPath('construction-split.png') });
   expect(errors).toEqual([]);
 });

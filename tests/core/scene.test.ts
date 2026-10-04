@@ -4,18 +4,13 @@ import {
   buildConstructionScene,
   constructionSceneInput,
   defaultCamera,
+  fitCamera,
   memberFaces,
   orbitCamera,
-  pickConstruction,
-  projectConstruction,
-  projectPoint,
+  surfaceFaces,
   zoomCamera,
 } from '../../src/three/scene';
-import type {
-  SceneMember,
-  SceneSurface,
-  ProjectedScene,
-} from '../../src/three/scene';
+import type { SceneMember, SceneSurface } from '../../src/three/scene';
 import type { ConstructionResult } from '../../src/core/construction-types';
 
 const member: SceneMember = {
@@ -31,17 +26,19 @@ const member: SceneMember = {
   depth: 0.1,
 };
 
-void test('projection uses elevation Z, preserves orthographic lengths, and orbit/zoom remain bounded', () => {
-  const camera = { yaw: 0, pitch: 0, zoom: 1 };
-  assert.deepEqual(projectPoint({ x: 4, y: 2, z: 3 }, camera), {
-    x: 2,
-    y: -3,
-    depth: 4,
-  });
-  assert.equal(projectPoint({ x: 100, y: 2, z: 3 }, camera).x, 2);
-  assert.equal(orbitCamera(camera, 0, 1e6).pitch, 1.45);
-  assert.equal(zoomCamera(camera, 1e6).zoom, 15);
-  assert.equal(zoomCamera(camera, 0).zoom, 0.15);
+void test('camera fit targets physical bounds and navigation preserves that target', () => {
+  const scene = buildConstructionScene({ members: [member], surfaces: [] });
+  const camera = fitCamera(scene, { ...defaultCamera, zoom: 8 });
+  assert.deepEqual(camera.target, { x: 0, y: 0, z: 1.5 });
+  assert.equal(camera.zoom, 1);
+  assert.ok(camera.span > 3);
+  assert.equal(orbitCamera(camera, 0, 1e6).pitch, Math.PI / 2);
+  assert.equal(orbitCamera(camera, 0, -1e6).pitch, -Math.PI / 2);
+  assert.deepEqual(orbitCamera(camera, 100, 100).target, camera.target);
+  assert.deepEqual(zoomCamera(camera, 2).target, camera.target);
+  assert.equal(zoomCamera(camera, 2).zoom, 2);
+  assert.equal(zoomCamera(camera, 1e6).zoom, 10_000);
+  assert.equal(zoomCamera(camera, 0).zoom, 0.01);
 });
 
 void test('member bounds include physical section dimensions and rotated section', () => {
@@ -57,31 +54,6 @@ void test('member bounds include physical section dimensions and rotated section
   });
   assert.ok(Math.abs(rotated.bounds.max.x - 0.05) < 1e-10);
   assert.ok(Math.abs(rotated.bounds.max.y - 0.025) < 1e-10);
-  const projected = projectConstruction(scene, 600, 400, defaultCamera);
-  for (const face of projected.faces)
-    for (const point of face.points) {
-      assert.ok(point.x > 0 && point.x < 600 && point.y > 0 && point.y < 400);
-    }
-});
-
-void test('picking returns nearest face with original source IDs and misses outside the model', () => {
-  const far = {
-    ...member,
-    id: 'far',
-    start: { x: -2, y: 0, z: 0 },
-    end: { x: -2, y: 0, z: 3 },
-  };
-  const scene = projectConstruction(
-    buildConstructionScene({ members: [member, far], surfaces: [] }),
-    500,
-    500,
-    { yaw: 0, pitch: 0, zoom: 1 },
-  );
-  const picked = pickConstruction(scene, 250, 250);
-  assert.equal(picked?.id, member.id);
-  assert.equal(picked.geometryId, 'path-1');
-  assert.equal(picked.openingId, 'door-1');
-  assert.equal(pickConstruction(scene, 0, 0), null);
 });
 
 void test('filters precede object cap and surfaces retain source and measured dimensions', () => {
@@ -119,7 +91,7 @@ void test('filters precede object cap and surfaces retain source and measured di
   );
   assert.equal(filtered.count, 1);
   assert.equal(filtered.omitted, 0);
-  assert.equal(filtered.faces[0]?.source.geometryId, 'room');
+  assert.equal(filtered.surfaces[0]?.geometryId, 'room');
   assert.deepEqual(filtered.bounds.max, { x: 4, y: 4, z: 3 });
   assert.equal(buildConstructionScene(input, { geometryIds: [] }).count, 0);
   assert.equal(result.pieces[0]?.stockLength, 3.6);
@@ -164,7 +136,9 @@ void test('multilayer finishes use total thickness centred on their generated pl
   const original = structuredClone(result);
   const scene = buildConstructionScene(constructionSceneInput(result));
   assert.equal(scene.count, 1);
-  assert.equal(scene.faces.length, 6);
+  const finish = scene.surfaces[0];
+  assert.ok(finish);
+  assert.equal(surfaceFaces(finish).length, 6);
   assert.ok(Math.abs(scene.bounds.min.y - 0.05) < 1e-10);
   assert.ok(Math.abs(scene.bounds.max.y - 0.0754) < 1e-10);
   assert.deepEqual(result, original);
@@ -208,7 +182,9 @@ void test('finish thickness follows the geometric normal after rotation or refle
     members: [],
     surfaces: [{ ...surface, thickness: 0 }],
   });
-  assert.equal(flat.faces.length, 1);
+  const flatFinish = flat.surfaces[0];
+  assert.ok(flatFinish);
+  assert.equal(surfaceFaces(flatFinish).length, 1);
 });
 
 void test('explicit generated width axis is already rotated, including reflected placements', () => {
@@ -253,7 +229,7 @@ void test('level isolation intersects source, material and role filters before t
   const scene = buildConstructionScene(input, filter, 1);
   assert.equal(scene.count, 1);
   assert.equal(scene.omitted, 1);
-  assert.equal(scene.faces[0]?.source.id, member.id);
+  assert.equal(scene.members[0]?.id, member.id);
   assert.equal(
     buildConstructionScene(input, { ...filter, levelGeometryIds: [] }).count,
     0,
@@ -264,52 +240,23 @@ void test('level isolation intersects source, material and role filters before t
   );
 });
 
-void test('picking compares depth at the click and keeps framing selectable through finishes', () => {
-  const sloping = { ...member, id: 'sloping' },
-    flat = { ...member, id: 'flat' },
-    finish = { ...member, id: 'finish' };
-  const points = (left: number, right: number) => [
-    { x: 0, y: 0, depth: left },
-    { x: 10, y: 0, depth: right },
-    { x: 10, y: 10, depth: right },
-    { x: 0, y: 10, depth: left },
-  ];
-  const scene: ProjectedScene = {
-    width: 10,
-    height: 10,
-    scale: 1,
-    faces: [
-      {
-        source: sloping,
-        points: points(0, 10),
-        surface: false,
-        depth: 5,
-        light: 70,
-      },
-      {
-        source: flat,
-        points: points(6, 6),
-        surface: false,
-        depth: 6,
-        light: 70,
-      },
-      {
-        source: finish,
-        points: points(12, 12),
-        surface: true,
-        depth: 12,
-        light: 70,
-      },
-    ],
+void test('all calculated members reach the scene unless an explicit limit is requested', () => {
+  const input = {
+    members: Array.from({ length: 6_000 }, (_, index) => ({
+      ...member,
+      id: `stud-${String(index)}`,
+      start: { x: index, y: 0, z: 0 },
+      end: { x: index, y: 0, z: 3 },
+    })),
+    surfaces: [],
   };
-  assert.equal(pickConstruction(scene, 9, 5)?.id, 'sloping');
-  assert.equal(pickConstruction(scene, 1, 5)?.id, 'flat');
-  assert.equal(
-    pickConstruction(
-      { ...scene, faces: scene.faces.filter((face) => face.surface) },
-      1,
-      5,
-    )?.id,
-    'finish',
-  );
+  const scene = buildConstructionScene(input);
+  assert.equal(scene.count, 6_000);
+  assert.equal(scene.members.length, 6_000);
+  assert.equal(scene.omitted, 0);
+  assert.equal(scene.members.at(-1)?.id, 'stud-5999');
+  assert.equal(scene.bounds.max.x, 5_999.025);
+  const limited = buildConstructionScene(input, {}, 12);
+  assert.equal(limited.members.length, 12);
+  assert.equal(limited.omitted, 5_988);
 });

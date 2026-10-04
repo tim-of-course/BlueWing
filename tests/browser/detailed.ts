@@ -195,6 +195,16 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByRole('combobox', { name: 'Role', exact: true })
     .selectOption('stud');
   await expect(viewer).toContainText('19 objects shown');
+  await expect(viewer.getByRole('status')).toBeHidden();
+  const view = viewer.getByRole('combobox', { name: 'View', exact: true });
+  const display = viewer.getByRole('combobox', {
+    name: 'Display',
+    exact: true,
+  });
+  await view.selectOption('front');
+  await expect(view).toHaveValue('front');
+  await display.selectOption('framing');
+  await expect(viewer).toContainText('Framing only; finishes hidden.');
   // The middle of this symmetric, 19-stud wall lies on its middle stud.
   await viewer.getByRole('img').click();
   await expect(
@@ -203,6 +213,22 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
   ).toContainText('Cut length: 10 ft 0 in');
+  await viewer
+    .getByRole('button', { name: 'Fit selection', exact: true })
+    .click();
+  await expect(
+    viewer.getByRole('complementary', { name: 'Selected construction item' }),
+  ).toContainText('362S162-33');
+  await viewer.getByRole('img').press('Home');
+  await expect(view).toHaveValue('isometric');
+  await display.selectOption('xray');
+  await expect(viewer).toContainText(
+    'X-ray: finish outlines remain visible through framing.',
+  );
+  await display.selectOption('solid');
+  await expect(viewer).toContainText(
+    'Solid view; materials hide objects behind them.',
+  );
   await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
   const assemblies = page.getByRole('dialog', { name: 'Assembly editor' });
   await assemblies
@@ -218,8 +244,13 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
   ).toContainText('Cut length: 12 ft 0 in');
+  await view.selectOption('top');
+  await expect(view).toHaveValue('top');
   await viewer.getByRole('img').press('ArrowRight');
+  await expect(view).toHaveValue('');
   await viewer.getByRole('img').press('+');
+  await viewer.getByRole('img').press('Home');
+  await expect(view).toHaveValue('isometric');
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   const review = page.getByRole('dialog', { name: 'Takeoff review' });
   await review
