@@ -584,6 +584,7 @@ export default function App(props: { application?: Application }) {
                           [
                             ...Object.values(construction()?.walls ?? {}),
                             ...Object.values(construction()?.ceilings ?? {}),
+                            ...Object.values(construction()?.materials ?? {}),
                           ]
                             .filter((source) => source.levelId === level.id)
                             .map((source) => source.geometryId),

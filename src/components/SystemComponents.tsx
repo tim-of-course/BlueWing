@@ -37,7 +37,8 @@ export default function SystemComponents(props: {
       !original ||
       original.components ||
       original.wallTemplate ||
-      original.ceilingTemplate
+      original.ceilingTemplate ||
+      original.materialTemplate
     )
       return;
     const bindings: Record<string, string> = {};
@@ -95,6 +96,7 @@ export default function SystemComponents(props: {
                   !recipe.components &&
                   !recipe.wallTemplate &&
                   !recipe.ceilingTemplate &&
+                  !recipe.materialTemplate &&
                   recipe.id !== props.recipe.id,
               )}
             >

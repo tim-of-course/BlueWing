@@ -120,6 +120,11 @@ export function reviewFingerprint(
   for (const ceiling of Object.values(construction.ceilings))
     if (geometryIds.has(ceiling.geometryId) && ceiling.levelId)
       levels.add(ceiling.levelId);
+  for (const material of Object.values(construction.materials ?? {}))
+    if (geometryIds.has(material.geometryId)) {
+      related.push(material);
+      if (material.levelId) levels.add(material.levelId);
+    }
   for (const geometryId of [...geometryIds].sort()) {
     sources.push({ kind: 'geometry', id: geometryId });
     const geometry = project.geometries[geometryId];

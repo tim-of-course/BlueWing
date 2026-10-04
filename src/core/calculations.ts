@@ -281,7 +281,9 @@ export function calculateProject(project: Project): CalculationResult {
     const recipe = project.recipes[assignment.recipeId];
     const group = project.groups[assignment.groupId];
     if (
-      (recipe?.wallTemplate || recipe?.ceilingTemplate) &&
+      (recipe?.wallTemplate ||
+        recipe?.ceilingTemplate ||
+        recipe?.materialTemplate) &&
       group?.geometryIds.length &&
       !group.geometryIds.some((id) =>
         recipe.geometryKinds.includes(project.geometries[id]?.kind ?? 'count'),

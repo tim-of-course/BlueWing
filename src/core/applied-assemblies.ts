@@ -91,6 +91,7 @@ export function resolveConstruction(project: Project): ConstructionData {
     ...structuredClone(project.construction ?? emptyConstructionContext()),
     walls: {},
     ceilings: {},
+    materials: {},
   };
   for (const assignment of Object.values(project.assignments)) {
     const recipe = project.recipes[assignment.recipeId];
@@ -137,6 +138,26 @@ export function resolveConstruction(project: Project): ConstructionData {
           ...source,
           id,
           geometryId,
+        };
+      }
+      if (recipe.materialTemplate) {
+        const settings = mergeMaterialSettings(
+          mergeMaterialSettings(
+            recipe.materialTemplate,
+            assignment.materialOverrides,
+          ),
+          detail?.material,
+        ) as typeof recipe.materialTemplate & { levelId?: string };
+        const { levelId, ...template } = settings;
+        const materials = (result.materials ??= {});
+        if (materials[id])
+          throw new Error(`Duplicate applied material id: ${id}`);
+        materials[id] = {
+          ...source,
+          id,
+          geometryId,
+          ...(levelId === undefined ? {} : { levelId }),
+          template,
         };
       }
     }
@@ -325,7 +346,12 @@ export function copyApplicationDetails(
   copy: Assignment,
 ): void {
   const recipe = project.recipes[copy.recipeId];
-  if (!recipe?.wallTemplate && !recipe?.ceilingTemplate) return;
+  if (
+    !recipe?.wallTemplate &&
+    !recipe?.ceilingTemplate &&
+    !recipe?.materialTemplate
+  )
+    return;
   const ids = new Map<string, string>();
   for (const geometryId of project.groups[copy.groupId]?.geometryIds ?? []) {
     const oldId =

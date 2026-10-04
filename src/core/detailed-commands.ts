@@ -184,7 +184,7 @@ export const constructionSchemas = {
     },
     ['id', 'geometryId', 'elevation', 'materialId', 'layers'],
   ),
-} satisfies Record<keyof ConstructionData, PayloadSchema>;
+} satisfies Record<Exclude<keyof ConstructionData, 'materials'>, PayloadSchema>;
 const wallInstanceFields = new Set([
   'id',
   'geometryId',
@@ -306,7 +306,7 @@ const definition = (
   mutates,
   examples: [{ name, payload: payload ?? examplePayload(schema) }],
 });
-const kinds: Record<string, keyof ConstructionData> = {
+const kinds: Record<string, Exclude<keyof ConstructionData, 'materials'>> = {
   wall: 'walls',
   opening: 'openings',
   header: 'headers',
@@ -315,6 +315,12 @@ const kinds: Record<string, keyof ConstructionData> = {
   ceiling: 'ceilings',
 };
 export const detailedCommands: CommandDefinition[] = [
+  definition(
+    'header.fromAssembly',
+    'Copy a project member-run assembly into an independent header detail, then assign its id to an opening. Component offsets are relative to the rough opening head; the assembly path elevation is not copied. This does not add a separate material application.',
+    object({ assemblyId: text, id: text, name: text }, ['assemblyId', 'id']),
+    true,
+  ),
   definition(
     'wall.fromAssembly',
     'Apply a live project wall assembly to a trace. Later definition edits update this wall; optional height is a local override. Lengths use metres.',
@@ -407,6 +413,20 @@ export function validateDetailed(project: Project): void {
 export function executeDetailed(project: Project, call: CommandCall): unknown {
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const id = payload.id as string;
+  if (call.name === 'header.fromAssembly') {
+    const assembly = project.recipes[payload.assemblyId as string];
+    if (assembly?.materialTemplate?.kind !== 'path-members')
+      throw new Error('A header detail needs a member-run assembly');
+    const header = {
+      id,
+      name: (payload.name as string | undefined) ?? assembly.name,
+      ...(assembly.reference ? { reference: assembly.reference } : {}),
+      components: structuredClone(assembly.materialTemplate.components ?? []),
+    };
+    const context = (project.construction ??= emptyConstructionContext());
+    context.headers[id] = header;
+    return header;
+  }
   if (
     call.name === 'wall.fromAssembly' ||
     call.name === 'ceiling.fromAssembly'
@@ -451,6 +471,7 @@ export function executeDetailed(project: Project, call: CommandCall): unknown {
         [
           ...Object.values(resolved.walls),
           ...Object.values(resolved.ceilings),
+          ...Object.values(resolved.materials ?? {}),
         ].some((item) => item.levelId === id)
       )
         throw new Error('Remove level assignments before deleting the level');
@@ -527,7 +548,11 @@ export function copyDetailedGeometry(
     const recipe = project.recipes[assignment.recipeId];
     if (
       !group?.geometryIds.includes(sourceId) ||
-      !(recipe?.wallTemplate || recipe?.ceilingTemplate)
+      !(
+        recipe?.wallTemplate ||
+        recipe?.ceilingTemplate ||
+        recipe?.materialTemplate
+      )
     )
       continue;
     const id = crypto.randomUUID();

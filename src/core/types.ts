@@ -6,6 +6,7 @@ import type {
   ConstructionSource,
 } from './construction-types';
 import type { ReviewData } from './review';
+import type { MaterialTemplate } from './material-layout';
 
 /** Coordinates are unzoomed PDF viewport units (72/in), origin top-left, +y down. */
 export interface Point {
@@ -102,6 +103,9 @@ export type WallOverrides = MaterialOverrides<
 export type CeilingOverrides = MaterialOverrides<
   Omit<Ceiling, 'id' | 'geometryId' | keyof ConstructionSource>
 >;
+export type LayoutOverrides = MaterialOverrides<
+  Omit<MaterialTemplate, 'kind'> & { levelId?: string }
+>;
 
 export interface Recipe {
   id: string;
@@ -118,6 +122,7 @@ export interface Recipe {
   /** Typed material generator. Applications resolve these defaults on every calculation. */
   wallTemplate?: WallTemplate;
   ceilingTemplate?: CeilingTemplate;
+  materialTemplate?: MaterialTemplate;
 }
 export interface AssemblyComponent {
   /** Stable identity within the system, independent of the snapshot's recipe id. */
@@ -142,9 +147,15 @@ export interface Assignment {
   geometryInputs?: Record<string, Record<string, number | boolean>>;
   wallOverrides?: WallOverrides;
   ceilingOverrides?: CeilingOverrides;
+  materialOverrides?: LayoutOverrides;
   geometryDetails?: Record<
     string,
-    { id?: string; wall?: WallOverrides; ceiling?: CeilingOverrides }
+    {
+      id?: string;
+      wall?: WallOverrides;
+      ceiling?: CeilingOverrides;
+      material?: LayoutOverrides;
+    }
   >;
 }
 export interface Project {

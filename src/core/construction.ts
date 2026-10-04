@@ -2,6 +2,11 @@ import type { Geometry, Point, Project } from './types';
 import { polygonArea } from './geometry';
 import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
 import { summarizeMaterials } from './material-results';
+import {
+  generateMaterialLayout,
+  validateMaterialTemplate,
+  materialGeometryKind,
+} from './material-layout';
 import type {
   ConstructionData,
   ConstructionOptions,
@@ -126,6 +131,7 @@ export function validateConstruction(
     data.levels,
     data.placements,
     data.ceilings,
+    data.materials ?? {},
   ];
   for (const collection of collections) {
     requireValue(
@@ -156,6 +162,14 @@ export function validateConstruction(
     if (id !== undefined)
       requireValue(data.levels[id], `level ${id} is missing`);
   };
+  for (const application of Object.values(data.materials ?? {})) {
+    validateMaterialTemplate(application.template);
+    geometryFor(
+      application.geometryId,
+      materialGeometryKind(application.template),
+    );
+    level(application.levelId);
+  }
   for (const l of Object.values(data.levels))
     numeric(l.elevation, 'level elevation');
   const placed = new Set<string>();
@@ -1322,6 +1336,27 @@ export function generateConstruction(
       'generation-budget',
       'Construction generation stopped at the finite piece/surface budget',
     );
+  }
+  for (const application of ordered(data.materials ?? {})) {
+    if (budget <= 0) {
+      diagnostic(
+        application,
+        'generation-budget',
+        'Construction generation stopped at the finite piece/surface budget',
+      );
+      break;
+    }
+    const generated = generateMaterialLayout(
+      project,
+      application,
+      data,
+      budget,
+    );
+    result.pieces.push(...generated.pieces);
+    result.surfaces.push(...generated.surfaces);
+    result.diagnostics.push(...generated.diagnostics);
+    result.complete &&= generated.complete;
+    budget -= generated.pieces.length + generated.surfaces.length;
   }
   summarizeMaterials(result);
   return result;

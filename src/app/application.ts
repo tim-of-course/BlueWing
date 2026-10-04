@@ -341,6 +341,7 @@ export class Application {
                       levelGeometryIds: [
                         ...Object.values(resolved.walls),
                         ...Object.values(resolved.ceilings),
+                        ...Object.values(resolved.materials ?? {}),
                       ]
                         .filter((source) => source.levelId === payload.levelId)
                         .map((source) => source.geometryId),

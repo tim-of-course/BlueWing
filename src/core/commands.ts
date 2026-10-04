@@ -18,7 +18,17 @@ import {
 import { calibrationFromRatio, type PaperScale } from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
 import { validateWallTemplate, validateCeilingTemplate } from './wall-template';
-import { copyApplicationDetails } from './applied-assemblies';
+import {
+  copyApplicationDetails,
+  mergeMaterialSettings,
+} from './applied-assemblies';
+import {
+  materialTemplateSchema,
+  materialOverrideSchema,
+  materialFieldsSchema,
+  validateMaterialTemplate,
+  materialGeometryKind,
+} from './material-layout';
 import {
   detailedCommands,
   wallTemplateSchema,
@@ -160,6 +170,7 @@ export const assemblySchema: PayloadSchema = {
     ...leafAssemblySchema.properties,
     wallTemplate: wallTemplateSchema,
     ceilingTemplate: ceilingTemplateSchema,
+    materialTemplate: materialTemplateSchema,
     components: array(
       object({
         id: string,
@@ -184,6 +195,7 @@ const assignment = object(
     geometryInputs: { type: 'object', additionalProperties: inputValues },
     wallOverrides: wallOverrideSchema,
     ceilingOverrides: ceilingOverrideSchema,
+    materialOverrides: materialOverrideSchema,
     geometryDetails: {
       type: 'object',
       additionalProperties: object(
@@ -191,6 +203,7 @@ const assignment = object(
           id: string,
           wall: wallOverrideSchema,
           ceiling: ceilingOverrideSchema,
+          material: materialOverrideSchema,
         },
         [],
       ),
@@ -574,20 +587,32 @@ export function validateAssembly(input: unknown): asserts input is Recipe {
     new Set(entry.geometryKinds).size !== entry.geometryKinds.length
   )
     throw new Error('Assembly needs unique compatible geometry kinds');
-  if (entry.wallTemplate || entry.ceilingTemplate) {
+  if (entry.wallTemplate || entry.ceilingTemplate || entry.materialTemplate) {
     if (
       entry.components ||
       entry.inputs.length ||
       entry.outputs.length ||
       entry.geometryKinds.length !== 1 ||
-      entry.geometryKinds[0] !== (entry.wallTemplate ? 'path' : 'area') ||
-      !!(entry.wallTemplate && entry.ceilingTemplate)
+      entry.geometryKinds[0] !==
+        (entry.wallTemplate
+          ? 'path'
+          : entry.ceilingTemplate
+            ? 'area'
+            : entry.materialTemplate &&
+              materialGeometryKind(entry.materialTemplate)) ||
+      [
+        entry.wallTemplate,
+        entry.ceilingTemplate,
+        entry.materialTemplate,
+      ].filter(Boolean).length !== 1
     )
       throw new Error(
-        'Modeled assemblies need one wall or ceiling definition, matching geometry, empty inputs and outputs, and no formula system components',
+        'Modeled assemblies need one material definition, matching geometry, empty inputs and outputs, and no formula system components',
       );
     if (entry.wallTemplate) validateWallTemplate(entry.wallTemplate);
     if (entry.ceilingTemplate) validateCeilingTemplate(entry.ceilingTemplate);
+    if (entry.materialTemplate)
+      validateMaterialTemplate(entry.materialTemplate);
     return;
   }
   const names = new Set<string>();
@@ -756,6 +781,41 @@ export function validateProject(input: unknown): asserts input is Project {
       !definition.ceilingTemplate
     )
       throw new Error('Ceiling overrides require a ceiling assembly');
+    if (
+      (entry.materialOverrides ||
+        Object.values(entry.geometryDetails ?? {}).some(
+          (detail) => detail.material,
+        )) &&
+      !definition.materialTemplate
+    )
+      throw new Error('Material overrides require a material layout assembly');
+    if (definition.materialTemplate) {
+      const schema = materialFieldsSchema(
+        definition.materialTemplate.kind,
+        true,
+      );
+      validatePayload(schema, entry.materialOverrides ?? {});
+      const groupSettings = mergeMaterialSettings(
+        definition.materialTemplate,
+        entry.materialOverrides,
+      );
+      for (const override of [
+        undefined,
+        ...Object.values(entry.geometryDetails ?? {}).map(
+          (detail) => detail.material,
+        ),
+      ]) {
+        validatePayload(schema, override ?? {});
+        const settings = mergeMaterialSettings(
+          groupSettings,
+          override,
+        ) as typeof groupSettings & { levelId?: string };
+        const { levelId, ...template } = settings;
+        validateMaterialTemplate(template);
+        if (levelId !== undefined && !project.construction?.levels[levelId])
+          throw new Error(`Material layout level ${levelId} is missing`);
+      }
+    }
     validateAssemblyInputs(definition, entry.inputs);
     for (const [geometryId, inputs] of Object.entries(
       entry.geometryInputs ?? {},

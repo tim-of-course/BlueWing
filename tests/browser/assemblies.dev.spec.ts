@@ -7,6 +7,7 @@ import {
   ceilingWorkflow,
   ceilingLayoutWorkflow,
 } from './assemblies';
+import { materialLayoutWorkflow } from './material-layouts';
 
 test('assemblies support project copies, object overrides and piece schedules', async ({
   page,
@@ -93,5 +94,43 @@ test('modeled ceiling quantities match the positioned grid and survive reopening
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await ceilingLayoutWorkflow(page);
+  expect(errors).toEqual([]);
+});
+
+test('modeled material starters edit surfaces and copy opening header details', async ({
+  page,
+}, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.text().includes('[STRICT_'))
+      errors.push(message.text());
+  });
+  await materialLayoutWorkflow(page);
+  const { artifact } = await captureBrowserArtifact(
+    page,
+    async () => {
+      await page
+        .getByLabel('Surface height (ft) (optional)', { exact: true })
+        .fill('10');
+      await page
+        .getByRole('button', { name: 'Save assignment', exact: true })
+        .click();
+      await expect(
+        page
+          .getByRole('table', { name: 'Material totals' })
+          .getByRole('row')
+          .filter({ hasText: 'frp-unspecified' }),
+      ).toContainText('256 ft2');
+    },
+    { scenario: 'modeled-material-local-height' },
+  );
+  await writeFile(
+    info.outputPath('solid-diagnostics.json'),
+    JSON.stringify(artifact, null, 2),
+  );
+  expect(artifact.attribution?.reruns.length).toBeGreaterThan(0);
+  expectNoDiagnostics(artifact);
+  expectNoSilentHolds(artifact);
   expect(errors).toEqual([]);
 });

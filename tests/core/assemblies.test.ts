@@ -119,7 +119,12 @@ void test('starters distinguish modeled material layouts from unmodeled quick es
   assert.equal(wall.wallTemplate.height, undefined);
   assert.equal(wall.wallTemplate.finishes?.length, 2);
   for (const recipe of Object.values(starters)) {
-    if (recipe.wallTemplate || recipe.ceilingTemplate) continue;
+    if (
+      recipe.wallTemplate ||
+      recipe.ceilingTemplate ||
+      recipe.materialTemplate
+    )
+      continue;
     assert.match(recipe.name, /estimate/i);
     assert.match(recipe.description ?? '', /Unmodeled/);
   }

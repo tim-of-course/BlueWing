@@ -104,6 +104,7 @@ export default function WingmanPreview(props: {
           ? [
               ...Object.values(construction.walls),
               ...Object.values(construction.ceilings),
+              ...Object.values(construction.materials ?? {}),
             ]
               .filter((source) => source.levelId === view.levelId)
               .map((source) => source.geometryId)

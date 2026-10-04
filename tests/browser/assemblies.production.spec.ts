@@ -4,6 +4,7 @@ import {
   ceilingWorkflow,
   ceilingLayoutWorkflow,
 } from './assemblies';
+import { materialLayoutWorkflow } from './material-layouts';
 
 test('built assemblies persist copies and overrides and export piece schedules', async ({
   page,
@@ -29,4 +30,10 @@ test('built ceiling layouts share measured quantities and 3D members', async ({
   page,
 }) => {
   await ceilingLayoutWorkflow(page);
+});
+
+test('built material starters preserve modeled surfaces and reusable header details', async ({
+  page,
+}) => {
+  await materialLayoutWorkflow(page);
 });

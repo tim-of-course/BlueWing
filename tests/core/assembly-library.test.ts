@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AssemblyLibraryStore } from '../../src/platform/assembly-library';
+import { copyAssembly } from '../../src/core/assemblies';
 
 void test('global library persists independently, rejects stale edits and survives failed saves', async () => {
   let saved: string | null = null;
@@ -68,4 +69,41 @@ void test('adding missing starters upgrades a saved library without replacing co
   await store.save(1, 'ceiling-grid-2x2');
   assert.equal((await store.read()).assemblies['ceiling-grid-2x2'], undefined);
   assert.ok((await store.addStarters(2)).assemblies['ceiling-grid-2x2']);
+});
+
+void test('modeled starter additions preserve company settings and independent project copies', async () => {
+  let saved: string | null = null;
+  const store = new AssemblyLibraryStore({
+    read: () => Promise.resolve(saved),
+    write: (data) => {
+      saved = data;
+      return Promise.resolve();
+    },
+  });
+  const library = await store.read();
+  const frp = library.assemblies['frp-wall'];
+  assert.ok(frp?.materialTemplate?.kind === 'path-surface');
+  frp.name = 'Company FRP';
+  frp.materialTemplate.materialId = 'company-frp';
+  frp.materialTemplate.height = 1.2192;
+  const projectCopy = copyAssembly(frp, 'project-frp');
+  const missing = ['steel-joists', 'steel-kick', 'acoustical-wall-surface'];
+  for (const id of missing) Reflect.deleteProperty(library.assemblies, id);
+  saved = JSON.stringify(library);
+
+  const extended = await store.addStarters(0);
+  assert.equal(extended.revision, 1);
+  for (const id of missing)
+    assert.ok(extended.assemblies[id]?.materialTemplate, id);
+  assert.deepEqual(extended.assemblies['frp-wall'], frp);
+  assert.equal((await store.addStarters(1)).revision, 1);
+
+  frp.materialTemplate.height = 2.4384;
+  await store.save(1, frp);
+  const reopened = (await store.read()).assemblies['frp-wall'];
+  assert.ok(reopened?.materialTemplate?.kind === 'path-surface');
+  assert.equal(reopened.materialTemplate.height, 2.4384);
+  assert.ok(projectCopy.materialTemplate?.kind === 'path-surface');
+  assert.equal(projectCopy.materialTemplate.height, 1.2192);
+  assert.equal(projectCopy.materialTemplate.materialId, 'company-frp');
 });

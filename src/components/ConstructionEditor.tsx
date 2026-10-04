@@ -10,7 +10,7 @@ import { wallTemplateFromWall } from '../core/wall-template';
 import { displayLength } from './PieceSchedule';
 import './construction-editor.css';
 
-type Kind = keyof ConstructionData;
+type Kind = Exclude<keyof ConstructionData, 'materials'>;
 const kinds: { kind: Kind; command: string; label: string }[] = [
   { kind: 'walls', command: 'wall', label: 'Walls' },
   { kind: 'openings', command: 'opening', label: 'Openings' },
@@ -24,7 +24,7 @@ const title = (key: string) =>
 const scalarKeys = new Set(['layers', 'count', 'jambCount', 'wastePercent']);
 const angleKeys = new Set(['rotation', 'sectionRotation']);
 const pageKeys = new Set(['pageOrigin']);
-const surfaceKeys = new Set(['finishes', 'ceilings']);
+const surfaceKeys = new Set(['finishes', 'ceilings', 'path-surface']);
 function seed(schema: PayloadSchema, key = ''): unknown {
   if (schema.type === 'object')
     return Object.fromEntries(
@@ -61,7 +61,7 @@ export function ConstructionFields(props: {
   controller: WorkspaceController;
   parent?: string;
   hide?: string[];
-  inherited?: Record<string, unknown>;
+  inherited?: Record<string, unknown> | undefined;
 }) {
   const set = (key: string, value: unknown) => {
     const next = { ...props.value };
@@ -147,9 +147,17 @@ export function ConstructionFields(props: {
                   <label class="field">
                     {key === 'height' && props.parent === 'walls'
                       ? 'Wall height'
-                      : key === 'height' && props.parent === 'finishes'
-                        ? 'Finish height'
-                        : title(key)}
+                      : key === 'height' && props.parent === 'path-surface'
+                        ? 'Surface height'
+                        : key === 'height' && props.parent === 'finishes'
+                          ? 'Finish height'
+                          : key === 'elevation' &&
+                              props.parent === 'path-members'
+                            ? 'Start elevation'
+                            : key === 'elevation' &&
+                                props.parent === 'path-surface'
+                              ? 'Bottom elevation'
+                              : title(key)}
                     {schema.type === 'number' ? suffix(key) : ''}
                     {required() ? '' : ' (optional)'}
                     <Show
@@ -319,7 +327,12 @@ export function ConstructionFields(props: {
                   >
                     <ConstructionFields
                       schema={schema}
-                      value={record(value())}
+                      value={record(props.value[key])}
+                      inherited={
+                        props.inherited && props.value[key] !== null
+                          ? record(props.inherited[key])
+                          : undefined
+                      }
                       controller={props.controller}
                       unit={props.unit}
                       parent={key}
@@ -362,6 +375,7 @@ export default function ConstructionEditor(props: {
   const [filter, setFilter] = createSignal('');
   const [templateName, setTemplateName] = createSignal('Wall template');
   const [templateId, setTemplateId] = createSignal('');
+  const [headerTemplateId, setHeaderTemplateId] = createSignal('');
   const [error, setError] = createSignal('');
   const [backupPath, setBackupPath] = createSignal('');
   const [preview, setPreview] = createSignal<unknown>(null);
@@ -371,6 +385,16 @@ export default function ConstructionEditor(props: {
     const project = props.controller.project();
     return project ? resolveConstruction(project) : emptyConstruction();
   });
+  const headerAssemblies = createMemo(() =>
+    Object.values(props.controller.project()?.recipes ?? {}).filter(
+      (recipe) =>
+        recipe.materialTemplate?.kind === 'path-members' &&
+        !!recipe.materialTemplate.components?.length &&
+        recipe.materialTemplate.components.every((component) =>
+          component.role.startsWith('header'),
+        ),
+    ),
+  );
   const entries = createMemo(() =>
     Object.entries(
       data()[kind()] as Record<
@@ -672,6 +696,68 @@ export default function ConstructionEditor(props: {
                     stock, and detail dimensions. An omitted wall height remains
                     unresolved.
                   </p>
+                  <Show when={kind() === 'headers'}>
+                    <fieldset class="construction-section">
+                      <legend>Header assemblies</legend>
+                      <p class="hint">
+                        Copy an assembly's components into this project header
+                        detail, then save it and select it on an opening. The
+                        opening positions the components. This copy has its own
+                        editable dimensions.
+                      </p>
+                      <label class="field">
+                        Header assembly
+                        <select
+                          value={headerTemplateId()}
+                          onChange={(event) => {
+                            setHeaderTemplateId(event.currentTarget.value);
+                          }}
+                        >
+                          <option value="">
+                            Choose project header assembly
+                          </option>
+                          <For each={headerAssemblies()}>
+                            {(assembly) => (
+                              <option value={assembly.id}>
+                                {assembly.name}
+                              </option>
+                            )}
+                          </For>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        disabled={
+                          !headerAssemblies().some(
+                            (assembly) => assembly.id === headerTemplateId(),
+                          ) || props.controller.busy()
+                        }
+                        onClick={() => {
+                          const assembly = headerAssemblies().find(
+                            (item) => item.id === headerTemplateId(),
+                          );
+                          if (!assembly?.materialTemplate?.components) return;
+                          const components = structuredClone(
+                            assembly.materialTemplate.components,
+                          );
+                          setDraft((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  name: assembly.name,
+                                  reference: assembly.reference ?? '',
+                                  components,
+                                }
+                              : current,
+                          );
+                          setDirty(true);
+                          setPreview(null);
+                        }}
+                      >
+                        Use header assembly
+                      </button>
+                    </fieldset>
+                  </Show>
                   <Show when={kind() === 'walls'}>
                     <fieldset class="construction-section">
                       <legend>Wall templates</legend>

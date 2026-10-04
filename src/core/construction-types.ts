@@ -1,5 +1,6 @@
 import type { Point } from './types';
 import type { CeilingGridSpec } from './ceiling-grid';
+import type { MaterialApplication } from './material-layout';
 
 /** Physical lengths are metres, rotation is radians, world Z points up. */
 export interface Vec3 {
@@ -149,6 +150,7 @@ export interface ConstructionContext {
 export interface ConstructionData extends ConstructionContext {
   walls: Record<string, Wall>;
   ceilings: Record<string, Ceiling>;
+  materials?: Record<string, MaterialApplication>;
 }
 export interface ConstructionSource {
   assignmentId?: string;

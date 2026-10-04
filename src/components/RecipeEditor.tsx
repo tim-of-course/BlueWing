@@ -5,6 +5,10 @@ import {
   ceilingTemplateSchema,
 } from '../core/detailed-commands';
 import {
+  materialFieldsSchema,
+  type MaterialTemplate,
+} from '../core/material-layout';
+import {
   createEffect,
   createMemo,
   createSignal,
@@ -34,6 +38,45 @@ import type {
 
 const units: Unit[] = ['scalar', 'ea', 'm', 'mm', 'ft', 'in', 'm2', 'ft2'];
 const kinds: GeometryKind[] = ['path', 'area', 'count'];
+const materialKinds: {
+  kind: MaterialTemplate['kind'];
+  name: string;
+}[] = [
+  { kind: 'path-surface', name: 'Surface' },
+  { kind: 'path-members', name: 'Member run' },
+  { kind: 'area-members', name: 'Joist area' },
+];
+
+function newMaterialTemplate(kind: MaterialTemplate['kind']): MaterialTemplate {
+  const member = { materialId: '', width: 0.041275, depth: 0.092075 };
+  if (kind === 'path-surface')
+    return { kind, elevation: 0, materialId: '', layers: 1, openings: [] };
+  if (kind === 'area-members')
+    return {
+      kind,
+      elevation: 0,
+      spacing: 0.4064,
+      origin: { x: 0, y: 0 },
+      rotation: 0,
+      member,
+      role: 'joist',
+    };
+  return {
+    kind,
+    elevation: 0,
+    components: [
+      {
+        id: crypto.randomUUID(),
+        role: 'member',
+        member,
+        startExtension: 0,
+        endExtension: 0,
+        verticalOffset: 0,
+        faceOffset: 0,
+      },
+    ],
+  };
+}
 export default function RecipeEditor(props: {
   controller: WorkspaceController;
   onClose: () => void;
@@ -307,6 +350,29 @@ export default function RecipeEditor(props: {
         >
           New ceiling assembly
         </button>
+        <For each={materialKinds}>
+          {(material) => (
+            <button
+              type="button"
+              disabled={saving() || dirty()}
+              onClick={() => {
+                begin({
+                  id: crypto.randomUUID(),
+                  name: `New ${material.name.toLowerCase()} assembly`,
+                  geometryKinds: [
+                    material.kind === 'area-members' ? 'area' : 'path',
+                  ],
+                  inputs: [],
+                  outputs: [],
+                  materialTemplate: newMaterialTemplate(material.kind),
+                });
+                setDirty(true);
+              }}
+            >
+              New {material.name.toLowerCase()} assembly
+            </button>
+          )}
+        </For>
         <button
           type="button"
           disabled={saving() || dirty()}
@@ -579,7 +645,47 @@ export default function RecipeEditor(props: {
                 </fieldset>
               )}
             </Show>
-            <Show when={!recipe().wallTemplate && !recipe().ceilingTemplate}>
+            <Show when={recipe().materialTemplate}>
+              {(template) => (
+                <fieldset disabled={saving()}>
+                  <legend>
+                    {materialKinds.find((item) => item.kind === template().kind)
+                      ?.name ?? 'Material'}{' '}
+                    assembly
+                  </legend>
+                  <p class="muted">
+                    {template().kind === 'path-surface'
+                      ? 'Trace the face in plan and enter its height and elevation. Located openings subtract from the displayed surface.'
+                      : template().kind === 'path-members'
+                        ? 'Trace the member run in plan. Start and end elevations place sloped members; omit end elevation for a level run. Components use the entered section and offsets.'
+                        : 'Trace the framing boundary. Spacing, grid origin and rotation place members inside the area.'}{' '}
+                    Dimensions below use feet. Quantities and 3D use the same
+                    calculated materials.
+                  </p>
+                  <ConstructionFields
+                    schema={materialFieldsSchema(template().kind)}
+                    value={{ ...template() }}
+                    unit="ft"
+                    parent={template().kind}
+                    hide={['kind']}
+                    controller={props.controller}
+                    onChange={(next) => {
+                      change((current) => ({
+                        ...current,
+                        materialTemplate: next as unknown as MaterialTemplate,
+                      }));
+                    }}
+                  />
+                </fieldset>
+              )}
+            </Show>
+            <Show
+              when={
+                !recipe().wallTemplate &&
+                !recipe().ceilingTemplate &&
+                !recipe().materialTemplate
+              }
+            >
               <p class="muted">
                 Formula estimates calculate quantities without placing materials
                 in 3D.
@@ -838,7 +944,9 @@ export default function RecipeEditor(props: {
                     ),
                   ].filter(
                     (assembly) =>
-                      !assembly.wallTemplate && !assembly.ceilingTemplate,
+                      !assembly.wallTemplate &&
+                      !assembly.ceilingTemplate &&
+                      !assembly.materialTemplate,
                   )}
                   onChange={(next) => {
                     change(() => next);

@@ -11,6 +11,8 @@ import {
   ceilingOverrideSchema,
 } from '../core/detailed-commands';
 import { ConstructionFields } from './ConstructionEditor';
+import { materialFieldsSchema } from '../core/material-layout';
+import { mergeMaterialSettings } from '../core/applied-assemblies';
 
 function selectedFields(schema: PayloadSchema, keys: string[]): PayloadSchema {
   return {
@@ -493,6 +495,54 @@ export default function GroupInspector(props: Props) {
                           }}
                         />
                       </fieldset>
+                    </Show>
+                    <Show when={recipe()?.materialTemplate}>
+                      {(template) => (
+                        <fieldset disabled={pending()}>
+                          <legend>Material values</legend>
+                          <p class="muted">
+                            Edit the material layout for this scope. Reset a
+                            value to inherit the group or assembly setting.
+                          </p>
+                          <ConstructionFields
+                            schema={materialFieldsSchema(template().kind, true)}
+                            value={{
+                              ...(inputTarget()
+                                ? assignment()?.geometryDetails?.[inputTarget()]
+                                    ?.material
+                                : assignment()?.materialOverrides),
+                            }}
+                            inherited={{
+                              ...mergeMaterialSettings(
+                                template(),
+                                inputTarget()
+                                  ? assignment()?.materialOverrides
+                                  : {},
+                              ),
+                            }}
+                            unit="ft"
+                            parent={template().kind}
+                            controller={props.controller}
+                            onChange={(material) => {
+                              const target = inputTarget();
+                              editAssignment(id, (value) =>
+                                target
+                                  ? {
+                                      ...value,
+                                      geometryDetails: {
+                                        ...value.geometryDetails,
+                                        [target]: {
+                                          ...value.geometryDetails?.[target],
+                                          material,
+                                        },
+                                      },
+                                    }
+                                  : { ...value, materialOverrides: material },
+                              );
+                            }}
+                          />
+                        </fieldset>
+                      )}
                     </Show>
                     <AssemblyInputs
                       inputs={recipe()?.inputs ?? []}

@@ -6,6 +6,7 @@ import type {
   Unit,
 } from './types';
 import { validateAssembly } from './commands';
+import { modeledStarters } from './modeled-starters';
 
 const number = (
   name: string,
@@ -378,6 +379,10 @@ export function starterAssemblies(): Record<string, Assembly> {
       ],
     },
   ];
+  const wall = assemblies.find(
+    (assembly) => assembly.id === 'steel-wall',
+  )?.wallTemplate;
+  if (wall) assemblies.push(...modeledStarters(wall));
   return Object.fromEntries(
     assemblies.map((assembly) => [assembly.id, assembly]),
   );
