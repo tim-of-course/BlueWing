@@ -2,6 +2,10 @@
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
+Wingman's copied prompt includes both the executable and the running app's `BLUEWING_DATA_DIR`. Keep both for subsequent calls: the data directory selects the app connection, not the executable's location. This prevents an inherited test profile from directing commands to a different app. `bun run desktop` also builds its sibling debug CLI before starting the app.
+
+`web.inspect` reports `runningSource`, `runningVersion`, and `runningUrl` for the current webview. `activeVersion` remains the selected offline bundle; it can differ while `bun run desktop` is displaying the development server.
+
 In Wingman, choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**, and paste the prompt into your agent's chat. It includes the installed executable, the open project identity, and your conversation preference. Keep Bluewing open. This works with any agent that can run local commands; Bluewing does not run or select a model.
 
 Start with `bluewing help` for a short introduction, or `bluewing help messages.send` for one command's schema and examples. `bluewing connect '{"payload":{"mode":"wingman"}}'` returns the current project and Wingman conversation instructions; mode `chat` keeps answers in the external chat. These modes communicate intent through instructions, without changing other callers' behavior or storing a global conversation mode. `commands.list` still returns the full registry.

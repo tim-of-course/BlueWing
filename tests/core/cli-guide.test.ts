@@ -12,6 +12,7 @@ void test('connection prompts state the selected conversation intent and target 
   const connection = {
     cliPath: '/Applications/Bluewing.app/Contents/MacOS/bluewing',
     shell: 'posix' as const,
+    dataDir: '/Users/test/Library/Application Support/com.bluewing.Bluewing',
   };
   const wingman = connectionPrompt(connection, project, 'wingman');
   assert.match(wingman, /Wingman \+ chat/);
@@ -50,6 +51,8 @@ void test(
       assert.ok(command);
       const lines = execFileSync('/bin/sh', ['-c', command], {
         encoding: 'utf8',
+        // A prior test connection must not redirect this app's copied command.
+        env: { ...process.env, BLUEWING_DATA_DIR: '/tmp/old-test-profile' },
       })
         .trim()
         .split('\n');

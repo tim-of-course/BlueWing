@@ -88,15 +88,13 @@ export async function connectCli(
     });
   });
   const connection = await invoke<Partial<CliConnection>>('bridge_ready');
-  if (connection.cliPath)
+  if (connection.cliPath && connection.dataDir)
     application.setCliConnection({
       cliPath: connection.cliPath,
       shell:
         connection.shell ??
         (connection.cliPath.endsWith('.exe') ? 'powershell' : 'posix'),
-      ...(connection.dataDir === undefined
-        ? {}
-        : { dataDir: connection.dataDir }),
+      dataDir: connection.dataDir,
     });
   return unlisten;
 }

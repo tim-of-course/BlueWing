@@ -77,6 +77,12 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
                 reply = cli("echo")
                 if reply["version"] == version:
                     assert reply["bridge"]["webVersion"] == version
+                    assert reply["bridge"]["webSource"] == "cached"
+                    assert Path(reply["bridge"]["dataDir"]).samefile(data)
+                    assert Path(reply["bridge"]["dataDir"]).is_absolute()
+                    info = cli("invoke", "cache_info")
+                    assert info["activeVersion"] == version
+                    assert info["runningSource"] == "cached" and info["runningVersion"] == version
                     return
             except (AssertionError, KeyError, json.JSONDecodeError):
                 pass

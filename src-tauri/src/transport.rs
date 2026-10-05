@@ -49,6 +49,7 @@ pub struct Reply {
 }
 pub struct Bridge {
     pub ready: AtomicBool,
+    pub data_dir: PathBuf,
     pending: Mutex<HashMap<String, mpsc::Sender<Reply>>>,
     _lock: File,
 }
@@ -56,6 +57,7 @@ impl Bridge {
     pub fn start(app: tauri::AppHandle) -> Result<Arc<Self>, String> {
         let dir = data_dir()?;
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let dir = dir.canonicalize().map_err(|e| e.to_string())?;
         let lock = OpenOptions::new()
             .read(true)
             .write(true)
@@ -77,6 +79,7 @@ impl Bridge {
         )?;
         let bridge = Arc::new(Self {
             ready: AtomicBool::new(false),
+            data_dir: dir,
             pending: Mutex::new(HashMap::new()),
             _lock: lock,
         });

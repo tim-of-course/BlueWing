@@ -3,7 +3,7 @@ export type ConversationMode = 'wingman' | 'chat';
 export interface CliConnection {
   cliPath: string;
   shell: 'posix' | 'powershell';
-  dataDir?: string;
+  dataDir: string;
 }
 
 export function conversationInstructions(mode: ConversationMode): string {
@@ -31,13 +31,13 @@ export function connectionPrompt(
   const request = JSON.stringify({ projectId: project.id, payload: { mode } });
   const command =
     connection.shell === 'powershell'
-      ? `${connection.dataDir === undefined ? '' : `$env:BLUEWING_DATA_DIR = ${quote(connection.dataDir)}; `}${quote(request)} | & ${quote(connection.cliPath)} connect --stdin`
-      : `${connection.dataDir === undefined ? '' : `BLUEWING_DATA_DIR=${quote(connection.dataDir)} `}${quote(connection.cliPath)} connect ${quote(request)}`;
+      ? `$env:BLUEWING_DATA_DIR = ${quote(connection.dataDir)}; ${quote(request)} | & ${quote(connection.cliPath)} connect --stdin`
+      : `BLUEWING_DATA_DIR=${quote(connection.dataDir)} ${quote(connection.cliPath)} connect ${quote(request)}`;
   return [
     `Connect to my open Bluewing project ${JSON.stringify(project.name)} using this ${connection.shell === 'powershell' ? 'PowerShell' : 'shell'} command:`,
     command,
     conversationInstructions(mode),
-    `Use this executable${connection.dataDir === undefined ? '' : ' and BLUEWING_DATA_DIR'} for subsequent commands. Keep requests bound to projectId ${JSON.stringify(project.id)}. Bluewing must remain open. Read the connection result for command help and message cursors.`,
+    `Use this executable and BLUEWING_DATA_DIR for subsequent commands. Keep requests bound to projectId ${JSON.stringify(project.id)}. Bluewing must remain open. Read the connection result for command help and message cursors.`,
   ].join('\n\n');
 }
 

@@ -143,12 +143,17 @@ export async function promptWorkflow(page: Page) {
   await browserPromptWorkflow(page);
   await page.evaluate(() => {
     const bridge = window as unknown as {
-      wingmanConnection(info: { cliPath: string; shell: 'posix' }): void;
+      wingmanConnection(info: {
+        cliPath: string;
+        shell: 'posix';
+        dataDir: string;
+      }): void;
       copiedPrompts: string[];
     };
     bridge.wingmanConnection({
       cliPath: '/Applications/Bluewing.app/Contents/MacOS/bluewing',
       shell: 'posix',
+      dataDir: '/Users/test/Library/Application Support/com.bluewing.Bluewing',
     });
     bridge.copiedPrompts = [];
     Object.defineProperty(navigator, 'clipboard', {

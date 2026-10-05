@@ -166,8 +166,35 @@ fn cache_stage(
     state.lock().unwrap().cache.stage(&version, files)
 }
 #[tauri::command]
-fn cache_info(state: State<Shared>) -> cache::CacheInfo {
-    state.lock().unwrap().cache.info()
+fn cache_info(state: State<Shared>, window: tauri::WebviewWindow) -> Result<Value, String> {
+    let url = window.url().map_err(|error| error.to_string())?;
+    let state = state.lock().unwrap();
+    let mut info = serde_json::to_value(state.cache.info()).map_err(|error| error.to_string())?;
+    let (source, version) = running_frontend(
+        &url,
+        window.config().build.dev_url.as_ref(),
+        &state.cache.active,
+    );
+    info["runningSource"] = json!(source);
+    info["runningVersion"] = json!(version);
+    info["runningUrl"] = json!(url.as_str());
+    Ok(info)
+}
+
+/// The debug native test binary can serve packaged/cached assets. The actual
+/// webview URL, rather than Rust's debug profile, identifies the dev server.
+fn running_frontend<'a>(
+    url: &tauri::Url,
+    dev_url: Option<&tauri::Url>,
+    active_version: &'a str,
+) -> (&'static str, &'a str) {
+    if dev_url.is_some_and(|dev| dev.origin() == url.origin()) {
+        ("development-server", "development")
+    } else if active_version == cache::BUNDLED {
+        ("bundled", active_version)
+    } else {
+        ("cached", active_version)
+    }
 }
 #[tauri::command]
 fn cache_activate(
@@ -184,8 +211,12 @@ fn cache_activate(
     Ok(())
 }
 #[tauri::command]
-fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> Value {
-    bridge.ready.store(true, Ordering::SeqCst);
+fn bridge_ready(
+    state: State<Shared>,
+    bridge: State<Arc<transport::Bridge>>,
+    window: tauri::WebviewWindow,
+) -> Result<Value, String> {
+    let url = window.url().map_err(|error| error.to_string())?;
     let cli = std::env::current_exe()
         .unwrap_or_default()
         .with_file_name(if cfg!(windows) {
@@ -193,12 +224,16 @@ fn bridge_ready(state: State<Shared>, bridge: State<Arc<transport::Bridge>>) -> 
         } else {
             "bluewing"
         });
-    let mut info = json!({"bridgeVersion":5,"webVersion":state.lock().unwrap().cache.active,"cliPath":cli,
-        "shell": if cfg!(windows) { "powershell" } else { "posix" }});
-    if let Some(directory) = std::env::var_os("BLUEWING_DATA_DIR") {
-        info["dataDir"] = json!(directory.to_string_lossy());
-    }
-    info
+    let state = state.lock().unwrap();
+    let (source, version) = running_frontend(
+        &url,
+        window.config().build.dev_url.as_ref(),
+        &state.cache.active,
+    );
+    let info = json!({"bridgeVersion":5,"webVersion":version,"webSource":source,"cliPath":cli,
+        "dataDir":bridge.data_dir,"shell": if cfg!(windows) { "powershell" } else { "posix" }});
+    bridge.ready.store(true, Ordering::SeqCst);
+    Ok(info)
 }
 #[tauri::command]
 fn cli_respond(
@@ -292,4 +327,33 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("Unable to start Bluewing desktop");
+}
+
+#[cfg(test)]
+mod frontend_tests {
+    use super::*;
+
+    #[test]
+    fn running_source_uses_the_window_url_without_changing_the_cached_choice() {
+        let dev = tauri::Url::parse("http://127.0.0.1:1420").unwrap();
+        assert_eq!(
+            running_frontend(&dev, Some(&dev), "old-test-bundle"),
+            ("development-server", "development")
+        );
+        for source in [
+            "tauri://localhost",
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+        ] {
+            let url = tauri::Url::parse(source).unwrap();
+            assert_eq!(
+                running_frontend(&url, Some(&dev), "old-test-bundle"),
+                ("cached", "old-test-bundle")
+            );
+            assert_eq!(
+                running_frontend(&url, Some(&dev), cache::BUNDLED),
+                ("bundled", cache::BUNDLED)
+            );
+        }
+    }
 }
