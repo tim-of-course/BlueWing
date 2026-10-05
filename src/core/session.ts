@@ -137,6 +137,13 @@ export class ProjectSession {
   get project(): Project {
     return structuredClone(this.#project);
   }
+  /** Command metadata does not need a copy of the project's drawing and recipes. */
+  get observation(): Pick<CommandRequest, 'projectId' | 'expectedRevision'> {
+    return {
+      projectId: this.#project.id,
+      expectedRevision: this.#project.revision,
+    };
+  }
   get canUndo(): boolean {
     return this.#undo.length > 0;
   }

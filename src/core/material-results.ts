@@ -136,14 +136,16 @@ export function modeledOutputs(
   });
   const represented = new Set<ConstructionDiagnostic>();
   const messages = (sources: ConstructionSource[]) => {
+    if (!result.diagnostics.length) return [];
+    const walls = new Set(sources.map((source) => source.wallId));
+    const ceilings = new Set(sources.map((source) => source.ceilingId));
+    const assignments = new Set(sources.map((source) => source.assignmentId));
+    const geometries = new Set(sources.map((source) => source.geometryId));
     const matches = result.diagnostics.filter((d) => {
-      if (d.wallId) return sources.some((source) => source.wallId === d.wallId);
-      if (d.ceilingId)
-        return sources.some((source) => source.ceilingId === d.ceilingId);
-      if (d.assignmentId)
-        return sources.some((source) => source.assignmentId === d.assignmentId);
-      if (d.geometryId)
-        return sources.some((source) => source.geometryId === d.geometryId);
+      if (d.wallId) return walls.has(d.wallId);
+      if (d.ceilingId) return ceilings.has(d.ceilingId);
+      if (d.assignmentId) return assignments.has(d.assignmentId);
+      if (d.geometryId) return geometries.has(d.geometryId);
       return true;
     });
     for (const diagnostic of matches) represented.add(diagnostic);

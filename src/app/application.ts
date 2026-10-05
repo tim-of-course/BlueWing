@@ -92,9 +92,9 @@ export class Application {
     return this.session?.project ?? null;
   }
   observe(): Observation {
-    const project = this.project;
-    if (!project) throw new Error('Open or create a project first');
-    return { projectId: project.id, expectedRevision: project.revision };
+    const observation = this.session?.observation;
+    if (!observation) throw new Error('Open or create a project first');
+    return observation;
   }
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -127,13 +127,15 @@ export class Application {
     return pending;
   }
   private check(request: ApplicationRequest) {
-    const project = this.project;
-    if (!project) throw new Error('Open or create a project first');
+    const observation = this.observe();
     if (
-      request.projectId !== project.id ||
-      request.expectedRevision !== project.revision
+      request.projectId !== observation.projectId ||
+      request.expectedRevision !== observation.expectedRevision
     )
-      throw new ProjectConflictError(project.id, project.revision);
+      throw new ProjectConflictError(
+        observation.projectId,
+        observation.expectedRevision,
+      );
   }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
@@ -160,7 +162,7 @@ export class Application {
       );
       if (
         definition.mutates &&
-        this.project &&
+        this.session &&
         !request.name.startsWith('library.')
       )
         this.check(request);
@@ -228,7 +230,7 @@ export class Application {
           case 'connect':
             if (
               request.projectId !== undefined &&
-              request.projectId !== this.project?.id
+              request.projectId !== this.session?.observation.projectId
             )
               throw new Error(
                 'Connection project does not match the open project. Copy a new prompt from Wingman.',
@@ -257,7 +259,7 @@ export class Application {
             data = { annotated: true };
             break;
           case 'project.backup':
-            if (!(this.storage instanceof NativeStorage) || !this.project)
+            if (!(this.storage instanceof NativeStorage) || !this.session)
               throw new Error('File backups require an open desktop project');
             data = {
               path: await this.storage.backup(
@@ -608,10 +610,11 @@ export class Application {
           default:
             throw new Error('Unknown application command');
         }
+      const observation = this.session?.observation;
       return {
         data,
-        projectId: this.project?.id ?? null,
-        revision: this.project?.revision ?? null,
+        projectId: observation?.projectId ?? null,
+        revision: observation?.expectedRevision ?? null,
       };
     });
   }
@@ -624,7 +627,7 @@ export class Application {
     validatePayload(definition.schema, request.payload ?? {});
     if (
       request.projectId !== undefined &&
-      request.projectId !== this.project?.id
+      request.projectId !== this.session?.observation.projectId
     )
       throw new Error('Message project does not match the open project');
     const payload = (request.payload ?? {}) as Record<string, unknown>;
@@ -641,7 +644,7 @@ export class Application {
     )
       throw new Error('timeoutMs must be a nonnegative integer');
     if (request.name === 'messages.wait') {
-      const revision = this.project?.revision ?? null;
+      const revision = this.session?.observation.expectedRevision ?? null;
       const data = await this.messaging.wait(
         (payload.after as number | undefined) ?? request.messagesAfter ?? 0,
         (payload.timeoutMs as number | undefined) ?? 25000,
@@ -660,10 +663,11 @@ export class Application {
             (payload.after as number | undefined) ?? request.messagesAfter ?? 0,
             (payload.waitMs as number | undefined) ?? 0,
           );
+    const observation = this.session?.observation;
     return {
       data,
-      projectId: this.project?.id ?? null,
-      revision: this.project?.revision ?? null,
+      projectId: observation?.projectId ?? null,
+      revision: observation?.expectedRevision ?? null,
     };
   }
 

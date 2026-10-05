@@ -19,8 +19,7 @@ function project(): Project {
 function request(session: ProjectSession, call: CommandCall) {
   return {
     ...call,
-    projectId: session.project.id,
-    expectedRevision: session.project.revision,
+    ...session.observation,
     origin: 'cli',
   };
 }
@@ -66,14 +65,29 @@ void test('save precedes publication, snapshots and submitted requests are isola
   call.payload = { name: 'Changed after submission' };
   await Promise.resolve();
   assert.equal(session.project.name, 'Original');
+  assert.deepEqual(session.observation, {
+    projectId: 'project',
+    expectedRevision: 0,
+  });
   assert.deepEqual(published, []);
   release?.();
   await operation;
   assert.equal(session.project.name, 'Saved');
+  assert.deepEqual(session.observation, {
+    projectId: 'project',
+    expectedRevision: 1,
+  });
   assert.deepEqual(published, ['Saved']);
   const snapshot = session.project;
   snapshot.name = 'tampered';
   assert.equal(session.project.name, 'Saved');
+  const observation = session.observation;
+  observation.projectId = 'tampered';
+  observation.expectedRevision = 500;
+  assert.deepEqual(session.observation, {
+    projectId: 'project',
+    expectedRevision: 1,
+  });
 });
 
 void test('adapter and subscriber code cannot corrupt accepted state or report a committed edit as failed', async () => {

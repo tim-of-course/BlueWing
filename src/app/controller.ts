@@ -59,12 +59,13 @@ export function createWorkspace(
   function changeVisibility(next: DrawingVisibility) {
     setVisibility(next);
     // A hidden selection must not reappear selected when its group is shown.
-    const visible = visibleDrawingIds(app.project, next);
+    const current = app.project;
+    const visible = visibleDrawingIds(current, next);
     setSelection((ids) => ids.filter((id) => visible.has(id)));
-    if (app.project) {
+    if (current) {
       try {
         localStorage.setItem(
-          `bluewing.visibility.${app.project.id}`,
+          `bluewing.visibility.${current.id}`,
           JSON.stringify(next),
         );
       } catch {
@@ -121,14 +122,22 @@ export function createWorkspace(
   });
   let pending = 0;
   let publishedId: string | null = null;
+  let publishedSession: Application['session'] = null;
+  let publishedRevision: number | null = null;
   onCleanup(
     app.subscribe(() => {
-      const current = app.project;
-      setProject(current);
       setCliConnection(app.cliConnection);
       setLibrary(app.library);
       setCanUndo(app.session?.canUndo ?? false);
       setCanRedo(app.session?.canRedo ?? false);
+      const session = app.session;
+      const revision = session?.observation.expectedRevision ?? null;
+      if (session === publishedSession && revision === publishedRevision)
+        return;
+      const current = app.project;
+      publishedSession = session;
+      publishedRevision = revision;
+      setProject(current);
       if (publishedId !== (current?.id ?? null)) {
         setVisibility(readVisibility(current?.id ?? null));
         setSelection([]);
@@ -183,7 +192,7 @@ export function createWorkspace(
     payload?: unknown,
     expected?: Observation,
   ): Promise<void> {
-    const observation = expected ?? (app.project ? app.observe() : {});
+    const observation = expected ?? (app.session ? app.observe() : {});
     await run(() =>
       app.dispatch({
         name,
@@ -243,7 +252,7 @@ export function createWorkspace(
           (
             await app.dispatch({
               ...call,
-              ...(expected ?? (app.project ? app.observe() : {})),
+              ...(expected ?? (app.session ? app.observe() : {})),
               origin: 'ui',
             })
           ).data,
