@@ -85,7 +85,7 @@ All browser/build/native commands above retained the resource guard. The optiona
 - Bent/stepped track joints remain explicitly unresolved. Multiple jambs and shared junction members require offsets and ownership.
 - Formula estimates for additional trades remain unmodeled until the necessary placement is supplied by an appropriate generator.
 - Generation stops at 50,000 pieces/surfaces and marks results incomplete. The Three.js viewer displays all generated objects matching its filters; schedules retain all generated records.
-- Native PDF transfer/storage is bounded, but PDF.js still holds a complete PDF buffer. Large imports are not constant-memory operations.
+- Native PDF imports and saved assets use random-access reads with automatic prefetch disabled. PDF.js still reserves a source-length worker buffer and retains fetched chunks until destruction. Two idle workers are retained; active operations are pinned. Large imports are not constant-memory operations, and browser development still loads complete source bytes.
 
 Recovery for this development change is through the branch and Git checkpoints. `project.backup` remains a user-requested copy of a current project, not a migration mechanism.
 
