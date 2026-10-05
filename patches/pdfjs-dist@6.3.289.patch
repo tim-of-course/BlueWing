@@ -1,0 +1,83 @@
+diff --git a/build/pdf.worker.mjs b/build/pdf.worker.mjs
+index ab24e0df4fe5a9b2b98f0a270982eb9c23197d82..5cd2f40d784300101773504a29042f742c9d4258 100644
+--- a/build/pdf.worker.mjs
++++ b/build/pdf.worker.mjs
+@@ -3058,6 +3058,7 @@ class ChunkedStream extends Stream {
+ }
+ class ChunkedStreamManager {
+   #aborted = false;
++  #abortReason = null;
+   currRequestId = 0;
+   _chunksNeededByRequest = new Map();
+   #loadedStreamCapability = Promise.withResolvers();
+@@ -3099,13 +3100,16 @@ class ChunkedStreamManager {
+     });
+   }
+   requestAllChunks(noFetch = false) {
+-    if (!noFetch) {
++    if (!noFetch && !this.#aborted) {
+       const missingChunks = this.stream.getMissingChunks();
+       this._requestChunks(missingChunks);
+     }
+     return this.#loadedStreamCapability.promise;
+   }
+   _requestChunks(chunks) {
++    if (this.#aborted) {
++      return Promise.reject(this.#abortReason);
++    }
+     const requestId = this.currRequestId++;
+     const chunksNeeded = new Set();
+     this._chunksNeededByRequest.set(requestId, chunksNeeded);
+@@ -3243,7 +3247,7 @@ class ChunkedStreamManager {
+       } else {
+         nextEmptyChunk = stream.nextEmptyChunk(endChunk);
+       }
+-      if (Number.isInteger(nextEmptyChunk)) {
++      if (Number.isInteger(nextEmptyChunk) && !this.#aborted) {
+         this._requestChunks([nextEmptyChunk]);
+       }
+     }
+@@ -3265,6 +3269,7 @@ class ChunkedStreamManager {
+   }
+   abort(reason) {
+     this.#aborted = true;
++    this.#abortReason = reason;
+     this.pdfStream?.cancelAllRequests(reason);
+     for (const capability of this._promisesByRequest.values()) {
+       capability.reject(reason);
+@@ -64534,7 +64539,9 @@ class WorkerMessageHandler {
+     }
+     function setupDoc(data) {
+       function onSuccess(doc) {
+-        ensureNotTerminated();
++        if (terminated) {
++          return;
++        }
+         handler.send("GetDoc", {
+           pdfInfo: doc
+         });
+@@ -64555,15 +64562,21 @@ class WorkerMessageHandler {
+         }
+       }
+       function pdfManagerReady() {
+-        ensureNotTerminated();
++        if (terminated) {
++          return;
++        }
+         loadDocument(false).then(onSuccess, function (reason) {
+-          ensureNotTerminated();
++          if (terminated) {
++            return;
++          }
+           if (!(reason instanceof XRefParseException)) {
+             onFailure(reason);
+             return;
+           }
+           pdfManager.requestLoadedStream().then(function () {
+-            ensureNotTerminated();
++            if (terminated) {
++              return;
++            }
+             loadDocument(true).then(onSuccess, onFailure);
+           }, onFailure);
+         });

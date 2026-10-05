@@ -1,11 +1,17 @@
 import { validateProject } from '../core/commands';
 import type { PersistencePort, Project } from '../core/types';
 
+/** Random access to a source asset without transferring its complete contents. */
+export interface AssetRange {
+  length: number;
+  read(offset: number, length: number): Promise<Uint8Array>;
+}
+
 export interface Asset {
   id: string;
   name: string;
   data: Uint8Array;
-  /** Immutable native tempfile, released by the import owner after save or failure. */
+  /** Immutable native tempfile; data is empty. Released after import or failure. */
   nativeSource?: { token: string; length: number };
 }
 export interface ProjectStorage extends PersistencePort {

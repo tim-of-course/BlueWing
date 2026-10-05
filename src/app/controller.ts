@@ -564,9 +564,10 @@ export function createWorkspace(
     deleteAssignment: (id) => command('assignment.delete', { id }),
     saveRecipe: (recipe, expected) => command('assembly.put', recipe, expected),
     deleteRecipe: (id) => command('assembly.delete', { id }),
-    renderSheet: (sheet, maxDimension) => app.pdf.render(sheet, maxDimension),
-    renderRegion: (sheet, bounds, maxDimension) =>
-      app.pdf.renderRegion(sheet, bounds, maxDimension),
+    renderSheet: (sheet, maxDimension, signal) =>
+      app.pdf.render(sheet, maxDimension, signal),
+    renderRegion: (sheet, bounds, maxDimension, signal) =>
+      app.pdf.renderRegion(sheet, bounds, maxDimension, signal),
     async exportQuantities(format) {
       const current = requireProject();
       const content = exportQuantities(current, format);

@@ -3,7 +3,7 @@ import { validateProject } from '../core/commands';
 import type { Project } from '../core/types';
 import { encodeBase64 } from './base64';
 import { BrowserStorage } from './browser-storage';
-import { readNativeChunks } from './native-bytes';
+import { nativeRange } from './native-bytes';
 
 import {
   StagedStorage,
@@ -13,6 +13,7 @@ import {
 } from './storage-model';
 import type {
   Asset,
+  AssetRange,
   ProjectStorage,
   SqlValue,
   Statement,
@@ -32,7 +33,13 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
       super.stageAsset(asset);
       return;
     }
-    if (!asset.id || asset.data.length !== asset.nativeSource.length)
+    if (
+      !asset.id ||
+      !asset.nativeSource.token ||
+      !Number.isSafeInteger(asset.nativeSource.length) ||
+      asset.nativeSource.length < 0 ||
+      asset.data.length !== 0
+    )
       throw new Error('Invalid native asset snapshot');
     this.staged.set(asset.id, { ...asset, data: new Uint8Array() });
   }
@@ -190,7 +197,7 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
   async backup(path?: string): Promise<string> {
     return this.call('database_backup', { path: path ?? null });
   }
-  async readAsset(id: string): Promise<Uint8Array> {
+  async openAsset(id: string): Promise<AssetRange> {
     const [row] = await this.query(
       'SELECT rowid AS row_id,length(data) AS byte_length FROM assets WHERE id=?',
       [id],
@@ -201,7 +208,7 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
       typeof row.byte_length !== 'number'
     )
       throw new Error(`Missing asset: ${id}`);
-    return readNativeChunks(row.byte_length, (offset, length) =>
+    return nativeRange(row.byte_length, (offset, length) =>
       this.call('database_read_blob', {
         table: 'assets',
         column: 'data',
@@ -210,6 +217,10 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
         length,
       }),
     );
+  }
+  async readAsset(id: string): Promise<Uint8Array> {
+    const source = await this.openAsset(id);
+    return source.read(0, source.length);
   }
   async close(): Promise<void> {
     await this.call('database_close');

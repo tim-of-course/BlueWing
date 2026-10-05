@@ -437,19 +437,26 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
             import_seconds = time.monotonic() - started
             assert imported and len(inspect()['sheets']) == len(imported)
             pages = sorted({0, len(imported) // 2, len(imported) - 1})
+            render_seconds = {}
             for index in pages:
+                started = time.monotonic()
                 rendered = call('sheet.render', {'sheetId': imported[index]['id'],
                                                  'path': str(EVIDENCE / f'large-page-{index + 1}.png'),
                                                  'maxDimension': 1024, 'mode': 'plan'}, timeout=180)
+                render_seconds[str(index + 1)] = time.monotonic() - started
                 png(rendered)
                 assert max(rendered['width'], rendered['height']) <= 1024
+            started = time.monotonic()
             call('project.close', mutates=True)
+            close_seconds = time.monotonic() - started
             call('project.open', {'path': str(data / 'large.bluewing')})
             reopened = call('sheet.render', {'sheetId': imported[-1]['id'], 'path': str(EVIDENCE / 'large-reopened.png'), 'maxDimension': 1024, 'mode': 'plan'}, timeout=180)
             assert png(reopened) == png(rendered)
             call('project.close', mutates=True)
             (EVIDENCE / 'large-plan.json').write_text(json.dumps({'bytes': plan_path.stat().st_size,
-                                                               'sheets': len(imported), 'renderedPages': pages, 'importSeconds': import_seconds, 'reopenedRenderMatches': True}, indent=2))
+                                                               'sheets': len(imported), 'renderedPages': pages, 'importSeconds': import_seconds,
+                                                               'renderSecondsByPage': render_seconds, 'closeSeconds': close_seconds,
+                                                               'reopenedRenderMatches': True}, indent=2))
     finally:
         (EVIDENCE / 'commands.json').write_text(json.dumps(transcript, indent=2))
         stop()

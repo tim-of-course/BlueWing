@@ -1,29 +1,33 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { encodeBase64 } from '../platform/base64';
-import { readNativeChunks } from '../platform/native-bytes';
-import type { Asset } from '../platform/storage-model';
+import { nativeRange } from '../platform/native-bytes';
+import type { Asset, AssetRange } from '../platform/storage-model';
+import type { NativeInvoke } from '../platform/storage';
 export type ImportedFile = Omit<Asset, 'id'>;
-export async function readNativeFile(path: string): Promise<ImportedFile> {
-  const file = await invoke<{ token: string; name: string; length: number }>(
+export async function readNativeFile(
+  path: string,
+  call: NativeInvoke = invoke,
+): Promise<ImportedFile> {
+  const file = await call<{ token: string; name: string; length: number }>(
     'file_snapshot_open',
     {
       path,
     },
   );
-  try {
-    const data = await readNativeChunks(file.length, (offset, length) =>
-      invoke('file_snapshot_read', { token: file.token, offset, length }),
-    );
-    return {
-      name: file.name,
-      data,
-      nativeSource: { token: file.token, length: file.length },
-    };
-  } catch (error) {
-    await releaseNativeFile({ nativeSource: file });
-    throw error;
-  }
+  return {
+    name: file.name,
+    data: new Uint8Array(),
+    nativeSource: { token: file.token, length: file.length },
+  };
+}
+export function nativeFileSource(
+  source: NonNullable<ImportedFile['nativeSource']>,
+  call: NativeInvoke = invoke,
+): AssetRange {
+  return nativeRange(source.length, (offset, length) =>
+    call('file_snapshot_read', { token: source.token, offset, length }),
+  );
 }
 export async function releaseNativeFile(
   file: Pick<ImportedFile, 'nativeSource'>,

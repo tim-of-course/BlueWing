@@ -34,7 +34,12 @@ import {
 } from '../three/scene';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
-import { readNativeFile, releaseNativeFile, writeOutput } from './files';
+import {
+  readNativeFile,
+  releaseNativeFile,
+  nativeFileSource,
+  writeOutput,
+} from './files';
 import type { ImportedFile } from './files';
 import { applicationCommands, registry } from './registry';
 import { renderImage, type RenderOptions } from './render';
@@ -86,7 +91,11 @@ export class Application {
     this.messaging = new Messaging(messagingStorage(native));
     this.storage = createStorage(native);
     this.libraryStore = new AssemblyLibraryStore(libraryStorage(native));
-    this.pdf = new PdfDocuments((id) => this.storage.readAsset(id));
+    this.pdf = new PdfDocuments((id) =>
+      this.storage instanceof NativeStorage
+        ? this.storage.openAsset(id)
+        : this.storage.readAsset(id),
+    );
   }
   get project(): Project | null {
     return this.session?.project ?? null;
@@ -520,19 +529,23 @@ export class Application {
             }
             break;
           }
-          case 'project.close':
+          case 'project.close': {
             if (this.draftPending)
               throw new Error(
                 'Finish or cancel the current drawing or editor draft before closing the project',
               );
-            await this.storage.close();
+            // Capture workers before UI teardown aborts its renders, then detach
+            // immediately so queued previews cannot reopen PDFs during cleanup.
+            const clearing = this.pdf.clear();
             this.session = null;
             this.disposeConstructionRenderer();
-            await this.messaging.bind(null);
-            await this.pdf.clear();
             this.publish();
+            await clearing;
+            await this.storage.close();
+            await this.messaging.bind(null);
             data = { closed: true };
             break;
+          }
           case 'project.import': {
             this.check(request);
             if (!this.native)
@@ -690,7 +703,14 @@ export class Application {
       const session = this.session;
       if (!session) throw new Error('Open a project first');
       this.storage.stageAsset({ id, ...file });
-      const sheets = await this.pdf.import(id, file.name, file.data);
+      const sheets = await this.pdf.import(
+        id,
+        file.name,
+        file.nativeSource ? nativeFileSource(file.nativeSource) : file.data,
+      );
+      // Finish reading the temporary snapshot before publishing saved sheets.
+      // Their renders reopen the SQLite source using ranges, after the commit.
+      if (file.nativeSource) await this.pdf.release(id);
       const firstOrder =
         Math.max(
           -1,

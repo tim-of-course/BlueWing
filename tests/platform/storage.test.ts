@@ -9,6 +9,7 @@ import type { Project } from '../../src/core/types';
 function fixture() {
   const database = new DatabaseSync(':memory:');
   const transactions: Statement[][] = [];
+  const reads: { rowId: number; offset: number; length: number }[] = [];
   const snapshots = new Map<string, Uint8Array>();
   let fail = false;
   let failBackup = false;
@@ -46,6 +47,7 @@ function fixture() {
           offset: number;
           length: number;
         };
+        reads.push({ rowId, offset, length });
         const row = database
           .prepare('SELECT substr(data,?,?) AS chunk FROM assets WHERE rowid=?')
           .get(offset + 1, length, rowId);
@@ -95,6 +97,7 @@ function fixture() {
   return {
     storage: new NativeStorage(call),
     transactions,
+    reads,
     snapshots,
     setFailure: (value: boolean) => {
       fail = value;
@@ -274,7 +277,7 @@ void test('native snapshots insert with project metadata atomically without base
   storage.stageAsset({
     id: 'snapshot-asset',
     name: 'plan.pdf',
-    data: source,
+    data: new Uint8Array(),
     nativeSource: { token: 'source-token', length: 4 },
   });
   source.fill(0);
@@ -293,5 +296,35 @@ void test('native snapshots insert with project metadata atomically without base
   assert.equal(write?.blob?.token, 'source-token');
   assert.deepEqual(write.params, ['snapshot-asset', 'plan.pdf', 4]);
   assert.deepEqual(await storage.load(), next);
+  database.close();
+});
+
+void test('native asset readers retain random access without preloading the stored PDF', async () => {
+  const { storage, database, reads } = fixture();
+  await storage.open('ranges', true);
+  const initial = project();
+  await storage.initialize(initial);
+  storage.stageAsset({
+    id: 'pdf',
+    name: 'plan.pdf',
+    data: new Uint8Array([10, 20, 30, 40, 50, 60]),
+  });
+  await storage.save(initial, { ...initial, revision: 1 });
+  const range = await storage.openAsset('pdf');
+  assert.equal(range.length, 6);
+  assert.deepEqual(reads, []);
+  assert.deepEqual(await range.read(4, 2), new Uint8Array([50, 60]));
+  assert.deepEqual(await range.read(1, 3), new Uint8Array([20, 30, 40]));
+  assert.deepEqual(await range.read(4, 2), new Uint8Array([50, 60]));
+  assert.deepEqual(
+    reads.map(({ offset, length }) => [offset, length]),
+    [
+      [4, 2],
+      [1, 3],
+      [4, 2],
+    ],
+  );
+  await assert.rejects(range.read(6, 1), /outside/);
+  assert.equal(reads.length, 3);
   database.close();
 });

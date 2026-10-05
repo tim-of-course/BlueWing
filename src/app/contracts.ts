@@ -144,11 +144,16 @@ export interface WorkspaceController {
   deleteAssignment(id: string): Promise<void>;
   saveRecipe(recipe: Recipe, expected?: Observation): Promise<void>;
   deleteRecipe(id: string): Promise<void>;
-  renderSheet(sheet: Sheet, maxDimension?: number): Promise<HTMLCanvasElement>;
+  renderSheet(
+    sheet: Sheet,
+    maxDimension?: number,
+    signal?: AbortSignal,
+  ): Promise<HTMLCanvasElement>;
   renderRegion(
     sheet: Sheet,
     bounds: ViewBounds,
     maxDimension: number,
+    signal?: AbortSignal,
   ): Promise<HTMLCanvasElement>;
   exportQuantities(format: 'csv' | 'json'): Promise<void>;
   installWebUpdate(manifestUrl: string): Promise<string>;
