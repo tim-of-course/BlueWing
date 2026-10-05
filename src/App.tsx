@@ -546,6 +546,7 @@ export default function App(props: { application?: Application }) {
             >
               <div class="plan-pane" hidden={view() === '3d'}>
                 <DrawingCanvas
+                  active={!quantities() && view() !== '3d'}
                   onViewport={(port) => {
                     planViewport = port;
                   }}

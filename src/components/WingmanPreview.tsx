@@ -65,14 +65,19 @@ export default function WingmanPreview(props: {
   view: WingmanView;
 }) {
   let canvas: HTMLCanvasElement | undefined;
-  let raster: { key: string; image: Promise<HTMLCanvasElement> } | undefined;
+  let raster:
+    | { key: string; image: Promise<HTMLCanvasElement>; abort: AbortController }
+    | undefined;
   let snapshot: ReturnType<typeof acquireConstructionSnapshot> | undefined;
   const [status, setStatus] = createSignal('');
-  onCleanup(() => snapshot?.dispose());
+  onCleanup(() => {
+    snapshot?.dispose();
+    raster?.abort.abort();
+  });
   createEffect(
     () => ({
       project: props.controller.project(),
-      result: props.controller.construction(),
+      result: props.view.kind === '3d' ? props.controller.construction() : null,
       view: props.view,
       controller: props.controller,
     }),
@@ -86,7 +91,13 @@ export default function WingmanPreview(props: {
       if (!context) return;
       context.clearRect(0, 0, element.width, element.height);
       setStatus('');
+      if (view.kind === '3d' || view.mode === 'takeoff') {
+        raster?.abort.abort();
+        raster = undefined;
+      }
       if (!project || (view.kind === 'plan' && !project.sheets[view.sheetId])) {
+        raster?.abort.abort();
+        raster = undefined;
         setStatus('Source sheet is no longer available.');
         return;
       }
@@ -208,11 +219,20 @@ export default function WingmanPreview(props: {
           sheet.rotation,
           view.bounds,
         ]);
-        if (raster?.key !== key)
+        if (raster?.key !== key) {
+          raster?.abort.abort();
+          const abort = new AbortController();
           raster = {
             key,
-            image: controller.renderRegion(sheet, view.bounds, 640),
+            image: controller.renderRegion(
+              sheet,
+              view.bounds,
+              640,
+              abort.signal,
+            ),
+            abort,
           };
+        }
         void raster.image
           .then((image) => {
             if (cancelled) return;

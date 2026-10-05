@@ -17,6 +17,7 @@ import {
 import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
+import { registerCanvasCapture } from '../../platform/canvas-capture';
 
 /** Canvas-local CSS pixels = camera offset + page coordinates * zoom. */
 interface Camera {
@@ -155,6 +156,7 @@ export default function DrawingCanvas(props: {
   onDraftChange?: (dirty: boolean) => void;
   interactionDisabled?: boolean;
   presentationActive?: boolean;
+  active?: boolean;
   onViewport?: (port: ViewportPort<PlanView>) => void;
 }) {
   let canvas: HTMLCanvasElement | undefined;
@@ -236,6 +238,26 @@ export default function DrawingCanvas(props: {
       equals: (previous, next) =>
         previous.length === next.length &&
         previous.every((item, index) => item === next[index]),
+    },
+  );
+  const geometryColors = createMemo(
+    () => {
+      const colors: Record<string, string> = {};
+      for (const group of Object.values(
+        props.controller.project()?.groups ?? {},
+      )) {
+        if (!props.controller.isGroupVisible(group.id, sheet()?.id ?? ''))
+          continue;
+        for (const id of group.geometryIds)
+          colors[id] = group.color ?? '#3b82f6';
+      }
+      return colors;
+    },
+    {
+      name: 'canvas.geometryColors',
+      equals: (previous, next) =>
+        Object.keys(previous).length === Object.keys(next).length &&
+        Object.entries(previous).every(([id, color]) => next[id] === color),
     },
   );
   const renderSheet = createMemo(() => sheet(), {
@@ -342,22 +364,31 @@ export default function DrawingCanvas(props: {
     { name: 'canvas.reportDraft' },
   );
   createEffect(
-    () => ({
-      current: renderSheet(),
-      controller: props.controller,
-      report: props.onError,
-    }),
-    ({ current, controller, report }) => {
+    () =>
+      props.active === false
+        ? null
+        : {
+            current: renderSheet(),
+            controller: props.controller,
+            report: props.onError,
+          },
+    (state) => {
+      if (!state) {
+        setLoading(false);
+        return;
+      }
+      const { current, controller, report } = state;
       stopBrush();
       setRenderError('');
-      if (!current) {
+      if (!current || untrack(renderedImage)?.sheet === current) {
         setLoading(false);
         return;
       }
       let cancelled = false;
+      const renderAbort = new AbortController();
       setLoading(true);
       void controller
-        .renderSheet(current, 3000)
+        .renderSheet(current, 3000, renderAbort.signal)
         .then((rendered) => {
           if (!cancelled) {
             setRenderedImage({ sheet: current, canvas: rendered });
@@ -374,143 +405,178 @@ export default function DrawingCanvas(props: {
         });
       return () => {
         cancelled = true;
+        renderAbort.abort();
       };
     },
     { name: 'canvas.loadPdf' },
   );
-  createEffect(
-    () => ({
-      size: viewport(),
-      camera: camera(),
-      sheet: sheet(),
-      image: image(),
-      geometries: geometries(),
-      selected: props.controller.selection(),
-      groups: Object.values(props.controller.project()?.groups ?? {}).filter(
-        (group) => props.controller.isGroupVisible(group.id, sheet()?.id ?? ''),
-      ),
-      draft: draft(),
-      edit: edit(),
-      hover: hover(),
-      snapped: snapped(),
-      selectionBox: selectionBox(),
-      presentation: activePresentation(),
-    }),
-    (state) => {
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      canvas.width = Math.round(state.size.width * state.size.dpr);
-      canvas.height = Math.round(state.size.height * state.size.dpr);
-      ctx.setTransform(state.size.dpr, 0, 0, state.size.dpr, 0, 0);
-      ctx.fillStyle = '#0f1218';
-      ctx.fillRect(0, 0, state.size.width, state.size.height);
-      if (!state.sheet) return;
-      ctx.translate(state.camera.x, state.camera.y);
-      ctx.scale(state.camera.zoom, state.camera.zoom);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, state.sheet.width, state.sheet.height);
-      if (state.image && state.presentation?.mode !== 'takeoff')
-        ctx.drawImage(state.image, 0, 0, state.sheet.width, state.sheet.height);
-      const pixel = 1 / state.camera.zoom;
-      const colors: Record<string, string> = {};
-      for (const group of state.groups)
-        for (const id of group.geometryIds)
-          colors[id] = group.color ?? '#3b82f6';
-      let displayed = state.geometries;
-      if (state.edit?.kind === 'point') {
-        const edited = state.edit.geometry;
-        displayed = displayed.map((item) =>
-          item.id === edited.id ? edited : item,
-        );
-      } else if (state.edit?.kind === 'move') {
-        const moved = new Map(
-          state.edit.geometries.map((item) => [item.id, item]),
-        );
-        displayed = displayed.map((item) => moved.get(item.id) ?? item);
-      }
-      if (state.presentation?.mode === 'plan') displayed = [];
-      paintTakeoff(ctx, displayed, {
-        selectedIds: state.selected,
-        colors,
-        unitsPerPixel: pixel,
-      });
-      if (state.presentation)
-        paintPlanPresentation(ctx, state.geometries, state.presentation, pixel);
-      for (const geometry of displayed) {
-        if (!state.selected.includes(geometry.id)) continue;
-        for (const point of geometry.points) {
-          ctx.fillStyle = '#fff';
-          ctx.strokeStyle = '#3b82f6';
-          ctx.lineWidth = pixel;
-          ctx.fillRect(
-            point.x - 3 * pixel,
-            point.y - 3 * pixel,
-            6 * pixel,
-            6 * pixel,
-          );
-          ctx.strokeRect(
-            point.x - 3 * pixel,
-            point.y - 3 * pixel,
-            6 * pixel,
-            6 * pixel,
-          );
-        }
-      }
-      if (state.draft?.sheetId === state.sheet.id) {
-        const points = [...state.draft.points];
-        if (
-          state.hover &&
-          state.draft.kind !== 'count' &&
-          !(state.draft.kind === 'calibrate' && points.length === 2)
-        )
-          points.push(state.hover);
-        ctx.save();
-        ctx.setLineDash([5 * pixel, 4 * pixel]);
-        paintTakeoff(
-          ctx,
-          [
-            {
-              id: 'draft',
-              name: '',
-              sheetId: state.sheet.id,
-              kind:
-                state.draft.kind === 'calibrate' ? 'path' : state.draft.kind,
-              points,
-            },
-          ],
-          { colors: { draft: '#6366f1' }, unitsPerPixel: pixel },
-        );
-        ctx.restore();
-        for (const point of state.draft.points) {
-          ctx.beginPath();
-          ctx.arc(point.x, point.y, 3 * pixel, 0, Math.PI * 2);
-          ctx.fillStyle = '#6366f1';
-          ctx.fill();
-        }
-      }
-      if (state.hover && state.snapped) {
-        ctx.strokeStyle = '#f59e0b';
+  const paintState = createMemo(
+    () => {
+      if (props.active === false) return null;
+      const currentDraft = draft();
+      const isSnapped = snapped();
+      const showHover =
+        isSnapped ||
+        (currentDraft &&
+          currentDraft.kind !== 'count' &&
+          !(
+            currentDraft.kind === 'calibrate' &&
+            currentDraft.points.length === 2
+          ));
+      return {
+        size: viewport(),
+        camera: camera(),
+        sheet: sheet(),
+        image: image(),
+        geometries: geometries(),
+        selected: props.controller.selection(),
+        colors: geometryColors(),
+        draft: currentDraft,
+        edit: edit(),
+        hover: showHover ? hover() : null,
+        snapped: isSnapped,
+        selectionBox: selectionBox(),
+        presentation: activePresentation(),
+      };
+    },
+    { name: 'canvas.paintState' },
+  );
+  function paintScene(state: NonNullable<ReturnType<typeof paintState>>) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const width = Math.round(state.size.width * state.size.dpr);
+    const height = Math.round(state.size.height * state.size.dpr);
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+    ctx.setTransform(state.size.dpr, 0, 0, state.size.dpr, 0, 0);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#0f1218';
+    ctx.fillRect(0, 0, state.size.width, state.size.height);
+    if (!state.sheet) return;
+    ctx.translate(state.camera.x, state.camera.y);
+    ctx.scale(state.camera.zoom, state.camera.zoom);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, state.sheet.width, state.sheet.height);
+    if (state.image && state.presentation?.mode !== 'takeoff')
+      ctx.drawImage(state.image, 0, 0, state.sheet.width, state.sheet.height);
+    const pixel = 1 / state.camera.zoom;
+    let displayed = state.geometries;
+    if (state.edit?.kind === 'point') {
+      const edited = state.edit.geometry;
+      displayed = displayed.map((item) =>
+        item.id === edited.id ? edited : item,
+      );
+    } else if (state.edit?.kind === 'move') {
+      const moved = new Map(
+        state.edit.geometries.map((item) => [item.id, item]),
+      );
+      displayed = displayed.map((item) => moved.get(item.id) ?? item);
+    }
+    if (state.presentation?.mode === 'plan') displayed = [];
+    paintTakeoff(ctx, displayed, {
+      selectedIds: state.selected,
+      colors: state.colors,
+      unitsPerPixel: pixel,
+    });
+    if (state.presentation)
+      paintPlanPresentation(ctx, state.geometries, state.presentation, pixel);
+    for (const geometry of displayed) {
+      if (!state.selected.includes(geometry.id)) continue;
+      for (const point of geometry.points) {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#3b82f6';
         ctx.lineWidth = pixel;
+        ctx.fillRect(
+          point.x - 3 * pixel,
+          point.y - 3 * pixel,
+          6 * pixel,
+          6 * pixel,
+        );
         ctx.strokeRect(
-          state.hover.x - 5 * pixel,
-          state.hover.y - 5 * pixel,
-          10 * pixel,
-          10 * pixel,
+          point.x - 3 * pixel,
+          point.y - 3 * pixel,
+          6 * pixel,
+          6 * pixel,
         );
       }
-      if (state.selectionBox) {
-        const { start, end } = state.selectionBox;
-        ctx.fillStyle = '#3b82f622';
-        ctx.strokeStyle = '#60a5fa';
-        ctx.lineWidth = pixel;
-        ctx.setLineDash([5 * pixel, 3 * pixel]);
-        ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
-        ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    }
+    if (state.draft?.sheetId === state.sheet.id) {
+      const points = [...state.draft.points];
+      if (
+        state.hover &&
+        state.draft.kind !== 'count' &&
+        !(state.draft.kind === 'calibrate' && points.length === 2)
+      )
+        points.push(state.hover);
+      ctx.save();
+      ctx.setLineDash([5 * pixel, 4 * pixel]);
+      paintTakeoff(
+        ctx,
+        [
+          {
+            id: 'draft',
+            name: '',
+            sheetId: state.sheet.id,
+            kind: state.draft.kind === 'calibrate' ? 'path' : state.draft.kind,
+            points,
+          },
+        ],
+        { colors: { draft: '#6366f1' }, unitsPerPixel: pixel },
+      );
+      ctx.restore();
+      for (const point of state.draft.points) {
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 3 * pixel, 0, Math.PI * 2);
+        ctx.fillStyle = '#6366f1';
+        ctx.fill();
       }
+    }
+    if (state.hover && state.snapped) {
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = pixel;
+      ctx.strokeRect(
+        state.hover.x - 5 * pixel,
+        state.hover.y - 5 * pixel,
+        10 * pixel,
+        10 * pixel,
+      );
+    }
+    if (state.selectionBox) {
+      const { start, end } = state.selectionBox;
+      ctx.fillStyle = '#3b82f622';
+      ctx.strokeStyle = '#60a5fa';
+      ctx.lineWidth = pixel;
+      ctx.setLineDash([5 * pixel, 3 * pixel]);
+      ctx.fillRect(start.x, start.y, end.x - start.x, end.y - start.y);
+      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
+    }
+  }
+  let paintFrame = 0;
+  function flushPaint() {
+    if (paintFrame) cancelAnimationFrame(paintFrame);
+    paintFrame = 0;
+    const state = untrack(paintState);
+    if (state) paintScene(state);
+  }
+  createEffect(
+    paintState,
+    (state) => {
+      if (!state) {
+        if (paintFrame) cancelAnimationFrame(paintFrame);
+        paintFrame = 0;
+      } else if (!paintFrame) paintFrame = requestAnimationFrame(flushPaint);
     },
     { name: 'canvas.paintScene' },
   );
+  onSettled(() => {
+    if (!canvas) return;
+    const unregister = registerCanvasCapture(canvas, flushPaint);
+    return () => {
+      unregister();
+      if (paintFrame) cancelAnimationFrame(paintFrame);
+    };
+  });
 
   function localPoint(event: { clientX: number; clientY: number }): Point {
     const bounds = canvas?.getBoundingClientRect();

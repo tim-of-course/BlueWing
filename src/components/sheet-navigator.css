@@ -34,7 +34,9 @@
   font-size: 16px;
 }
 .sheet-list {
-  border-bottom: 0;
+  border: 0;
+  margin: 0;
+  min-width: 0;
   padding: 0 5px 8px;
   min-height: 0;
   flex: 1;

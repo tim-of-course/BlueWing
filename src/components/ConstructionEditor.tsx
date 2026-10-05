@@ -25,6 +25,12 @@ const scalarKeys = new Set(['layers', 'count', 'jambCount', 'wastePercent']);
 const angleKeys = new Set(['rotation', 'sectionRotation']);
 const pageKeys = new Set(['pageOrigin']);
 const surfaceKeys = new Set(['finishes', 'ceilings', 'path-surface']);
+const constructionReferenceKeys = new Set([
+  'wallId',
+  'ownerWallId',
+  'headerId',
+  'levelId',
+]);
 function seed(schema: PayloadSchema, key = ''): unknown {
   if (schema.type === 'object')
     return Object.fromEntries(
@@ -63,6 +69,19 @@ export function ConstructionFields(props: {
   hide?: string[];
   inherited?: Record<string, unknown> | undefined;
 }) {
+  const hasConstructionReferences = createMemo(() =>
+    Object.keys(props.schema.properties ?? {}).some((key) =>
+      constructionReferenceKeys.has(key),
+    ),
+  );
+  const construction = createMemo(
+    () => {
+      if (!hasConstructionReferences()) return undefined;
+      const project = props.controller.project();
+      return project ? resolveConstruction(project) : undefined;
+    },
+    { name: 'construction.referenceChoices' },
+  );
   const set = (key: string, value: unknown) => {
     const next = { ...props.value };
     if (value === undefined) Reflect.deleteProperty(next, key);
@@ -70,8 +89,13 @@ export function ConstructionFields(props: {
     props.onChange(next);
   };
   const choices = (key: string) => {
+    if (
+      key !== 'geometryId' &&
+      key !== 'sheetId' &&
+      !constructionReferenceKeys.has(key)
+    )
+      return null;
     const project = props.controller.project();
-    const data = project ? resolveConstruction(project) : undefined;
     if (key === 'geometryId')
       return Object.values(project?.geometries ?? {})
         .filter(
@@ -84,17 +108,17 @@ export function ConstructionFields(props: {
         name: s.name,
       }));
     if (key === 'wallId' || key === 'ownerWallId')
-      return Object.values(data?.walls ?? {}).map((w) => ({
+      return Object.values(construction()?.walls ?? {}).map((w) => ({
         id: w.id,
         name: project?.geometries[w.geometryId]?.name ?? w.id,
       }));
     if (key === 'headerId')
-      return Object.values(data?.headers ?? {}).map((h) => ({
+      return Object.values(construction()?.headers ?? {}).map((h) => ({
         id: h.id,
         name: h.name,
       }));
     if (key === 'levelId')
-      return Object.values(data?.levels ?? {}).map((l) => ({
+      return Object.values(construction()?.levels ?? {}).map((l) => ({
         id: l.id,
         name: l.name,
       }));

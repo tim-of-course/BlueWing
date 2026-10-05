@@ -68,8 +68,20 @@ async function inspect(page: Page) {
 }
 export function captureErrors(page: Page) {
   const errors: string[] = [];
+  const chromium =
+    page.context().browser()?.browserType().name() === 'chromium';
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
+    // CLI renders and screenshot tests intentionally read the GPU buffer.
+    // Pixel assertions still verify the result; keep all other warnings/errors.
+    if (
+      chromium &&
+      message.type() === 'warning' &&
+      /^\[\.WebGL-0x[\da-f]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/i.test(
+        message.text(),
+      )
+    )
+      return;
     if (message.type() === 'error' || message.type() === 'warning')
       errors.push(message.text());
   });

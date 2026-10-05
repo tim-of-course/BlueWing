@@ -240,3 +240,99 @@ test('returning to a sheet restores its camera', async ({ page }) => {
   expect(restored.x).toBeCloseTo(firstView.x, 4);
   expect(restored.y).toBeCloseTo(firstView.y, 4);
 });
+
+test('drawing pointer bursts repaint once without resizing the PDF canvas', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await startProject(page);
+  await page.getByRole('button', { name: 'Path (L)', exact: true }).click();
+  const canvas = page.getByLabel('Drawing canvas', { exact: true });
+  const pointerBurst = () =>
+    canvas.evaluate(async (element) => {
+      const target = element as HTMLCanvasElement;
+      const context = target.getContext('2d');
+      if (!context) throw new Error('Missing canvas context');
+      const frame = () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => {
+            resolve();
+          }),
+        );
+      await frame();
+      await frame();
+      let paints = 0;
+      let resizes = 0;
+      const draw = context.drawImage.bind(context);
+      const descriptor = Object.getOwnPropertyDescriptor(context, 'drawImage');
+      Object.defineProperty(context, 'drawImage', {
+        configurable: true,
+        value: (...args: unknown[]) => {
+          paints++;
+          Reflect.apply(draw, context, args);
+        },
+      });
+      const observer = new MutationObserver((records) => {
+        resizes += records.length;
+      });
+      observer.observe(target, {
+        attributes: true,
+        attributeFilter: ['width', 'height'],
+      });
+      try {
+        const bounds = target.getBoundingClientRect();
+        // Yield between events so Solid processes each hover update, while the
+        // browser has one frame to draw their final state. No timing threshold.
+        for (let index = 0; index < 20; index++) {
+          target.dispatchEvent(
+            new PointerEvent('pointermove', {
+              bubbles: true,
+              clientX: bounds.left + bounds.width / 2 + index,
+              clientY: bounds.top + bounds.height / 2 + index / 2,
+            }),
+          );
+          await Promise.resolve();
+        }
+        await frame();
+        resizes += observer.takeRecords().length;
+        return { paints, resizes };
+      } finally {
+        observer.disconnect();
+        if (descriptor) Object.defineProperty(context, 'drawImage', descriptor);
+        else Reflect.deleteProperty(context, 'drawImage');
+      }
+    });
+  const { artifact } = await captureBrowserArtifact(
+    page,
+    async () => {
+      expect(await pointerBurst()).toEqual({ paints: 0, resizes: 0 });
+      await expect(page.locator('.crosshair-horizontal')).toBeVisible();
+      await pagePoint(page, 72, 144);
+      await expect(
+        page.getByText('1 points · Enter to finish', { exact: true }),
+      ).toBeVisible();
+      expect(await pointerBurst()).toEqual({ paints: 1, resizes: 0 });
+      await expect(page.locator('.crosshair-horizontal')).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await page
+        .getByRole('button', { name: 'Quantities', exact: true })
+        .click();
+      await expect(canvas).toBeHidden();
+      expect(await pointerBurst()).toEqual({ paints: 0, resizes: 0 });
+      await page.getByRole('button', { name: 'Drawing', exact: true }).click();
+      await expect(canvas).toBeVisible();
+      await expect(
+        page.getByText('Rendering PDF…', { exact: true }),
+      ).toBeHidden();
+    },
+    { scenario: 'canvas-scheduled-paint' },
+  );
+  await writeFile(
+    testInfo.outputPath('solid-diagnostics.json'),
+    JSON.stringify(artifact, null, 2),
+  );
+  expectNoDiagnostics(artifact);
+  expectNoSilentHolds(artifact);
+  expect(errors).toEqual([]);
+});

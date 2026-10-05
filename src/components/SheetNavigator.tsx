@@ -1,9 +1,11 @@
 import {
   createEffect,
   createMemo,
+  createProjection,
   createSignal,
   For,
   onCleanup,
+  onSettled,
   Show,
   untrack,
 } from 'solid-js';
@@ -108,7 +110,9 @@ export default function SheetNavigator(props: Props) {
     },
   );
   const [filter, setFilter] = createSignal('');
-  const [collapsed, setCollapsed] = createSignal<string[]>([]);
+  const [collapsed, setCollapsed] = createSignal<string[]>([], {
+    name: 'navigator.collapsedSheets',
+  });
   const [preview, setPreview] = createSignal<Preview | null>(null, {
     name: 'navigator.preview',
   });
@@ -124,6 +128,12 @@ export default function SheetNavigator(props: Props) {
   } | null>(null);
   const [name, setName] = createSignal('');
   const [dropTarget, setDropTarget] = createSignal<string | null>(null);
+  let list: HTMLFieldSetElement | undefined;
+  const [visibleRows, setVisibleRows] = createSignal(new Set<string>(), {
+    name: 'navigator.visibleRows',
+    equals: (previous, next) =>
+      previous.size === next.size && [...previous].every((id) => next.has(id)),
+  });
   let draggedId: string | null = null;
   let enterTimer: ReturnType<typeof setTimeout> | undefined;
   let exitTimer: ReturnType<typeof setTimeout> | undefined;
@@ -137,7 +147,7 @@ export default function SheetNavigator(props: Props) {
   const [thumbnailVersion, setThumbnailVersion] = createSignal(0);
   const controller = untrack(() => props.controller);
   const thumbnails = new SheetThumbnails(
-    (sheet) => controller.renderSheet(sheet, 640),
+    (sheet, signal) => controller.renderSheet(sheet, 640, signal),
     () => setThumbnailVersion((version) => version + 1),
   );
   const currentPreview = createMemo(() => {
@@ -153,11 +163,15 @@ export default function SheetNavigator(props: Props) {
     return entry ? { source: entry.source, error: entry.error } : undefined;
   };
   createEffect(
-    () => ({ projectId: props.controller.project()?.id, sheets: sheets() }),
-    ({ projectId, sheets }) => {
-      thumbnails.sync(projectId, sheets);
+    () => ({
+      projectId: props.controller.project()?.id,
+      sheets: sheets().filter((sheet) => visibleRows().has(sheet.id)),
+      preview: currentPreview()?.sheet,
+    }),
+    ({ projectId, sheets, preview }) => {
+      thumbnails.sync(projectId, sheets, preview);
     },
-    { name: 'navigator.prewarmThumbnails' },
+    { name: 'navigator.thumbnailCache' },
   );
   onCleanup(() => {
     thumbnails.clear();
@@ -167,8 +181,24 @@ export default function SheetNavigator(props: Props) {
     group.geometryIds.filter(
       (id) => props.controller.project()?.geometries[id]?.sheetId === sheetId,
     );
-  const sheetGroups = (sheetId: string) =>
-    groups().filter((group) => members(group, sheetId).length > 0);
+  const groupsBySheet = createProjection<Record<string, Group[]>>(
+    () => {
+      const project = props.controller.project();
+      const result: Record<string, Group[]> = {};
+      for (const group of Object.values(project?.groups ?? {})) {
+        const sheetIds = new Set(
+          group.geometryIds.flatMap(
+            (id) => project?.geometries[id]?.sheetId ?? [],
+          ),
+        );
+        for (const id of sheetIds) (result[id] ??= []).push(group);
+      }
+      return result;
+    },
+    {},
+    { name: 'navigator.groupsBySheet' },
+  );
+  const sheetGroups = (sheetId: string) => groupsBySheet[sheetId] ?? [];
   const term = () => filter().trim().toLowerCase();
   const visibleSheets = () =>
     sheets().filter(
@@ -179,8 +209,37 @@ export default function SheetNavigator(props: Props) {
           group.name.toLowerCase().includes(term()),
         ),
     );
-  const expanded = (sheetId: string) =>
-    !!term() || !collapsed().includes(sheetId);
+  const rowState = createProjection<
+    Record<
+      string,
+      { active: boolean; expanded: boolean; drop: boolean; visible: boolean }
+    >
+  >(
+    (draft) => {
+      const active = props.controller.activeSheetId();
+      const drop = dropTarget();
+      const filtering = !!term();
+      const hiddenGroups = new Set(collapsed());
+      const ids = new Set<string>();
+      for (const sheet of sheets()) {
+        ids.add(sheet.id);
+        const state = (draft[sheet.id] ??= {
+          active: false,
+          expanded: true,
+          drop: false,
+          visible: true,
+        });
+        state.active = sheet.id === active;
+        state.expanded = filtering || !hiddenGroups.has(sheet.id);
+        state.drop = sheet.id === drop;
+        state.visible = props.controller.isSheetVisible(sheet.id);
+      }
+      for (const id of Object.keys(draft))
+        if (!ids.has(id)) Reflect.deleteProperty(draft, id);
+    },
+    {},
+    { name: 'navigator.sheetRowState' },
+  );
   const run = (action: () => Promise<unknown>) => {
     const report = props.onError;
     void action().catch((error: unknown) => {
@@ -192,6 +251,67 @@ export default function SheetNavigator(props: Props) {
     clearTimeout(exitTimer);
     setPreview(null);
   };
+  onSettled(() => {
+    if (!list) return;
+    const root = list;
+    const panel = root.closest('.workspace-panel-surface');
+    const observed = new Map<Element, string>();
+    const visible = new Set<Element>();
+    const publish = () => {
+      setVisibleRows(
+        new Set([...visible].flatMap((element) => observed.get(element) ?? [])),
+      );
+    };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!observed.has(entry.target)) continue;
+          if (entry.isIntersecting && entry.intersectionRatio > 0)
+            visible.add(entry.target);
+          else visible.delete(entry.target);
+        }
+        publish();
+      },
+      { root },
+    );
+    const syncRows = () => {
+      const shown = panel?.getAttribute('aria-hidden') !== 'true';
+      const rows = new Set(shown ? root.querySelectorAll('.sheet-row') : []);
+      const previousIds = new Set(
+        [...visible].map((element) => observed.get(element)),
+      );
+      for (const element of observed.keys()) {
+        if (rows.has(element)) continue;
+        observer.unobserve(element);
+        observed.delete(element);
+        visible.delete(element);
+      }
+      for (const element of rows) {
+        if (observed.has(element)) continue;
+        const id =
+          element.closest<HTMLElement>('.sheet-branch')?.dataset['sheetId'];
+        if (!id) continue;
+        observed.set(element, id);
+        // Renaming can replace a row before the observer reports its position.
+        if (previousIds.has(id)) visible.add(element);
+        observer.observe(element);
+      }
+      if (!shown) hidePreview();
+      publish();
+    };
+    const mutations = new MutationObserver(syncRows);
+    mutations.observe(root, { childList: true, subtree: true });
+    if (panel)
+      mutations.observe(panel, {
+        attributes: true,
+        attributeFilter: ['aria-hidden'],
+      });
+    syncRows();
+    return () => {
+      observer.disconnect();
+      mutations.disconnect();
+    };
+  });
   onCleanup(() => {
     clearTimeout(enterTimer);
     clearTimeout(exitTimer);
@@ -202,16 +322,13 @@ export default function SheetNavigator(props: Props) {
       notify(open);
     },
   );
-  createEffect(
-    () => props.controller.project()?.id,
-    () => {
-      clearTimeout(enterTimer);
-      clearTimeout(exitTimer);
-      setCollapsed([]);
-      setFilter('');
-      setMenu(null);
-    },
-  );
+  createEffect(projectSession, () => {
+    clearTimeout(enterTimer);
+    clearTimeout(exitTimer);
+    setCollapsed((ids) => (ids.length ? [] : ids));
+    setFilter('');
+    setMenu(null);
+  });
   createEffect(menu, (value) => {
     if (value)
       queueMicrotask(() =>
@@ -237,16 +354,18 @@ export default function SheetNavigator(props: Props) {
   ) => {
     clearTimeout(enterTimer);
     clearTimeout(exitTimer);
-    thumbnails.prioritize(sheet);
     const rect = element.getBoundingClientRect();
-    const next = {
+    const initialPreview = {
       sheet,
       session: projectSession(),
       x: rect.right,
       y: rect.top + 16,
     };
-    if (immediate || preview()) setPreview(next);
-    else enterTimer = setTimeout(() => setPreview(next), 120);
+    const open = () => {
+      setPreview(initialPreview);
+    };
+    if (immediate || preview()) open();
+    else enterTimer = setTimeout(open, 120);
   };
   const leavePreview = () => {
     clearTimeout(enterTimer);
@@ -354,7 +473,6 @@ export default function SheetNavigator(props: Props) {
               ? 'active'
               : '',
           ]}
-          disabled={props.disabled}
           onClick={() => {
             selectGroup(group, sheetId);
           }}
@@ -390,7 +508,6 @@ export default function SheetNavigator(props: Props) {
             <button
               type="button"
               class="navigator-visibility"
-              disabled={props.disabled}
               aria-label={`${visible() ? 'Hide' : 'Show'} ${group.name} on ${props.controller.project()?.sheets[id()]?.name ?? 'sheet'}`}
               title={`${visible() ? 'Hide' : 'Show'} group drawing objects`}
               onClick={() => {
@@ -458,7 +575,14 @@ export default function SheetNavigator(props: Props) {
           </button>
         </Show>
       </div>
-      <div class="sheet-list" onScroll={hidePreview}>
+      <fieldset
+        class="sheet-list"
+        disabled={props.disabled}
+        ref={(element) => {
+          list = element;
+        }}
+        onScroll={hidePreview}
+      >
         <For
           each={visibleSheets()}
           fallback={
@@ -473,7 +597,7 @@ export default function SheetNavigator(props: Props) {
             <section
               class={[
                 'sheet-branch',
-                dropTarget() === sheet.id ? 'drop-target' : '',
+                rowState[sheet.id]?.drop ? 'drop-target' : '',
               ]}
               aria-label={sheet.name}
               data-sheet-id={sheet.id}
@@ -499,16 +623,16 @@ export default function SheetNavigator(props: Props) {
               <div
                 class={[
                   'sheet-line',
-                  !props.controller.isSheetVisible(sheet.id)
-                    ? 'geometry-hidden'
-                    : '',
+                  !rowState[sheet.id]?.visible ? 'geometry-hidden' : '',
                 ]}
               >
                 <button
                   type="button"
                   class="sheet-expand"
-                  aria-label={`${expanded(sheet.id) ? 'Collapse' : 'Expand'} groups for ${sheet.name}`}
-                  aria-expanded={expanded(sheet.id) ? 'true' : 'false'}
+                  aria-label={`${rowState[sheet.id]?.expanded ? 'Collapse' : 'Expand'} groups for ${sheet.name}`}
+                  aria-expanded={
+                    rowState[sheet.id]?.expanded ? 'true' : 'false'
+                  }
                   disabled={!sheetGroups(sheet.id).length}
                   onClick={() =>
                     setCollapsed((ids) =>
@@ -518,26 +642,19 @@ export default function SheetNavigator(props: Props) {
                     )
                   }
                 >
-                  {expanded(sheet.id) ? '▾' : '▸'}
+                  {rowState[sheet.id]?.expanded ? '▾' : '▸'}
                 </button>
                 <button
                   type="button"
                   class={[
                     'sheet-row',
-                    props.controller.activeSheetId() === sheet.id
-                      ? 'active'
-                      : '',
+                    rowState[sheet.id]?.active ? 'active' : '',
                     !sheet.calibration ? 'uncalibrated' : '',
                   ]}
                   aria-label={`${sheet.name}${sheet.calibration ? '' : ', uncalibrated'}`}
                   title={sheet.name}
-                  aria-current={
-                    props.controller.activeSheetId() === sheet.id
-                      ? 'page'
-                      : undefined
-                  }
-                  disabled={props.disabled}
-                  draggable={!props.disabled ? 'true' : 'false'}
+                  aria-current={rowState[sheet.id]?.active ? 'page' : undefined}
+                  draggable="true"
                   onClick={() => {
                     hidePreview();
                     props.controller.setActiveSheetId(sheet.id);
@@ -548,6 +665,10 @@ export default function SheetNavigator(props: Props) {
                     openMenu(sheet, event.clientX, event.clientY);
                   }}
                   onDragStart={(event) => {
+                    if (props.disabled) {
+                      event.preventDefault();
+                      return;
+                    }
                     hidePreview();
                     draggedId = sheet.id;
                     if (event.dataTransfer) {
@@ -601,9 +722,8 @@ export default function SheetNavigator(props: Props) {
                 <button
                   type="button"
                   class="navigator-visibility"
-                  disabled={props.disabled}
-                  aria-label={`${props.controller.isSheetVisible(sheet.id) ? 'Hide' : 'Show'} drawing objects on ${sheet.name}`}
-                  title={`${props.controller.isSheetVisible(sheet.id) ? 'Hide' : 'Show'} sheet drawing objects`}
+                  aria-label={`${rowState[sheet.id]?.visible ? 'Hide' : 'Show'} drawing objects on ${sheet.name}`}
+                  title={`${rowState[sheet.id]?.visible ? 'Hide' : 'Show'} sheet drawing objects`}
                   onClick={() => {
                     props.controller.setSheetVisible(
                       sheet.id,
@@ -612,11 +732,16 @@ export default function SheetNavigator(props: Props) {
                   }}
                 >
                   <VisibilityIcon
-                    visible={props.controller.isSheetVisible(sheet.id)}
+                    visible={rowState[sheet.id]?.visible ?? true}
                   />
                 </button>
               </div>
-              <Show when={expanded(sheet.id)}>
+              <Show
+                when={
+                  sheetGroups(sheet.id).length > 0 &&
+                  rowState[sheet.id]?.expanded
+                }
+              >
                 <div class="sheet-groups">
                   <For
                     each={sheetGroups(sheet.id).filter(
@@ -645,7 +770,7 @@ export default function SheetNavigator(props: Props) {
             {(group) => groupRow(group)}
           </For>
         </Show>
-      </div>
+      </fieldset>
       <Show when={currentPreview()}>
         {(value) => (
           <Portal>

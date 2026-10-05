@@ -71,11 +71,23 @@ export async function navigatorWorkflow(page: Page) {
       .getByRole('complementary', { name: 'Inspector', exact: true })
       .getByText('24 ft', { exact: true }),
   ).toBeVisible();
+  await firstBranch
+    .getByRole('button', { name: /^Collapse groups for / })
+    .click();
   await page.getByLabel('Object name', { exact: true }).fill('North wall');
+  await expect(firstBranch.locator('.sheet-row')).toBeDisabled();
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Save name', exact: true }),
   ).toBeHidden();
+  // Saving an edit must not reset the user's collapsed sheet groups.
+  await expect(firstBranch.locator('.sheet-expand')).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  await firstBranch
+    .getByRole('button', { name: /^Expand groups for / })
+    .click();
   await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
   const editor = page.getByRole('dialog', {
     name: 'Assembly editor',
@@ -156,6 +168,12 @@ export async function navigatorWorkflow(page: Page) {
   await expect(canvas).not.toHaveAttribute('data-sheet-id', firstId);
   const secondId = await canvas.getAttribute('data-sheet-id');
   const firstRow = firstBranch.locator('.sheet-row');
+  await firstRow.hover();
+  await expect(preview.getByRole('img')).toBeVisible();
+  const visibleThumbnail = await preview.getByRole('img').getAttribute('src');
+  if (!visibleThumbnail) throw new Error('Missing visible preview thumbnail');
+  // Filtering the row out and hiding the sidebar released its previous image.
+  expect(visibleThumbnail).not.toBe(thumbnailSource);
   await firstRow.click({ button: 'right' });
   await expect(canvas).toHaveAttribute('data-sheet-id', secondId ?? '');
   await page
@@ -167,7 +185,7 @@ export async function navigatorWorkflow(page: Page) {
   await firstRow.hover();
   await expect(preview.getByRole('img')).toHaveAttribute(
     'src',
-    thumbnailSource,
+    visibleThumbnail,
   );
   await expect(preview.getByRole('img')).toHaveAttribute(
     'alt',
@@ -190,6 +208,12 @@ export async function navigatorWorkflow(page: Page) {
       exact: true,
     }),
   ).toBeVisible();
+  // This reload checks saved panel sizing, after the reopened images are ready.
+  // PDF load cancellation is covered separately.
+  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+  await firstRow.hover();
+  await expect(preview).toHaveAttribute('data-sheet-id', firstId);
+  await expect(preview.getByRole('img')).toBeVisible();
   await page.reload();
   await expect(
     page.getByRole('separator', { name: 'Resize Sheets', exact: true }),

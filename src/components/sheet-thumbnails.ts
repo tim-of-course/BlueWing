@@ -10,16 +10,19 @@ interface Thumbnail {
   image?: HTMLImageElement | undefined;
 }
 
-/** One project owns the URLs; duplicate sheets share the same rendered page. */
+/** Visible rows own the URLs; duplicate sheets share the same rendered page. */
 export class SheetThumbnails {
   private projectId: string | undefined;
   private entries = new Map<string, Thumbnail>();
   private queue: Thumbnail[] = [];
-  private running = false;
+  private running: { entry: Thumbnail; abort: AbortController } | undefined;
   private cancelScheduled: (() => void) | undefined;
 
   constructor(
-    private render: (sheet: Sheet) => Promise<HTMLCanvasElement>,
+    private render: (
+      sheet: Sheet,
+      signal: AbortSignal,
+    ) => Promise<HTMLCanvasElement>,
     private changed: () => void,
   ) {}
 
@@ -27,32 +30,42 @@ export class SheetThumbnails {
     return this.entries.get(thumbnailKey(sheet));
   }
 
-  sync(projectId: string | undefined, sheets: Sheet[]) {
+  sync(projectId: string | undefined, visibleSheets: Sheet[], preview?: Sheet) {
     if (projectId !== this.projectId) {
       this.clear();
       this.projectId = projectId;
     }
-    const keys = new Set(sheets.map(thumbnailKey));
+    const sheets = new Map(
+      (preview ? [preview, ...visibleSheets] : visibleSheets).map((sheet) => [
+        thumbnailKey(sheet),
+        sheet,
+      ]),
+    );
     for (const [key, entry] of this.entries) {
-      if (!keys.has(key)) {
+      if (!sheets.has(key)) {
         this.release(entry);
         this.entries.delete(key);
       }
     }
-    this.queue = this.queue.filter((entry) => this.current(entry));
-    for (const sheet of sheets) {
+    for (const sheet of sheets.values()) {
       if (this.get(sheet)) continue;
       const entry = { sheet, source: '', error: '' };
       this.entries.set(thumbnailKey(sheet), entry);
-      this.queue.push(entry);
+    }
+    this.queue = [...sheets.keys()]
+      .map((key) => this.entries.get(key))
+      .filter(
+        (entry): entry is Thumbnail =>
+          !!entry &&
+          !entry.source &&
+          !entry.error &&
+          entry !== this.running?.entry,
+      );
+    if (!this.queue.length) {
+      this.cancelScheduled?.();
+      this.cancelScheduled = undefined;
     }
     this.schedule();
-  }
-
-  prioritize(sheet: Sheet) {
-    const entry = this.get(sheet);
-    const index = entry ? this.queue.indexOf(entry) : -1;
-    if (index > 0) this.queue.unshift(...this.queue.splice(index, 1));
   }
 
   clear() {
@@ -68,6 +81,7 @@ export class SheetThumbnails {
   }
 
   private release(entry: Thumbnail) {
+    if (this.running?.entry === entry) this.running.abort.abort();
     if (entry.source) URL.revokeObjectURL(entry.source);
     entry.image?.removeAttribute('src');
     entry.image = undefined;
@@ -79,7 +93,7 @@ export class SheetThumbnails {
       this.cancelScheduled = undefined;
       void this.next();
     };
-    // Yield between pages so prewarming doesn't monopolize drawing input.
+    // Let the preview appear before rendering its requested page.
     if (typeof requestIdleCallback === 'function') {
       const id = requestIdleCallback(start, { timeout: 1000 });
       this.cancelScheduled = () => {
@@ -96,11 +110,12 @@ export class SheetThumbnails {
   private async next() {
     const entry = this.queue.shift();
     if (!entry) return;
-    this.running = true;
+    const abort = new AbortController();
+    this.running = { entry, abort };
     let canvas: HTMLCanvasElement | undefined;
     let source = '';
     try {
-      const rendered = await this.render(entry.sheet);
+      const rendered = await this.render(entry.sheet, abort.signal);
       canvas = rendered;
       if (!this.current(entry)) return;
       const blob = await new Promise<Blob | null>((resolve) => {
@@ -121,7 +136,7 @@ export class SheetThumbnails {
     } finally {
       if (canvas) canvas.width = canvas.height = 0;
       if (source) URL.revokeObjectURL(source);
-      this.running = false;
+      this.running = undefined;
       if (this.current(entry)) this.changed();
       this.schedule();
     }
