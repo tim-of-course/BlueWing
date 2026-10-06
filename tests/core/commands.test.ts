@@ -192,3 +192,34 @@ void test('editing a project recipe updates existing assignments and undo restor
   );
   assert.deepEqual(saves, [1, 2]);
 });
+
+void test('public command snapshots, results, payloads, and registry data are isolated', () => {
+  const project = drawing();
+  const inspected = executeCommand(project, { name: 'project.inspect' });
+  const inspectedPoint = (inspected.data as typeof project).geometries.wall
+    ?.points[0];
+  assert.ok(inspectedPoint);
+  inspectedPoint.x = 99;
+  assert.equal(inspected.project.geometries.wall?.points[0]?.x, 0);
+  const resultPoint = inspected.project.geometries.wall.points[0];
+  assert.ok(resultPoint);
+  resultPoint.x = 50;
+  assert.equal(project.geometries.wall?.points[0]?.x, 0);
+
+  const payload = { id: 'wall', newId: 'copy', dx: 10 };
+  const copied = executeCommand(project, { name: 'geometry.copy', payload });
+  const copiedPoint = (copied.data as { points: { x: number }[] }).points[0];
+  assert.ok(copiedPoint);
+  copiedPoint.x = 100;
+  assert.equal(copied.project.geometries.copy?.points[0]?.x, 10);
+  const group = { id: 'other', name: 'Other', geometryIds: ['wall'] };
+  const added = executeCommand(project, { name: 'group.put', payload: group });
+  group.geometryIds.length = 0;
+  assert.deepEqual(added.project.groups.other?.geometryIds, ['wall']);
+
+  const listed = executeCommand(project, { name: 'commands.list' });
+  const definitions = listed.data as { name: string }[];
+  assert.ok(definitions[0]);
+  definitions[0].name = 'tampered';
+  assert.equal(commandRegistry[0]?.name, 'commands.list');
+});

@@ -843,10 +843,18 @@ export function executeCommand(
   call: CommandCall,
   validateResult = true,
 ): { project: Project; data: unknown; changed: boolean } {
+  return executeCommandOnDraft(structuredClone(project), call, validateResult);
+}
+
+/** Internal session path: mutations require an owned draft; returned data is isolated. */
+export function executeCommandOnDraft(
+  next: Project,
+  call: CommandCall,
+  validateResult = true,
+): { project: Project; data: unknown; changed: boolean } {
   const definition = validateCommand(call);
   if (['batch', 'preview', 'history.undo', 'history.redo'].includes(call.name))
     throw new Error(`${call.name} must run through ProjectSession`);
-  const next = structuredClone(project);
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const entityId = payload.id as string;
   if (entityId && ['__proto__', 'constructor', 'prototype'].includes(entityId))
@@ -1017,7 +1025,12 @@ export function executeCommand(
       pruneObjectInputs(next);
   }
   if (definition.mutates && validateResult) validateProject(next);
-  return { project: next, data, changed: definition.mutates };
+  // Capture results now, before another batch command edits the same draft.
+  return {
+    project: next,
+    data: structuredClone(data),
+    changed: definition.mutates,
+  };
 }
 
 function pruneObjectInputs(project: Project): void {

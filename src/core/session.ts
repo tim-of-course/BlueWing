@@ -1,4 +1,8 @@
-import { executeCommand, validateCommand, validateProject } from './commands';
+import {
+  executeCommandOnDraft,
+  validateCommand,
+  validateProject,
+} from './commands';
 import type {
   CommandCall,
   CommandRequest,
@@ -22,16 +26,18 @@ interface RecordChange {
   before: Entity | undefined;
   after: Entity | undefined;
 }
+interface ExtensionChange<T> {
+  before: T;
+  after: T;
+}
 interface HistoryEntry {
   label: string;
   origin: string;
   beforeName: string;
   afterName: string;
   records: RecordChange[];
-  beforeConstruction: Project['construction'];
-  afterConstruction: Project['construction'];
-  beforeReview: Project['review'];
-  afterReview: Project['review'];
+  construction: ExtensionChange<Project['construction']> | undefined;
+  review: ExtensionChange<Project['review']> | undefined;
 }
 export interface HistoryItem {
   label: string;
@@ -60,6 +66,7 @@ function difference(
   for (const collection of collections) {
     const previous = before[collection];
     const next = after[collection];
+    if (previous === next) continue;
     for (const id of new Set([
       ...Object.keys(previous),
       ...Object.keys(next),
@@ -80,11 +87,18 @@ function difference(
     beforeName: before.name,
     afterName: after.name,
     records,
-    beforeConstruction: structuredClone(before.construction),
-    afterConstruction: structuredClone(after.construction),
-    beforeReview: structuredClone(before.review),
-    afterReview: structuredClone(after.review),
+    construction: extensionChange(before.construction, after.construction),
+    review: extensionChange(before.review, after.review),
   };
+}
+
+function extensionChange<T>(
+  before: T,
+  after: T,
+): ExtensionChange<T> | undefined {
+  if (before === after || JSON.stringify(before) === JSON.stringify(after))
+    return undefined;
+  return { before: structuredClone(before), after: structuredClone(after) };
 }
 
 function restore(
@@ -94,14 +108,16 @@ function restore(
 ): Project {
   const next = structuredClone(project);
   next.name = direction === 'before' ? entry.beforeName : entry.afterName;
-  const construction =
-    direction === 'before' ? entry.beforeConstruction : entry.afterConstruction;
-  const review =
-    direction === 'before' ? entry.beforeReview : entry.afterReview;
-  if (construction) next.construction = structuredClone(construction);
-  else delete next.construction;
-  if (review) next.review = structuredClone(review);
-  else delete next.review;
+  if (entry.construction) {
+    const construction = entry.construction[direction];
+    if (construction) next.construction = structuredClone(construction);
+    else delete next.construction;
+  }
+  if (entry.review) {
+    const review = entry.review[direction];
+    if (review) next.review = structuredClone(review);
+    else delete next.review;
+  }
   for (const change of entry.records) {
     const records: Record<string, Entity> = next[change.collection];
     const entity = change[direction];
@@ -180,7 +196,7 @@ export class ProjectSession {
     ) {
       throw new ProjectConflictError(this.#project.id, this.#project.revision);
     }
-    validateCommand(request);
+    const definition = validateCommand(request);
     if (request.name === 'history.undo' || request.name === 'history.redo')
       return this.#travel(request.name === 'history.undo');
 
@@ -189,6 +205,7 @@ export class ProjectSession {
     let data: unknown;
     const preview = request.name === 'preview';
     if (request.name === 'batch' || preview) {
+      next = structuredClone(next);
       const payload = request.payload as { commands: CommandCall[] };
       const results: unknown[] = [];
       for (const call of payload.commands) {
@@ -200,36 +217,44 @@ export class ProjectSession {
           throw new Error(
             'Batches and previews cannot contain session control commands',
           );
-        const result = executeCommand(next, call, false);
-        next = result.project;
+        const result = executeCommandOnDraft(next, call, false);
         changed ||= result.changed;
         results.push(result.data);
       }
       validateProject(next);
       data = results;
     } else {
-      const result = executeCommand(next, request);
-      next = result.project;
+      if (definition.mutates) {
+        // Rename changes only top-level metadata; the other records stay private.
+        next =
+          request.name === 'project.rename'
+            ? { ...next }
+            : structuredClone(next);
+      }
+      const result = executeCommandOnDraft(next, request);
       changed = result.changed;
       data = result.data;
     }
     if (preview || !changed)
       return {
         project: structuredClone(next),
-        data: structuredClone(data),
+        data,
         changed,
         preview,
       };
 
-    const entry = difference(this.#project, next, request);
+    const entry =
+      this.#historyLimit > 0
+        ? difference(this.#project, next, request)
+        : undefined;
     await this.#save(next);
-    this.#undo.push(entry);
+    if (entry) this.#undo.push(entry);
     if (this.#undo.length > this.#historyLimit) this.#undo.shift();
     this.#redo = [];
     this.#publish();
     return {
       project: this.project,
-      data: structuredClone(data),
+      data,
       changed: true,
       preview: false,
     };
