@@ -97,6 +97,21 @@ export function resolveConstruction(project: Project): ConstructionData {
     const recipe = project.recipes[assignment.recipeId];
     const group = project.groups[assignment.groupId];
     if (!recipe || !group) continue;
+    const wallSettings = recipe.wallTemplate
+      ? mergeMaterialSettings(recipe.wallTemplate, assignment.wallOverrides)
+      : undefined;
+    const ceilingSettings = recipe.ceilingTemplate
+      ? mergeMaterialSettings(
+          recipe.ceilingTemplate,
+          assignment.ceilingOverrides,
+        )
+      : undefined;
+    const materialSettings = recipe.materialTemplate
+      ? mergeMaterialSettings(
+          recipe.materialTemplate,
+          assignment.materialOverrides,
+        )
+      : undefined;
     for (const geometryId of group.geometryIds) {
       const geometry = project.geometries[geometryId];
       if (!geometry || !recipe.geometryKinds.includes(geometry.kind)) continue;
@@ -108,44 +123,29 @@ export function resolveConstruction(project: Project): ConstructionData {
         groupId: group.id,
         geometryId,
       };
-      if (recipe.wallTemplate) {
+      if (wallSettings) {
         if (result.walls[id])
           throw new Error(`Duplicate applied wall id: ${id}`);
         result.walls[id] = {
-          ...mergeMaterialSettings(
-            mergeMaterialSettings(
-              recipe.wallTemplate,
-              assignment.wallOverrides,
-            ),
-            detail?.wall,
-          ),
+          ...mergeMaterialSettings(wallSettings, detail?.wall),
           ...source,
           id,
           geometryId,
         };
       }
-      if (recipe.ceilingTemplate) {
+      if (ceilingSettings) {
         if (result.ceilings[id])
           throw new Error(`Duplicate applied ceiling id: ${id}`);
         result.ceilings[id] = {
-          ...mergeMaterialSettings(
-            mergeMaterialSettings(
-              recipe.ceilingTemplate,
-              assignment.ceilingOverrides,
-            ),
-            detail?.ceiling,
-          ),
+          ...mergeMaterialSettings(ceilingSettings, detail?.ceiling),
           ...source,
           id,
           geometryId,
         };
       }
-      if (recipe.materialTemplate) {
+      if (materialSettings) {
         const settings = mergeMaterialSettings(
-          mergeMaterialSettings(
-            recipe.materialTemplate,
-            assignment.materialOverrides,
-          ),
+          materialSettings,
           detail?.material,
         ) as typeof recipe.materialTemplate & { levelId?: string };
         const { levelId, ...template } = settings;

@@ -1,4 +1,4 @@
-import type { Point, Project } from './types';
+import type { Assignment, Point, Project } from './types';
 import { resolveConstruction } from './applied-assemblies';
 import type { ConstructionData } from './construction-types';
 
@@ -32,7 +32,7 @@ export const emptyReview = (): ReviewData => ({ snippets: {}, marks: {} });
 export function sourceEntity(
   project: Project,
   source: SourceReference,
-  construction: ConstructionData = resolveConstruction(project),
+  construction?: ConstructionData,
 ): unknown {
   switch (source.kind) {
     case 'geometry':
@@ -40,13 +40,13 @@ export function sourceEntity(
     case 'assembly':
       return project.recipes[source.id];
     case 'wall':
-      return construction.walls[source.id];
+      return (construction ?? resolveConstruction(project)).walls[source.id];
     case 'opening':
-      return construction.openings[source.id];
+      return (construction ?? resolveConstruction(project)).openings[source.id];
     case 'header':
-      return construction.headers[source.id];
+      return (construction ?? resolveConstruction(project)).headers[source.id];
     case 'ceiling':
-      return construction.ceilings[source.id];
+      return (construction ?? resolveConstruction(project)).ceilings[source.id];
   }
 }
 
@@ -64,10 +64,70 @@ const byId = <T extends { id: string }>(
   records: Record<string, T> | undefined,
 ): T[] => Object.values(records ?? {}).sort((a, b) => a.id.localeCompare(b.id));
 
+function byReference<T>(items: T[], reference: (item: T) => string) {
+  const result = new Map<string, T[]>();
+  for (const item of items) {
+    const key = reference(item);
+    const bucket = result.get(key) ?? [];
+    bucket.push(item);
+    result.set(key, bucket);
+  }
+  return result;
+}
+
+function prepareReview(project: Project, construction: ConstructionData) {
+  const assignments = new Map<string, Assignment[]>();
+  for (const assignment of byId(project.assignments))
+    for (const id of new Set(
+      project.groups[assignment.groupId]?.geometryIds ?? [],
+    )) {
+      const bucket = assignments.get(id) ?? [];
+      bucket.push(assignment);
+      assignments.set(id, bucket);
+    }
+  const placements = new Map<string, ConstructionData['placements'][string]>();
+  for (const placement of Object.values(construction.placements))
+    if (!placements.has(placement.sheetId))
+      placements.set(placement.sheetId, placement);
+  return {
+    assignments,
+    placements,
+    openings: byReference(
+      byId(construction.openings),
+      (opening) => opening.wallId,
+    ),
+    walls: byReference(
+      Object.values(construction.walls),
+      (wall) => wall.geometryId,
+    ),
+    ceilings: byReference(
+      Object.values(construction.ceilings),
+      (ceiling) => ceiling.geometryId,
+    ),
+    // Keep global material and snippet order in the canonical dependency text.
+    materials: Object.values(construction.materials ?? {}),
+    snippets: byId(project.review?.snippets),
+  };
+}
+
 export function reviewFingerprint(
   project: Project,
   target: SourceReference,
   construction: ConstructionData = resolveConstruction(project),
+): string {
+  return fingerprint(
+    project,
+    target,
+    construction,
+    prepareReview(project, construction),
+  );
+}
+
+function fingerprint(
+  project: Project,
+  target: SourceReference,
+  construction: ConstructionData,
+  prepared: ReturnType<typeof prepareReview>,
 ): string {
   const entity = sourceEntity(project, target, construction);
   if (!entity) throw new Error('Review source no longer exists');
@@ -88,8 +148,7 @@ export function reviewFingerprint(
       if (condition.ownerWallId && condition.ownerWallId !== id)
         includeWall(condition.ownerWallId);
     geometryIds.add(wall.geometryId);
-    for (const opening of byId(construction.openings)) {
-      if (opening.wallId !== id) continue;
+    for (const opening of prepared.openings.get(id) ?? []) {
       related.push(opening);
       sources.push({ kind: 'opening', id: opening.id });
       if (opening.headerId) {
@@ -105,22 +164,18 @@ export function reviewFingerprint(
   }
   if (target.kind === 'geometry') {
     geometryIds.add(target.id);
-    for (const wall of Object.values(construction.walls))
-      if (wall.geometryId === target.id) includeWall(wall.id);
-    related.push(
-      ...Object.values(construction.ceilings).filter(
-        (c) => c.geometryId === target.id,
-      ),
-    );
+    for (const wall of prepared.walls.get(target.id) ?? [])
+      includeWall(wall.id);
+    related.push(...(prepared.ceilings.get(target.id) ?? []));
   }
   if (target.kind === 'ceiling') {
     const ceiling = construction.ceilings[target.id];
     if (ceiling) geometryIds.add(ceiling.geometryId);
   }
-  for (const ceiling of Object.values(construction.ceilings))
-    if (geometryIds.has(ceiling.geometryId) && ceiling.levelId)
-      levels.add(ceiling.levelId);
-  for (const material of Object.values(construction.materials ?? {}))
+  for (const id of geometryIds)
+    for (const ceiling of prepared.ceilings.get(id) ?? [])
+      if (ceiling.levelId) levels.add(ceiling.levelId);
+  for (const material of prepared.materials)
     if (geometryIds.has(material.geometryId)) {
       related.push(material);
       if (material.levelId) levels.add(material.levelId);
@@ -133,14 +188,10 @@ export function reviewFingerprint(
       const sheet = project.sheets[geometry.sheetId];
       related.push(
         sheet?.calibration,
-        Object.values(construction.placements).find(
-          (placement) => placement.sheetId === geometry.sheetId,
-        ),
+        prepared.placements.get(geometry.sheetId),
       );
     }
-    for (const assignment of byId(project.assignments)) {
-      if (!project.groups[assignment.groupId]?.geometryIds.includes(geometryId))
-        continue;
+    for (const assignment of prepared.assignments.get(geometryId) ?? []) {
       related.push(
         {
           ...assignment,
@@ -154,12 +205,13 @@ export function reviewFingerprint(
   }
   // Elevations affect member position even when wall dimensions are unchanged.
   for (const id of [...levels].sort()) related.push(construction.levels[id]);
+  const sourceKeys = new Set(
+    sources.map((source) => `${source.kind}:${source.id}`),
+  );
   related.push(
-    ...byId(project.review?.snippets).filter((snippet) =>
+    ...prepared.snippets.filter((snippet) =>
       snippet.sources.some((source) =>
-        sources.some(
-          (related) => source.kind === related.kind && source.id === related.id,
-        ),
+        sourceKeys.has(`${source.kind}:${source.id}`),
       ),
     ),
   );
@@ -171,19 +223,34 @@ export function reviewStatus(
   mark: ReviewMark,
   construction: ConstructionData = resolveConstruction(project),
 ): ReviewMark['status'] | 'changed' | 'missing' {
+  return status(project, mark, construction);
+}
+
+function status(
+  project: Project,
+  mark: ReviewMark,
+  construction: ConstructionData,
+  prepared?: ReturnType<typeof prepareReview>,
+): ReviewMark['status'] | 'changed' | 'missing' {
   if (!sourceEntity(project, mark.target, construction)) return 'missing';
   if (mark.status !== 'reviewed') return mark.status;
   return mark.fingerprint ===
-    reviewFingerprint(project, mark.target, construction)
+    fingerprint(
+      project,
+      mark.target,
+      construction,
+      prepared ?? prepareReview(project, construction),
+    )
     ? 'reviewed'
     : 'changed';
 }
 
 export function inspectReview(project: Project) {
   const construction = resolveConstruction(project);
+  const prepared = prepareReview(project, construction);
   const marks = Object.values(project.review?.marks ?? {}).map((mark) => ({
     ...mark,
-    effectiveStatus: reviewStatus(project, mark, construction),
+    effectiveStatus: status(project, mark, construction, prepared),
   }));
   const targets: SourceReference[] = [
     ...Object.keys(construction.walls).map((id) => ({
@@ -199,21 +266,14 @@ export function inspectReview(project: Project) {
       id,
     })),
     ...Object.keys(project.geometries)
-      .filter(
-        (id) =>
-          !Object.values(construction.walls).some((w) => w.geometryId === id) &&
-          !Object.values(construction.ceilings).some(
-            (c) => c.geometryId === id,
-          ),
-      )
+      .filter((id) => !prepared.walls.has(id) && !prepared.ceilings.has(id))
       .map((id) => ({ kind: 'geometry' as const, id })),
   ];
+  const marked = new Set(
+    marks.map((mark) => `${mark.target.kind}:${mark.target.id}`),
+  );
   const unreviewed = targets.filter(
-    (target) =>
-      !marks.some(
-        (mark) =>
-          mark.target.kind === target.kind && mark.target.id === target.id,
-      ),
+    (target) => !marked.has(`${target.kind}:${target.id}`),
   );
   return {
     marks,

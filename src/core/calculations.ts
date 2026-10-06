@@ -8,13 +8,14 @@ import type {
   CalculationOutput,
   CalculationResult,
   CalculationSource,
+  Geometry,
   Project,
   QuantityTotal,
   Recipe,
   RecipeOutput,
 } from './types';
 import { measureGeometry } from './geometry';
-import { evaluateFormula, formulaOutput, formulaQuantity } from './formula';
+import { prepareFormula, formulaOutput, formulaQuantity } from './formula';
 import type { FormulaValue } from './formula';
 import { assemblyOutputs, componentInputs } from './systems';
 
@@ -100,16 +101,22 @@ function effectiveInputs(
     }),
   );
 }
-function source(
+interface PreparedSource {
+  inputs: Record<string, number | boolean>;
+  variables?: Record<string, FormulaValue>;
+  diagnostic?: string;
+}
+function prepareSource(
   project: Project,
   recipe: Recipe,
   assignment: Assignment,
-  output: RecipeOutput,
+  baseInputs: Record<string, number | boolean>,
   geometryId: string,
+  metrics: (geometry: Geometry) => Record<string, FormulaValue>,
   component?: AssemblyComponent,
-): CalculationSource {
+): PreparedSource {
   let inputs = {
-    ...effectiveInputs(recipe, assignment),
+    ...baseInputs,
     ...assignment.geometryInputs?.[geometryId],
   };
   try {
@@ -148,13 +155,28 @@ function source(
       variables = {};
       addInputs(component.assembly);
     }
-    const measurements = measureGeometry(project, geometry);
-    for (const metric of ['length', 'area', 'perimeter', 'count'] as const) {
-      const quantity = measurements[metric];
-      if (quantity) variables[metric] = formulaQuantity(quantity);
-    }
+    Object.assign(variables, metrics(geometry));
+    return { inputs, variables };
+  } catch (error) {
+    return { inputs, diagnostic: message(error) };
+  }
+}
+function source(
+  prepared: PreparedSource,
+  output: RecipeOutput,
+  geometryId: string,
+  evaluate: (
+    formula: string,
+    variables: Record<string, FormulaValue>,
+  ) => FormulaValue,
+): CalculationSource {
+  // Each explanation remains independent even when its preparation is shared.
+  const inputs = { ...prepared.inputs };
+  try {
+    if (!prepared.variables) throw new Error(prepared.diagnostic);
+    const variables = prepared.variables;
     const value = formulaOutput(
-      evaluateFormula(output.formula, variables),
+      evaluate(output.formula, variables),
       output.unit,
     );
     if (!Number.isFinite(value) || value < 0)
@@ -168,7 +190,7 @@ function source(
       }) => {
         const value = formulaQuantity({
           value: formulaOutput(
-            evaluateFormula(definition.formula, variables),
+            evaluate(definition.formula, variables),
             definition.unit,
           ),
           unit: definition.unit,
@@ -198,6 +220,40 @@ function source(
 }
 export function calculateProject(project: Project): CalculationResult {
   const outputs: CalculationOutput[] = [];
+  const measured = new Map<string, Record<string, FormulaValue>>();
+  const metrics = (geometry: Geometry) => {
+    let variables = measured.get(geometry.id);
+    if (!variables) {
+      variables = {};
+      const measurements = measureGeometry(project, geometry);
+      for (const metric of ['length', 'area', 'perimeter', 'count'] as const) {
+        const quantity = measurements[metric];
+        if (quantity) variables[metric] = formulaQuantity(quantity);
+      }
+      measured.set(geometry.id, variables);
+    }
+    return variables;
+  };
+  const formulas = new Map<string, ReturnType<typeof prepareFormula>>();
+  const evaluate = (
+    formula: string,
+    variables: Record<string, FormulaValue>,
+  ) => {
+    let prepared = formulas.get(formula);
+    if (!prepared) {
+      try {
+        prepared = prepareFormula(formula);
+      } catch (error) {
+        // Keep parsing errors behind source validation and repeat their exact text.
+        prepared = () => {
+          throw error;
+        };
+      }
+      formulas.set(formula, prepared);
+    }
+    return prepared(variables);
+  };
+  const definitions = new Map<Recipe, ReturnType<typeof assemblyOutputs>>();
   let complete = true;
   for (const assignment of Object.values(project.assignments)) {
     const recipe = project.recipes[assignment.recipeId];
@@ -206,15 +262,43 @@ export function calculateProject(project: Project): CalculationResult {
       complete = false;
       continue;
     }
-    for (const { output, component } of assemblyOutputs(recipe)) {
-      const sources = (group?.geometryIds ?? [])
-        .filter((id) => {
-          const geometry = project.geometries[id];
-          return !geometry || recipe.geometryKinds.includes(geometry.kind);
-        })
-        .map((id) =>
-          source(project, recipe, assignment, output, id, component),
-        );
+    let definition = definitions.get(recipe);
+    if (!definition) {
+      definition = assemblyOutputs(recipe);
+      definitions.set(recipe, definition);
+    }
+    if (!definition.length) continue;
+    const geometryIds = (group?.geometryIds ?? []).filter((id) => {
+      const geometry = project.geometries[id];
+      return !geometry || recipe.geometryKinds.includes(geometry.kind);
+    });
+    const baseInputs = effectiveInputs(recipe, assignment);
+    const prepared = new Map<
+      AssemblyComponent | undefined,
+      Map<string, PreparedSource>
+    >();
+    for (const { output, component } of definition) {
+      let sourcesByGeometry = prepared.get(component);
+      if (!sourcesByGeometry) {
+        sourcesByGeometry = new Map();
+        prepared.set(component, sourcesByGeometry);
+      }
+      const sources = geometryIds.map((id) => {
+        let entry = sourcesByGeometry.get(id);
+        if (!entry) {
+          entry = prepareSource(
+            project,
+            recipe,
+            assignment,
+            baseInputs,
+            id,
+            metrics,
+            component,
+          );
+          sourcesByGeometry.set(id, entry);
+        }
+        return source(entry, output, id, evaluate);
+      });
       const buckets = new Map<string, CalculationSource[]>();
       if (!sources.length) buckets.set('', []);
       for (const source of sources) {

@@ -129,6 +129,21 @@ export function evaluateFormula(
   formula: string,
   variables: Record<string, FormulaValue>,
 ): FormulaValue {
+  return evaluateNode(parse(formula), variables);
+}
+
+/** A caller can reuse this parsed expression within its calculation pass. */
+export function prepareFormula(
+  formula: string,
+): (variables: Record<string, FormulaValue>) => FormulaValue {
+  const root = parse(formula);
+  return (variables) => evaluateNode(root, variables);
+}
+
+function evaluateNode(
+  root: Node,
+  variables: Record<string, FormulaValue>,
+): FormulaValue {
   function evaluate(node: Node): FormulaValue {
     switch (node.kind) {
       case 'number':
@@ -271,5 +286,5 @@ export function evaluateFormula(
       }
     }
   }
-  return evaluate(parse(formula));
+  return evaluate(root);
 }

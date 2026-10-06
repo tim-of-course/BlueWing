@@ -284,6 +284,12 @@ export function validateConstruction(
     }
   }
   const openings = Object.values(data.openings);
+  const openingsByWall = new Map<string, typeof openings>();
+  for (const opening of openings) {
+    const bucket = openingsByWall.get(opening.wallId) ?? [];
+    bucket.push(opening);
+    openingsByWall.set(opening.wallId, bucket);
+  }
   for (const o of openings) {
     const w = data.walls[o.wallId];
     requireValue(w, 'opening wall is missing');
@@ -297,8 +303,8 @@ export function validateConstruction(
     validateOffsets(o.jambOffsets, o.jambCount);
     if (o.headerId)
       requireValue(data.headers[o.headerId], 'header detail is missing');
-    for (const other of openings)
-      if (other.id < o.id && other.wallId === o.wallId) {
+    for (const other of openingsByWall.get(o.wallId) ?? [])
+      if (other.id < o.id) {
         requireValue(
           !(
             o.distance < other.distance + other.width - EPS &&
@@ -455,7 +461,12 @@ export function generateConstruction(
     result.complete = false;
   };
   validateConstruction(project, data);
-  const placements = Object.values(data.placements);
+  const placements = new Map(
+    Object.values(data.placements).map((placement) => [
+      placement.sheetId,
+      placement,
+    ]),
+  );
   const ordered = <
     T extends {
       id: string;
@@ -463,6 +474,12 @@ export function generateConstruction(
   >(
     records: Record<string, T>,
   ) => Object.values(records).sort((a, b) => a.id.localeCompare(b.id));
+  const openingsByWall = new Map<string, Opening[]>();
+  for (const opening of ordered(data.openings)) {
+    const bucket = openingsByWall.get(opening.wallId) ?? [];
+    bucket.push(opening);
+    openingsByWall.set(opening.wallId, bucket);
+  }
   integer(
     options.maxPieces ?? CONSTRUCTION_GENERATION_BUDGET,
     'generation budget',
@@ -567,11 +584,7 @@ export function generateConstruction(
         diagnostic(source, 'missing-height', 'Wall height is unresolved');
         continue;
       }
-      const line = path(
-        geometry,
-        scale,
-        placements.find((p) => p.sheetId === geometry.sheetId),
-      );
+      const line = path(geometry, scale, placements.get(geometry.sheetId));
       if (
         line.length <= EPS ||
         line.stations.some(
@@ -585,9 +598,7 @@ export function generateConstruction(
         );
         continue;
       }
-      const openings = ordered(data.openings).filter(
-        (o) => o.wallId === wall.id,
-      );
+      const openings = openingsByWall.get(wall.id) ?? [];
       if (
         (wall.topProfile &&
           Math.abs(
@@ -641,7 +652,7 @@ export function generateConstruction(
         const ownerLine = path(
           ownerGeometry,
           ownerScale,
-          placements.find((p) => p.sheetId === ownerGeometry.sheetId),
+          placements.get(ownerGeometry.sheetId),
         );
         const ownerBase =
           owner.baseElevation +
@@ -1262,7 +1273,7 @@ export function generateConstruction(
         );
         continue;
       }
-      const placement = placements.find((p) => p.sheetId === geometry.sheetId);
+      const placement = placements.get(geometry.sheetId);
       const elevation =
         ceiling.elevation +
         (ceiling.levelId ? present(data.levels[ceiling.levelId]).elevation : 0);
