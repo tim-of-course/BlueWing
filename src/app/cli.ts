@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Application, ApplicationRequest } from './application';
-import type { Message, MessageWait } from './messaging';
+import { wireMessage, type Message, type MessageWait } from './messaging';
 import { messageGuidance, type CliConnection } from './cli-guide';
 
 interface CliRequest {
@@ -99,19 +99,6 @@ export async function connectCli(
   return unlisten;
 }
 
-function wireMessage(message: Message) {
-  return {
-    ...message,
-    attachments: message.attachments.map((attachment) => ({
-      id: attachment.id,
-      name: attachment.name,
-      width: attachment.width,
-      height: attachment.height,
-      ...(attachment.path === undefined ? {} : { path: attachment.path }),
-    })),
-  };
-}
-
 export async function dispatchCli(
   application: Pick<Application, 'dispatch' | 'messaging' | 'project'>,
   args: string[],
@@ -127,17 +114,12 @@ export async function dispatchCli(
           ? { messageGuidance }
           : {}),
       };
-    const snapshot = application.messaging.snapshot();
-    const after =
-      request?.projectId !== undefined &&
-      request.projectId !== snapshot.projectId
-        ? 0
-        : (request?.messagesAfter ?? 0);
-    const messages = snapshot.messages
-      .filter((message) => message.id > after)
-      .map(wireMessage);
+    const { projectId, messages } = application.messaging.delivery(
+      request?.messagesAfter ?? 0,
+      request?.projectId,
+    );
     return {
-      messagesProjectId: snapshot.projectId,
+      messagesProjectId: projectId,
       messages,
       ...(messages.some((message) => message.sender === 'user')
         ? { messageGuidance }

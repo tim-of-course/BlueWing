@@ -16,7 +16,7 @@ export default function ScreenshotCapture(props: {
   let capture: ViewportCapture | undefined;
   let start: { x: number; y: number; pointerId: number } | undefined;
   let finished = false;
-  const [preview, setPreview] = createSignal('');
+  const [preview, setPreview] = createSignal<HTMLCanvasElement>();
   const [selection, setSelection] = createSignal<{
     x: number;
     y: number;
@@ -62,7 +62,9 @@ export default function ScreenshotCapture(props: {
       .then((result) => {
         if (finished) return;
         capture = result;
-        setPreview(result.canvas.toDataURL('image/png'));
+        result.canvas.className = 'screenshot-capture-image';
+        result.canvas.setAttribute('aria-hidden', 'true');
+        setPreview(result.canvas);
       })
       .catch(fail);
     return () => {
@@ -122,14 +124,7 @@ export default function ScreenshotCapture(props: {
         event.preventDefault();
       }}
     >
-      <Show when={preview()}>
-        <img
-          class="screenshot-capture-image"
-          src={preview()}
-          alt=""
-          draggable="false"
-        />
-      </Show>
+      {preview()}
       <Show
         when={selection()}
         fallback={<div class="screenshot-capture-shade" />}

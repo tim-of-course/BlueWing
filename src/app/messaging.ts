@@ -13,6 +13,22 @@ export interface Message {
   createdAt: string;
   attachments: Attachment[];
 }
+export function wireMessage(message: Message) {
+  return {
+    id: message.id,
+    sender: message.sender,
+    text: message.text,
+    createdAt: message.createdAt,
+    attachments: message.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.name,
+      width: attachment.width,
+      height: attachment.height,
+      ...(attachment.path === undefined ? {} : { path: attachment.path }),
+    })),
+  };
+}
+type MessagingChange = 'bind' | 'message' | 'status';
 export interface MessagingStorage {
   read(projectId: string): Promise<Message[]>;
   write(projectId: string, messages: Message[]): Promise<void>;
@@ -31,27 +47,44 @@ export class Messaging {
   private paused = false;
   private epoch = 0;
   private queue: Promise<unknown> = Promise.resolve();
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(change: MessagingChange) => void>();
   private waitToken: string = crypto.randomUUID();
   private waiters = new Set<symbol>();
   constructor(private storage: MessagingStorage) {}
-  snapshot() {
+  status() {
     return {
       projectId: this.projectId,
-      messages: structuredClone(this.messages),
       paused: this.paused,
       waiting: this.waiters.size > 0,
     };
   }
-  subscribe(fn: () => void): () => void {
+  snapshot(after = 0) {
+    return {
+      ...this.status(),
+      messages: structuredClone(
+        this.messages.filter((message) => message.id > after),
+      ),
+    };
+  }
+  /** CLI delivery creates isolated metadata without copying screenshot contents. */
+  delivery(after = 0, projectId?: string) {
+    if (projectId !== undefined && projectId !== this.projectId) after = 0;
+    return {
+      projectId: this.projectId,
+      messages: this.messages
+        .filter((message) => message.id > after)
+        .map(wireMessage),
+    };
+  }
+  subscribe(fn: (change: MessagingChange) => void): () => void {
     this.listeners.add(fn);
     return () => {
       this.listeners.delete(fn);
     };
   }
-  private publish() {
+  private publish(change: MessagingChange = 'status') {
     this.listeners.forEach((fn) => {
-      fn();
+      fn(change);
     });
   }
   private schedule<T>(fn: () => Promise<T>): Promise<T> {
@@ -67,7 +100,7 @@ export class Messaging {
       this.messages = messages;
       this.waitToken = crypto.randomUUID();
       this.waiters.clear();
-      this.publish();
+      this.publish('bind');
     });
   }
   setPaused(paused: boolean): void {
@@ -156,15 +189,16 @@ export class Messaging {
       const messages = [...this.messages, message];
       await this.storage.write(projectId, messages);
       this.messages = messages;
-      this.publish();
+      this.publish('message');
       return structuredClone(message);
     });
   }
   async read(after = 0, waitMs = 0): Promise<Message[]> {
     const projectId = this.projectId;
+    const available = () => this.messages.some((message) => message.id > after);
     const read = () =>
       structuredClone(this.messages.filter((message) => message.id > after));
-    if (read().length || !waitMs || !projectId) return read();
+    if (available() || !waitMs || !projectId) return read();
     await new Promise<void>((resolve) => {
       const finish = () => {
         clearTimeout(timer);
@@ -172,7 +206,7 @@ export class Messaging {
         resolve();
       };
       const unsubscribe = this.subscribe(() => {
-        if (this.projectId !== projectId || read().length) finish();
+        if (this.projectId !== projectId || available()) finish();
       });
       const timer = setTimeout(finish, Math.min(25000, Math.max(0, waitMs)));
     });

@@ -351,6 +351,11 @@ export async function messagingWorkflow(page: Page) {
     page.getByText('Waiting for your message', { exact: true }),
   ).toBeHidden();
   await sendText(page, 'Please check this wall');
+  const originalRow = await page
+    .getByRole('log', { name: 'Messages' })
+    .locator('.wingman-message')
+    .first()
+    .elementHandle();
   const sheetId = await page
     .getByLabel('Drawing canvas', { exact: true })
     .getAttribute('data-sheet-id');
@@ -408,6 +413,11 @@ export async function messagingWorkflow(page: Page) {
   await expect(
     page.getByText('Waiting for your message', { exact: true }),
   ).toBeVisible();
+  expect(
+    await originalRow.evaluate(
+      (row) => row === document.querySelector('.wingman-message'),
+    ),
+  ).toBe(true);
   expect((await cli(page, 'project.inspect', {}, cursor)).exitCode).toBe(0);
   await sendText(page, 'The read must not block editing');
   expect((await waiting).response.data).toEqual(
@@ -424,6 +434,11 @@ export async function messagingWorkflow(page: Page) {
   await expect(
     page.getByText('Waiting for your message', { exact: true }),
   ).toBeHidden();
+  expect(
+    await originalRow.evaluate(
+      (row) => row === document.querySelector('.wingman-message'),
+    ),
+  ).toBe(true);
   const latest =
     (await cli(page, 'project.inspect')).response.messages.at(-1)?.id ?? 0;
   const stopped = cli<MessageWait>(
@@ -469,6 +484,11 @@ export async function messagingWorkflow(page: Page) {
   );
   await page.getByRole('button', { name: 'Resume CLI', exact: true }).click();
   expect((await cli(page, 'project.inspect')).exitCode).toBe(0);
+  expect(
+    await originalRow.evaluate(
+      (row) => row === document.querySelector('.wingman-message'),
+    ),
+  ).toBe(true);
 }
 
 export async function modelWorkflow(page: Page) {
@@ -662,6 +682,38 @@ async function crop(
   await expect(
     page.getByText('Drag to capture · Escape to cancel', { exact: true }),
   ).toBeVisible();
+  const frozen = page.locator('.screenshot-capture canvas');
+  await expect(frozen).toBeVisible();
+  await expect(page.locator('.screenshot-capture img')).toHaveCount(0);
+  const expectedPixels = await frozen.evaluate((element, rect) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Missing frozen screenshot context');
+    const scaleX = canvas.width / innerWidth;
+    const scaleY = canvas.height / innerHeight;
+    const left = Math.round(rect.x * scaleX);
+    const top = Math.round(rect.y * scaleY);
+    const width = Math.round((rect.x + rect.width) * scaleX) - left;
+    const height = Math.round((rect.y + rect.height) * scaleY) - top;
+    const pixels = context.getImageData(left, top, width, height).data;
+    let hash = 2166136261;
+    for (const byte of pixels) hash = Math.imul(hash ^ byte, 16777619);
+    const markerX = Math.round(26 * scaleX) - left;
+    const markerY = Math.round(26 * scaleY) - top;
+    const markerIndex = (markerY * width + markerX) * 4;
+    // A visible child of a hidden, offscreen parent must still be included.
+    return {
+      hash: hash >>> 0,
+      width,
+      height,
+      marker:
+        markerX >= 0 && markerX < width && markerY >= 0 && markerY < height
+          ? Array.from(pixels.slice(markerIndex, markerIndex + 4))
+          : undefined,
+    };
+  }, rect);
+  if (rect.x === 5 && rect.y === 5)
+    expect(expectedPixels.marker).toEqual([231, 31, 151, 255]);
   await page.mouse.move(rect.x, rect.y);
   await page.mouse.down();
   await page.mouse.move(rect.x + rect.width, rect.y + rect.height, {
@@ -692,6 +744,8 @@ async function crop(
         canvas.height,
       ).data;
       const colors = new Set<number>();
+      let hash = 2166136261;
+      for (const byte of pixels) hash = Math.imul(hash ^ byte, 16777619);
       for (let i = 0; i < pixels.length; i += 4) {
         if (pixels[i + 3])
           colors.add(
@@ -705,14 +759,78 @@ async function crop(
         height: canvas.height,
         colors: colors.size,
         ratio: devicePixelRatio,
+        hash: hash >>> 0,
       };
     });
   expect(pixels.width).toBe(Math.round(rect.width * pixels.ratio));
   expect(pixels.height).toBe(Math.round(rect.height * pixels.ratio));
   expect(pixels.colors).toBeGreaterThan(20);
+  expect({
+    hash: pixels.hash,
+    width: pixels.width,
+    height: pixels.height,
+  }).toEqual({
+    hash: expectedPixels.hash,
+    width: expectedPixels.width,
+    height: expectedPixels.height,
+  });
 }
 export async function captureWorkflow(page: Page) {
   await sendText(page, 'Screenshot review');
+  const instrumentation = await page.evaluateHandle(() => {
+    // Retain the original method and call it with each canvas via apply below.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const original = HTMLCanvasElement.prototype.toDataURL;
+    let fullViewportEncodes = 0;
+    let hiddenEncodes = 0;
+    HTMLCanvasElement.prototype.toDataURL = function (...args) {
+      if (
+        this.width === Math.floor(innerWidth * devicePixelRatio) &&
+        this.height === Math.floor(innerHeight * devicePixelRatio)
+      )
+        fullViewportEncodes++;
+      return original.apply(this, args);
+    };
+    const fixtures: HTMLElement[] = [];
+    for (const kind of ['hidden', 'display', 'canvas']) {
+      const parent = document.createElement('div');
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 12;
+      if (kind === 'hidden') parent.hidden = true;
+      else if (kind === 'display') parent.style.display = 'none';
+      else canvas.hidden = true;
+      canvas.toDataURL = function (...args) {
+        hiddenEncodes++;
+        return original.apply(this, args);
+      };
+      parent.append(canvas);
+      document.body.append(parent);
+      fixtures.push(parent);
+    }
+    const parent = document.createElement('div');
+    parent.style.cssText =
+      'display:block;position:absolute;left:-10000px;visibility:hidden';
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 12;
+    canvas.style.cssText =
+      'position:fixed;left:20px;top:20px;visibility:visible;z-index:9999';
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Missing marker context');
+    context.fillStyle = '#e71f97';
+    context.fillRect(0, 0, 12, 12);
+    parent.append(canvas);
+    document.body.append(parent);
+    fixtures.push(parent);
+    return {
+      counts: () => ({ fullViewportEncodes, hiddenEncodes }),
+      dispose: () => {
+        HTMLCanvasElement.prototype.toDataURL = original;
+        fixtures.forEach((fixture) => {
+          fixture.remove();
+        });
+      },
+    };
+  });
   await crop(page, { x: 5, y: 5, width: 500, height: 70 }, false);
   const sidebar = await page
     .getByRole('complementary', { name: 'Sheets', exact: true })
@@ -752,15 +870,41 @@ export async function captureWorkflow(page: Page) {
     name: 'Capture screenshot: drag a rectangle, or press Escape to cancel',
   });
   await expect(overlay).toBeVisible();
+  await expect(page.locator('.screenshot-capture canvas')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(overlay).toBeHidden();
   await expect(page.locator('.wingman-attachments img')).toHaveCount(2);
+  expect(
+    await instrumentation.evaluate((instrumentation) =>
+      instrumentation.counts(),
+    ),
+  ).toEqual({ fullViewportEncodes: 0, hiddenEncodes: 0 });
+  await instrumentation.evaluate((instrumentation) => {
+    instrumentation.dispose();
+  });
+  await instrumentation.dispose();
   const urls = await page
     .locator('.wingman-attachments img')
     .evaluateAll((images) => images.map((image) => image.getAttribute('src')));
   await sendText(page, 'Two captured details');
   await expect(page.locator('.wingman-attachments img')).toHaveCount(0);
+  const sentImage = await page
+    .getByRole('log', { name: 'Messages' })
+    .locator('img')
+    .first()
+    .elementHandle();
   await page.getByRole('button', { name: 'Pause CLI', exact: true }).click();
+  expect(
+    await sentImage.evaluate(
+      (image) => image === document.querySelector('.wingman-message img'),
+    ),
+  ).toBe(true);
+  await sendText(page, 'Capture stays fixed');
+  expect(
+    await sentImage.evaluate(
+      (image) => image === document.querySelector('.wingman-message img'),
+    ),
+  ).toBe(true);
   await page
     .getByLabel('New group name', { exact: true })
     .fill('UI still edits');

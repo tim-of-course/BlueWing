@@ -20,6 +20,160 @@ function fixture() {
   };
   return { messaging: new Messaging(storage), storage };
 }
+void test('message results and CLI metadata cannot mutate the accepted conversation', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  const attachment = {
+    id: 'isolated',
+    name: 'detail.png',
+    dataUrl: 'data:image/png;base64,eA==',
+    width: 10,
+    height: 20,
+  };
+  const sending = messaging.send('original', [attachment], 'user');
+  attachment.name = 'changed input';
+  const sent = await sending;
+  const expected = structuredClone(sent);
+  assert.equal(expected.attachments[0]?.name, 'detail.png');
+  sent.text = 'changed return';
+  assert.ok(sent.attachments[0]);
+  sent.attachments[0].dataUrl = 'changed return';
+  const snapshot = messaging.snapshot();
+  assert.ok(snapshot.messages[0]?.attachments[0]);
+  snapshot.messages[0].attachments[0].name = 'changed snapshot';
+  const read = await messaging.read();
+  assert.ok(read[0]);
+  read[0].attachments.length = 0;
+  const wait = await messaging.wait(0, 0);
+  assert.ok(wait.messages[0]);
+  wait.messages[0].text = 'changed wait';
+  const delivery = messaging.delivery();
+  assert.ok(delivery.messages[0]?.attachments[0]);
+  delivery.messages[0].attachments[0].name = 'changed metadata';
+  delivery.messages.length = 0;
+  assert.deepEqual(await messaging.read(), [expected]);
+});
+void test('reads clone once and status notifications do not clone pending results', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  await messaging.send(
+    'old screenshot',
+    [
+      {
+        id: 'large',
+        name: 'large.png',
+        dataUrl: 'x'.repeat(1024 * 1024),
+        width: 100,
+        height: 100,
+      },
+    ],
+    'user',
+  );
+  const clone = globalThis.structuredClone;
+  let calls = 0;
+  globalThis.structuredClone = ((
+    ...args: Parameters<typeof structuredClone>
+  ) => {
+    calls++;
+    return clone(...args);
+  }) as typeof structuredClone;
+  try {
+    assert.equal((await messaging.read()).length, 1);
+    assert.equal(calls, 1);
+    calls = 0;
+    const pending = messaging.read(1, 5);
+    messaging.setPaused(true);
+    messaging.setPaused(false);
+    assert.equal(messaging.status().paused, false);
+    assert.equal(calls, 0);
+    assert.deepEqual(await pending, []);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.structuredClone = clone;
+  }
+});
+void test('CLI envelopes project-scope and filter messages without transcript clones', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  await messaging.send(
+    'old screenshot',
+    [
+      {
+        id: 'large',
+        name: 'large.png',
+        dataUrl: 'x'.repeat(1024 * 1024),
+        width: 100,
+        height: 100,
+      },
+    ],
+    'user',
+  );
+  await messaging.send('latest', [], 'agent');
+  const application = {
+    messaging,
+    project: null,
+    dispatch: () =>
+      Promise.resolve({ data: {}, projectId: 'one', revision: 0 }),
+  };
+  const clone = globalThis.structuredClone;
+  let calls = 0;
+  globalThis.structuredClone = ((
+    ...args: Parameters<typeof structuredClone>
+  ) => {
+    calls++;
+    return clone(...args);
+  }) as typeof structuredClone;
+  try {
+    const empty = await dispatchCli(application, [
+      'project.inspect',
+      '{"messagesAfter":2}',
+    ]);
+    assert.deepEqual(empty.response.messages, []);
+    const latest = await dispatchCli(application, [
+      'project.inspect',
+      '{"messagesAfter":1}',
+    ]);
+    assert.deepEqual(
+      latest.response.messages?.map((message) => message.text),
+      ['latest'],
+    );
+    const changed = await dispatchCli(application, [
+      'project.inspect',
+      '{"projectId":"other","messagesAfter":900}',
+    ]);
+    assert.equal(changed.response.messagesProjectId, 'one');
+    assert.equal(changed.response.messages?.length, 2);
+    assert.ok(!JSON.stringify(changed).includes('dataUrl'));
+    assert.ok(JSON.stringify(changed).includes('/local/large.png'));
+    assert.equal(calls, 0);
+  } finally {
+    globalThis.structuredClone = clone;
+  }
+});
+void test('message and status publications let presentation retain unchanged rows', async () => {
+  const { messaging, storage } = fixture();
+  const changes: string[] = [];
+  messaging.subscribe((change) => changes.push(change));
+  await messaging.bind('one');
+  await messaging.send('first', [], 'user');
+  messaging.setPaused(true);
+  const waiting = messaging.wait(1, 1000);
+  messaging.stopWaiting();
+  await waiting;
+  assert.deepEqual(changes, [
+    'bind',
+    'message',
+    'status',
+    'status',
+    'status',
+    'status',
+  ]);
+  const before = changes.length;
+  storage.write = () => Promise.reject(new Error('Disk full'));
+  await assert.rejects(messaging.send('lost', [], 'user'), /Disk full/);
+  assert.equal(changes.length, before);
+  assert.deepEqual(messaging.snapshot(1).messages, []);
+});
 void test('reconnect preserves IDs, full attachments and nondestructive cursors', async () => {
   const { messaging, storage } = fixture();
   await messaging.bind('one');

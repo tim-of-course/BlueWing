@@ -23,11 +23,15 @@ export async function captureViewport(): Promise<ViewportCapture> {
     scale: window.devicePixelRatio || 1,
     backgroundColor: getComputedStyle(document.documentElement).backgroundColor,
     filter: (node) => {
-      if (
-        node instanceof Element &&
-        node.hasAttribute('data-screenshot-overlay')
-      )
-        return false;
+      if (node instanceof Element) {
+        // Prune before canvas preparation and descendant cloning. Computed
+        // display also handles hidden attributes while preserving CSS overrides.
+        if (
+          node.hasAttribute('data-screenshot-overlay') ||
+          getComputedStyle(node).display === 'none'
+        )
+          return false;
+      }
       // modern-screenshot clones each included canvas with toDataURL immediately
       // after this filter, before yielding. Refresh GPU pixels at that boundary.
       if (node instanceof HTMLCanvasElement) prepareCanvasCapture(node);

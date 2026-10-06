@@ -31,10 +31,26 @@ interface Props {
 
 export default function Wingman(props: Props) {
   const messaging = untrack(() => props.controller.messaging);
-  const [conversation, setConversation] = createSignal(messaging.snapshot(), {
+  const initialConversation = messaging.snapshot();
+  const [conversation, setConversation] = createSignal(messaging.status(), {
     name: 'wingman.conversation',
   });
-  onCleanup(messaging.subscribe(() => setConversation(messaging.snapshot())));
+  const [messages, setMessages] = createSignal(initialConversation.messages, {
+    name: 'wingman.messages',
+  });
+  let messageCursor = initialConversation.messages.at(-1)?.id ?? 0;
+  onCleanup(
+    messaging.subscribe((change) => {
+      setConversation(messaging.status());
+      if (change === 'status') return;
+      const incoming = messaging.snapshot(
+        change === 'bind' ? 0 : messageCursor,
+      ).messages;
+      messageCursor = incoming.at(-1)?.id ?? 0;
+      if (change === 'bind') setMessages(incoming);
+      else setMessages((previous) => [...previous, ...incoming]);
+    }),
+  );
   const [visual, setVisual] = createSignal<WingmanVisual | null>(null, {
     name: 'wingman.agentView',
   });
@@ -64,7 +80,7 @@ export default function Wingman(props: Props) {
   const unread = createMemo(() =>
     chatOpen()
       ? 0
-      : conversation().messages.filter(
+      : messages().filter(
           (message) => message.sender === 'agent' && message.id > lastRead(),
         ).length,
   );
@@ -211,7 +227,7 @@ export default function Wingman(props: Props) {
     { name: 'wingman.project' },
   );
   createEffect(
-    () => ({ open: chatOpen(), messages: conversation().messages }),
+    () => ({ open: chatOpen(), messages: messages() }),
     ({ open }) => {
       if (open) {
         if (transcript) transcript.scrollTop = transcript.scrollHeight;
@@ -298,12 +314,12 @@ export default function Wingman(props: Props) {
                 aria-label="Messages"
                 aria-live="polite"
               >
-                <Show when={!conversation().messages.length}>
+                <Show when={!messages().length}>
                   <p class="wingman-empty">
                     Send a message or attach a screenshot for your connected AI.
                   </p>
                 </Show>
-                <For each={conversation().messages}>
+                <For each={messages()}>
                   {(message) => (
                     <article
                       class={[
@@ -432,7 +448,7 @@ export default function Wingman(props: Props) {
               aria-label="Wingman chat"
               aria-expanded={chatOpen() ? 'true' : 'false'}
               onClick={() => {
-                setLastRead(conversation().messages.at(-1)?.id ?? 0);
+                setLastRead(messages().at(-1)?.id ?? 0);
                 setChatOpen((value) => !value);
               }}
             >
