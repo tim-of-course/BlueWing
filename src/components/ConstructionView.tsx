@@ -7,7 +7,7 @@ import {
   Show,
 } from 'solid-js';
 import type { ModelView, ViewportPort } from '../app/wingman-types';
-import type { ConstructionResult } from '../core/construction-types';
+import type { ConstructionSnapshot } from '../core/calculation-state';
 import {
   buildConstructionScene,
   constructionSceneInput,
@@ -32,7 +32,7 @@ const viewOptions: readonly { value: ViewPreset; label: string }[] = [
 ];
 
 export interface ConstructionViewProps {
-  result: ConstructionResult;
+  result: ConstructionSnapshot;
   estimateOutputs?: number;
   onViewport?: (port: ViewportPort<ModelView>) => void;
   interactionDisabled?: boolean;
@@ -102,20 +102,30 @@ export default function ConstructionView(props: ConstructionViewProps) {
     const ids = new Set(isolated);
     return displayIds().filter((id) => ids.has(id));
   });
+  const levelGeometryIds = createMemo(
+    () =>
+      levelId()
+        ? (props.levels?.find((level) => level.id === levelId())?.geometryIds ??
+          [])
+        : undefined,
+    {
+      equals: (a, b) =>
+        a === b ||
+        (!!a &&
+          !!b &&
+          a.length === b.length &&
+          a.every((id, index) => id === b[index])),
+    },
+  );
   const scene = createMemo(
     () => {
       const geometryIds = isolatedIds();
+      const levelIds = levelGeometryIds();
       return buildConstructionScene(input(), {
         materialId: material(),
         role: role(),
         ...(geometryIds ? { geometryIds } : {}),
-        ...(levelId()
-          ? {
-              levelGeometryIds:
-                props.levels?.find((level) => level.id === levelId())
-                  ?.geometryIds ?? [],
-            }
-          : {}),
+        ...(levelIds ? { levelGeometryIds: levelIds } : {}),
       });
     },
     { name: 'construction.scene' },

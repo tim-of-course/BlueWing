@@ -1,4 +1,5 @@
 import { modeledOutputs } from './material-results';
+import type { CalculationSnapshot } from './calculation-state';
 import { purchaseAmount } from './purchasing';
 import { generateConstruction } from './construction';
 import { resolveConstruction } from './applied-assemblies';
@@ -424,7 +425,7 @@ export function calculateProject(project: Project): CalculationResult {
     },
   };
 }
-export function quantityReport(result: CalculationResult) {
+export function quantityReport(result: CalculationSnapshot) {
   return {
     outputs: result.outputs,
     totals: result.totals,
@@ -435,8 +436,8 @@ export function quantityReport(result: CalculationResult) {
 export function exportQuantities(
   project: Project,
   format: 'csv' | 'json',
+  result: CalculationSnapshot = calculateProject(project),
 ): string {
-  const result = calculateProject(project);
   if (format === 'json') return JSON.stringify(quantityReport(result), null, 2);
   const rows: (string | number | boolean | null)[][] = [
     [
@@ -494,7 +495,7 @@ export function exportQuantities(
 
 export function pieceSchedule(
   project: Project,
-  result: CalculationResult = calculateProject(project),
+  result: CalculationSnapshot = calculateProject(project),
 ) {
   return result.outputs
     .filter((output) => output.role !== undefined)
@@ -522,8 +523,12 @@ export function pieceSchedule(
       }),
     );
 }
-export function exportPieces(project: Project, format: 'csv' | 'json'): string {
-  const rows = pieceSchedule(project);
+export function exportPieces(
+  project: Project,
+  format: 'csv' | 'json',
+  result: CalculationSnapshot = calculateProject(project),
+): string {
+  const rows = pieceSchedule(project, result);
   if (format === 'json') return JSON.stringify(rows, null, 2);
   const keys = [
     'sheet',

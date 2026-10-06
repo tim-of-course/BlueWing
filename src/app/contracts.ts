@@ -3,14 +3,16 @@ import type { Observation } from './application';
 import type { PaperScale } from '../core/scale';
 import type { SheetNameSuggestion } from '../pdf/sheet-names';
 import type { PlanSnippet } from '../core/review';
-import type { ConstructionResult } from '../core/construction-types';
+import type {
+  CalculationSnapshot,
+  ConstructionSnapshot,
+} from '../core/calculation-state';
 import type { CommandCall } from '../core/types';
 import type { Messaging } from './messaging';
 import type { CliConnection } from './cli-guide';
 import type { ViewBounds, WingmanPresentation } from './wingman-types';
 import type { DrawingVisibility } from './visibility';
 import type {
-  CalculationResult,
   AssemblyLibrary,
   Assignment,
   GeometryKind,
@@ -35,7 +37,7 @@ export interface WorkspaceController {
   setPresentation(presentation: WingmanPresentation | undefined): void;
   captureContext(): WorkspaceContext;
   restoreContext(context: WorkspaceContext): void;
-  construction: Accessor<ConstructionResult | null>;
+  construction: Accessor<ConstructionSnapshot | null>;
   execute(call: CommandCall, expected?: Observation): Promise<unknown>;
   renderSnippet(id: string | PlanSnippet): Promise<string>;
   exportSnippet(id: string): Promise<void>;
@@ -44,7 +46,7 @@ export interface WorkspaceController {
     schedule: 'pieces' | 'lengths' | 'materials',
   ): Promise<void>;
   project: Accessor<Project | null>;
-  quantities: Accessor<CalculationResult | null>;
+  quantities: Accessor<CalculationSnapshot | null>;
   library: Accessor<AssemblyLibrary | null>;
   refreshLibrary(): Promise<void>;
   addLibraryStarters(expectedLibraryRevision: number): Promise<void>;

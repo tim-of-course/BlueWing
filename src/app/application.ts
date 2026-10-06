@@ -1,5 +1,3 @@
-import { calculateProject } from '../core/calculations';
-import { quantityChanges } from '../core/quantity-changes';
 import { invoke } from '@tauri-apps/api/core';
 import {
   createProject,
@@ -108,6 +106,10 @@ export class Application {
   get project(): Project | null {
     return this.session?.project ?? null;
   }
+  calculate() {
+    if (!this.session) throw new Error('Open or create a project first');
+    return this.session.calculation;
+  }
   observe(): Observation {
     const observation = this.session?.observation;
     if (!observation) throw new Error('Open or create a project first');
@@ -205,10 +207,6 @@ export class Application {
         };
       else if (!isApplication) {
         if (!this.session) throw new Error('Open or create a project first');
-        const beforePreview =
-          request.name === 'preview'
-            ? calculateProject(this.session.project)
-            : null;
         const result = await this.session.dispatch({
           ...request,
           ...this.observe(),
@@ -224,10 +222,7 @@ export class Application {
               preview: true,
               project: result.project,
               data: result.data,
-              quantityChanges: quantityChanges(
-                beforePreview ?? calculateProject(this.session.project),
-                calculateProject(result.project),
-              ),
+              quantityChanges: result.quantityChanges,
             }
           : result.data;
       } else
@@ -349,7 +344,7 @@ export class Application {
               !project.construction?.levels[payload.levelId as string]
             )
               throw new Error('Level not found');
-            const result = calculateProject(project).model;
+            const result = this.calculate().model;
             const resolved = resolveConstruction(project);
             const scene = buildConstructionScene(
               constructionSceneInput(result),

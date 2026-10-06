@@ -7,7 +7,7 @@ import {
 } from 'solid-js';
 import { pageImageKey, PAGE_IMAGE_DIMENSION } from '../pdf/page-images';
 import { isTauri } from '@tauri-apps/api/core';
-import { calculateProject, exportQuantities, exportPieces } from '../core';
+import { exportQuantities, exportPieces } from '../core';
 import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
 import { Application, type Observation } from './application';
 import { choosePdf, chooseProject, writeOutput } from './files';
@@ -118,7 +118,7 @@ export function createWorkspace(
   const quantities = createMemo(
     () => {
       const current = project();
-      return current ? calculateProject(current) : null;
+      return current ? app.calculate() : null;
     },
     { name: 'workspace.quantities' },
   );
@@ -337,7 +337,12 @@ export function createWorkspace(
           app.native,
           `${requireProject().name}-${schedule}.${format}`,
           new TextEncoder().encode(
-            exportConstruction(requireProject(), format, schedule),
+            exportConstruction(
+              requireProject(),
+              format,
+              schedule,
+              app.calculate().model,
+            ),
           ),
         ),
       );
@@ -364,7 +369,9 @@ export function createWorkspace(
         writeOutput(
           app.native,
           `${project.name}-pieces.csv`,
-          new TextEncoder().encode(exportPieces(project, 'csv')),
+          new TextEncoder().encode(
+            exportPieces(project, 'csv', app.calculate()),
+          ),
         ),
       );
     },
@@ -617,7 +624,7 @@ export function createWorkspace(
       app.pdf.renderRegion(sheet, bounds, maxDimension, signal),
     async exportQuantities(format) {
       const current = requireProject();
-      const content = exportQuantities(current, format);
+      const content = exportQuantities(current, format, app.calculate());
       await run(() =>
         writeOutput(
           app.native,

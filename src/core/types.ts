@@ -6,6 +6,7 @@ import type {
   ConstructionSource,
 } from './construction-types';
 import type { ReviewData } from './review';
+import type { quantityChanges } from './quantity-changes';
 import type { MaterialTemplate } from './material-layout';
 
 /** Coordinates are unzoomed PDF viewport units (72/in), origin top-left, +y down. */
@@ -248,4 +249,5 @@ export interface CommandResult {
   data: unknown;
   changed: boolean;
   preview: boolean;
+  quantityChanges?: ReturnType<typeof quantityChanges>;
 }

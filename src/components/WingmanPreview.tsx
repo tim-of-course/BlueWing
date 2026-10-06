@@ -1,4 +1,10 @@
-import { createEffect, createSignal, onCleanup, Show } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  Show,
+} from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
@@ -75,6 +81,46 @@ export default function WingmanPreview(props: {
     | undefined;
   let snapshot: ReturnType<typeof acquireConstructionSnapshot> | undefined;
   const [status, setStatus] = createSignal('');
+  const model = createMemo(() =>
+    props.view.kind === '3d' ? props.controller.construction() : null,
+  );
+  const modelInput = createMemo(() => {
+    const result = model();
+    return result ? constructionSceneInput(result) : null;
+  });
+  const modelFilter = createMemo(
+    () => {
+      const view = props.view;
+      if (view.kind !== '3d') return null;
+      const selected = new Set(view.selectedGeometryIds ?? []);
+      const geometryIds = view.selectedOnly
+        ? (view.geometryIds ?? [...selected]).filter((id) => selected.has(id))
+        : view.geometryIds;
+      const project = view.levelId ? props.controller.project() : null;
+      const construction = project ? resolveConstruction(project) : null;
+      const levelGeometryIds = construction
+        ? [
+            ...Object.values(construction.walls),
+            ...Object.values(construction.ceilings),
+            ...Object.values(construction.materials ?? {}),
+          ]
+            .filter((source) => source.levelId === view.levelId)
+            .map((source) => source.geometryId)
+        : undefined;
+      return {
+        ...(geometryIds ? { geometryIds } : {}),
+        ...(levelGeometryIds ? { levelGeometryIds } : {}),
+        ...(view.materialId ? { materialId: view.materialId } : {}),
+        ...(view.role ? { role: view.role } : {}),
+      };
+    },
+    { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
+  );
+  const modelScene = createMemo(() => {
+    const input = modelInput();
+    const filter = modelFilter();
+    return input && filter ? buildConstructionScene(input, filter) : null;
+  });
   const clearRaster = () => {
     raster?.abort.abort();
     if (raster?.value) raster.value.width = raster.value.height = 0;
@@ -87,11 +133,11 @@ export default function WingmanPreview(props: {
   createEffect(
     () => ({
       project: props.controller.project(),
-      result: props.view.kind === '3d' ? props.controller.construction() : null,
+      scene: modelScene(),
       view: props.view,
       controller: props.controller,
     }),
-    ({ project, result, view, controller }) => {
+    ({ project, scene, view, controller }) => {
       const element = canvas;
       if (!element) return;
       let cancelled = false;
@@ -123,30 +169,10 @@ export default function WingmanPreview(props: {
       }
       if (view.kind === '3d') {
         context.clearRect(0, 0, element.width, element.height);
-        if (!result) {
+        if (!scene) {
           setStatus('No construction is available.');
           return;
         }
-        const selected = new Set(view.selectedGeometryIds ?? []);
-        const geometryIds = view.selectedOnly
-          ? (view.geometryIds ?? [...selected]).filter((id) => selected.has(id))
-          : view.geometryIds;
-        const construction = resolveConstruction(project);
-        const levelGeometryIds = view.levelId
-          ? [
-              ...Object.values(construction.walls),
-              ...Object.values(construction.ceilings),
-              ...Object.values(construction.materials ?? {}),
-            ]
-              .filter((source) => source.levelId === view.levelId)
-              .map((source) => source.geometryId)
-          : undefined;
-        const scene = buildConstructionScene(constructionSceneInput(result), {
-          ...(geometryIds ? { geometryIds } : {}),
-          ...(levelGeometryIds ? { levelGeometryIds } : {}),
-          ...(view.materialId ? { materialId: view.materialId } : {}),
-          ...(view.role ? { role: view.role } : {}),
-        });
         setStatus('Loading 3D preview…');
         void import('../three/renderer')
           .then(({ acquireConstructionSnapshot }) => {

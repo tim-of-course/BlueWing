@@ -1,6 +1,7 @@
 import { createMemo, For, Show } from 'solid-js';
 import { pieceSchedule } from '../core/calculations';
-import type { CalculationResult, Project, Quantity } from '../core/types';
+import type { Project, Quantity } from '../core/types';
+import type { CalculationSnapshot } from '../core/calculation-state';
 
 export function displayLength(quantity: Quantity | undefined): string {
   if (!quantity) return '—';
@@ -15,7 +16,7 @@ function displayMetres(value: number | null): string {
 }
 export default function PieceSchedule(props: {
   project: Project;
-  result: CalculationResult;
+  result: CalculationSnapshot;
 }) {
   const rows = createMemo(() => pieceSchedule(props.project, props.result));
   return (

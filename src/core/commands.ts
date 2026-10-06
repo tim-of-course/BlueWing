@@ -7,6 +7,7 @@ import type {
   Recipe,
   Sheet,
 } from './types';
+import type { CalculationSnapshot } from './calculation-state';
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
 import {
   calculateProject,
@@ -851,6 +852,7 @@ export function executeCommandOnDraft(
   next: Project,
   call: CommandCall,
   validateResult = true,
+  calculation: () => CalculationSnapshot = () => calculateProject(next),
 ): { project: Project; data: unknown; changed: boolean } {
   const definition = validateCommand(call);
   if (['batch', 'preview', 'history.undo', 'history.redo'].includes(call.name))
@@ -868,16 +870,24 @@ export function executeCommandOnDraft(
       data = next;
       break;
     case 'pieces.inspect':
-      data = pieceSchedule(next);
+      data = pieceSchedule(next, calculation());
       break;
     case 'pieces.export':
-      data = exportPieces(next, payload.format as 'csv' | 'json');
+      data = exportPieces(
+        next,
+        payload.format as 'csv' | 'json',
+        calculation(),
+      );
       break;
     case 'quantities.inspect':
-      data = quantityReport(calculateProject(next));
+      data = quantityReport(calculation());
       break;
     case 'quantities.export':
-      data = exportQuantities(next, payload.format as 'csv' | 'json');
+      data = exportQuantities(
+        next,
+        payload.format as 'csv' | 'json',
+        calculation(),
+      );
       break;
     case 'project.rename':
       next.name = payload.name as string;
@@ -1000,7 +1010,7 @@ export function executeCommandOnDraft(
       Reflect.deleteProperty(next.assignments, entityId);
       break;
     default:
-      data = executeDetailed(next, call);
+      data = executeDetailed(next, call, calculation);
   }
   if (definition.mutates) {
     if (

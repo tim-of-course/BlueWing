@@ -3,6 +3,12 @@ import {
   validateCommand,
   validateProject,
 } from './commands';
+import {
+  calculateSnapshot,
+  changesCalculation,
+  type CalculationSnapshot,
+} from './calculation-state';
+import { quantityChanges } from './quantity-changes';
 import type {
   CommandCall,
   CommandRequest,
@@ -38,6 +44,7 @@ interface HistoryEntry {
   records: RecordChange[];
   construction: ExtensionChange<Project['construction']> | undefined;
   review: ExtensionChange<Project['review']> | undefined;
+  calculationChanged: boolean;
 }
 export interface HistoryItem {
   label: string;
@@ -61,6 +68,7 @@ function difference(
   before: Project,
   after: Project,
   request: CommandRequest,
+  calculationChanged: boolean,
 ): HistoryEntry {
   const records: RecordChange[] = [];
   for (const collection of collections) {
@@ -87,6 +95,7 @@ function difference(
     beforeName: before.name,
     afterName: after.name,
     records,
+    calculationChanged,
     construction: extensionChange(before.construction, after.construction),
     review: extensionChange(before.review, after.review),
   };
@@ -130,6 +139,7 @@ function restore(
 /** Owns accepted state; drafts and source asset bytes belong outside this session. */
 export class ProjectSession {
   #project: Project;
+  #calculation: CalculationSnapshot | undefined;
   #queue: Promise<void> = Promise.resolve();
   #undo: HistoryEntry[] = [];
   #redo: HistoryEntry[] = [];
@@ -152,6 +162,10 @@ export class ProjectSession {
 
   get project(): Project {
     return structuredClone(this.#project);
+  }
+  /** One immutable result for the current calculation inputs, shared by all readers. */
+  get calculation(): CalculationSnapshot {
+    return (this.#calculation ??= calculateSnapshot(this.#project));
   }
   /** Command metadata does not need a copy of the project's drawing and recipes. */
   get observation(): Pick<CommandRequest, 'projectId' | 'expectedRevision'> {
@@ -204,6 +218,17 @@ export class ProjectSession {
     let changed = false;
     let data: unknown;
     const preview = request.name === 'preview';
+    const beforePreview = preview ? this.calculation : undefined;
+    let calculation = this.#calculation;
+    let calculationChanged = false;
+    const readCalculation = () => (calculation ??= calculateSnapshot(next));
+    const execute = (call: CommandCall, validateResult: boolean) => {
+      if (validateCommand(call).mutates && changesCalculation(next, call)) {
+        calculationChanged = true;
+        calculation = undefined;
+      }
+      return executeCommandOnDraft(next, call, validateResult, readCalculation);
+    };
     if (request.name === 'batch' || preview) {
       next = structuredClone(next);
       const payload = request.payload as { commands: CommandCall[] };
@@ -217,7 +242,7 @@ export class ProjectSession {
           throw new Error(
             'Batches and previews cannot contain session control commands',
           );
-        const result = executeCommandOnDraft(next, call, false);
+        const result = execute(call, false);
         changed ||= result.changed;
         results.push(result.data);
       }
@@ -231,23 +256,30 @@ export class ProjectSession {
             ? { ...next }
             : structuredClone(next);
       }
-      const result = executeCommandOnDraft(next, request);
+      const result = execute(request, true);
       changed = result.changed;
       data = result.data;
     }
-    if (preview || !changed)
+    if (preview)
       return {
         project: structuredClone(next),
         data,
         changed,
         preview,
+        quantityChanges: structuredClone(
+          quantityChanges(beforePreview ?? this.calculation, readCalculation()),
+        ),
       };
+    if (!changed) {
+      this.#calculation = calculation;
+      return { project: structuredClone(next), data, changed, preview: false };
+    }
 
     const entry =
       this.#historyLimit > 0
-        ? difference(this.#project, next, request)
+        ? difference(this.#project, next, request, calculationChanged)
         : undefined;
-    await this.#save(next);
+    await this.#save(next, calculationChanged, calculation);
     if (entry) this.#undo.push(entry);
     if (this.#undo.length > this.#historyLimit) this.#undo.shift();
     this.#redo = [];
@@ -267,7 +299,7 @@ export class ProjectSession {
     if (!entry) throw new Error(undo ? 'Nothing to undo' : 'Nothing to redo');
     const next = restore(this.#project, entry, undo ? 'before' : 'after');
     validateProject(next);
-    await this.#save(next);
+    await this.#save(next, entry.calculationChanged);
     source.pop();
     destination.push(entry);
     this.#publish();
@@ -279,11 +311,19 @@ export class ProjectSession {
     };
   }
 
-  async #save(next: Project): Promise<void> {
+  async #save(
+    next: Project,
+    calculationChanged: boolean,
+    calculation?: CalculationSnapshot,
+  ): Promise<void> {
     next.revision = this.#project.revision + 1;
     // Adapter code receives copies so it cannot alter accepted state or a pending history entry.
     await this.#persistence.save(this.project, structuredClone(next));
     this.#project = next;
+    // A reader may have warmed the accepted cache while persistence was pending.
+    this.#calculation = calculationChanged
+      ? calculation
+      : (this.#calculation ?? calculation);
   }
   #publish(): void {
     for (const listener of this.#listeners) {

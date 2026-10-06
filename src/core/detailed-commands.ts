@@ -1,5 +1,9 @@
 import type { CommandDefinition, PayloadSchema } from './commands';
 import type { CommandCall, Project } from './types';
+import type {
+  CalculationSnapshot,
+  ConstructionSnapshot,
+} from './calculation-state';
 import { validateConstruction } from './construction';
 import type { ConstructionData, Wall, Ceiling } from './construction-types';
 import {
@@ -410,7 +414,11 @@ export function validateDetailed(project: Project): void {
   if (project.review) validateReview(project, project.review);
 }
 
-export function executeDetailed(project: Project, call: CommandCall): unknown {
+export function executeDetailed(
+  project: Project,
+  call: CommandCall,
+  calculation: () => CalculationSnapshot = () => calculateProject(project),
+): unknown {
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const id = payload.id as string;
   if (call.name === 'header.fromAssembly') {
@@ -487,7 +495,7 @@ export function executeDetailed(project: Project, call: CommandCall): unknown {
   switch (call.name) {
     case 'construction.inspect':
       return {
-        ...calculateProject(project).model,
+        ...calculation().model,
         applications: resolveConstruction(project),
       };
     case 'construction.export':
@@ -495,6 +503,7 @@ export function executeDetailed(project: Project, call: CommandCall): unknown {
         project,
         payload.format as 'csv' | 'json',
         payload.schedule as 'pieces' | 'lengths' | 'materials' | undefined,
+        calculation().model,
       );
     case 'snippet.put': {
       const review = (project.review ??= emptyReview());
@@ -617,8 +626,8 @@ export function exportConstruction(
   project: Project,
   format: 'csv' | 'json',
   schedule: 'pieces' | 'lengths' | 'materials' = 'pieces',
+  result: ConstructionSnapshot = calculateProject(project).model,
 ): string {
-  const result = calculateProject(project).model;
   if (format === 'json')
     return JSON.stringify(
       { projectId: project.id, revision: project.revision, ...result },

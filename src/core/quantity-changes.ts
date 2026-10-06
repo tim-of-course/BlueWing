@@ -1,10 +1,10 @@
-import type { CalculationResult } from './types';
+import type { CalculationSnapshot } from './calculation-state';
 
 export function quantityChanges(
-  before: CalculationResult,
-  after: CalculationResult,
+  before: CalculationSnapshot,
+  after: CalculationSnapshot,
 ) {
-  const key = (total: CalculationResult['totals'][number]) =>
+  const key = (total: CalculationSnapshot['totals'][number]) =>
     JSON.stringify([
       total.materialId,
       total.unit,

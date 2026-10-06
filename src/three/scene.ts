@@ -1,4 +1,4 @@
-import type { ConstructionResult } from '../core/construction-types';
+import type { ConstructionSnapshot } from '../core/calculation-state';
 
 /** Metres in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
 export interface Point3 {
@@ -142,10 +142,12 @@ export function memberFaces(member: SceneMember): SceneFace[] {
   }));
 }
 
-export function constructionSceneInput(result: ConstructionResult): SceneInput {
+export function constructionSceneInput(
+  result: ConstructionSnapshot,
+): SceneInput {
   // Vertical endpoints alone do not encode wall direction. Recover it from the
   // nearest track segment of the same wall, including bent wall paths.
-  const tracks = new Map<string, typeof result.pieces>();
+  const tracks = new Map<string, (typeof result.pieces)[number][]>();
   for (const piece of result.pieces) {
     if (piece.wallId && piece.role.endsWith('track')) {
       const list = tracks.get(piece.wallId) ?? [];
