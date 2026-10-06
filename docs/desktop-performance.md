@@ -38,6 +38,49 @@ An earlier run imported and rendered the pages but timed out while closing, expo
 
 Ignored evidence: `tmp/detailed-workflow/large-plan.json`, `commands.json`, `large-page-1.png`, `large-page-83.png`, `large-page-164.png`, `large-reopened.png`, and `tmp/memory-profile/bingham-ranged-fixed.json`. The source PDF is not committed.
 
+## Page switching and cache experiment
+
+Additional measurements on October 5 used the same original Bingham PDF, an Apple M1 with 8 GiB RAM, production web assets from this branch, and the existing debug native bridge. These measure the normal 3,000-pixel main viewer, rather than the earlier 1,024-pixel CLI exports. No product cache or loading transition was added by this experiment.
+
+A temporary entry mounts the real `App` with `Application(true)`. The real CLI creates/imports or opens an isolated saved project. After its initially selected page finishes rendering, the harness invokes the actual sheet-row click handler for pages 83 and 164. The sidebar is collapsed and Wingman has no rendered view. Instrumentation confirms neither target page had a thumbnail or main render before its first selection. The saved-project runs initially selected page 134; its shared document resources could already be warm. OS disk caches were not purged.
+
+The following timings cover selection through the first correct drawing-canvas paint, plus two subsequent animation frames. Both completed runs had a visible, focused window throughout these switches. The extra frames make this a conservative presentation proxy, not a physical display scanout measurement.
+
+| Action                                               | A5-9, stair/elevator details, page 83 | K400, kitchen/building works, page 164 |
+| ---------------------------------------------------- | ------------------------------------- | -------------------------------------- |
+| First visit to previously unrendered page            | 2.17–2.30 s                           | 0.517–0.521 s                          |
+| Return after viewing the other page, current product | 1.63–1.69 s                           | 0.224–0.257 s                          |
+| Return with temporary completed-image cache          | 0.057–0.061 s                         | 0.057–0.061 s                          |
+
+The cache experiment retained two completed 3,000 × 2,143 base-PDF canvases, including the current page, and returned the same canvas on a matching request. There were twelve cache-hit switches across two runs. Source images were available within 1–15 ms of selection, with no additional PDF byte reads or rendering. The normal viewer still painted its current overlays. The retained pixel buffers total 49.05 MiB, about 24.52 MiB more than retaining just one; browser/GPU copies and transient rendering allocations are additional. This prototype does not establish a production eviction policy or test cache invalidation across project lifecycles.
+
+Returning to page 83 without the cache needed no additional file bytes but still spent about 1.6 seconds rendering. Keeping the document worker alive already avoids rereading those bytes. Increasing the idle-document limit would not remove this rendering work.
+
+To distinguish document reuse from genuinely unloaded renderer state, a second experiment destroyed the PDF worker before each render. These are render-completion timings, without the extra UI frames:
+
+| Maximum image dimension      | Page 83, fresh worker | Page 164, fresh worker |
+| ---------------------------- | --------------------- | ---------------------- |
+| 3,000 px, current main image | 2.508 s               | 1.061 s                |
+| 640 px, sidebar preview size | 2.734 s               | 1.105 s                |
+| 1,500 px                     | 2.786 s               | 1.130 s                |
+| 2,400 px                     | 2.483 s               | 1.020 s                |
+
+Starting a 640 px preview and 3,000 px render together on a fresh worker did not produce an earlier preview: page 83's full image completed at 2.995 s and its preview at 3.247 s; page 164 completed at 1.042 s and 1.046 s respectively. These single samples do not prove smaller images are slower in general. They show no useful first-load improvement from reducing resolution on these two pages. Reading/parsing and executing the page's drawing instructions remain necessary at preview size.
+
+The full experiment stayed at normal macOS memory pressure. The two successful runs peaked at 1,821 and 1,710 MiB physical footprint for the isolated native/Python harness plus new WebKit helpers. These are whole-run peaks, not incremental cache cost. An initial attempt ran with a hidden, unfocused native window and timed out waiting for animation frames after the PDF finished. It is excluded from the page-switch results. The temporary harness gained an explicit screenshot-hook fallback for hidden windows; neither successful run used that fallback.
+
+### Recommended next change
+
+Add a small cache of completed main-view PDF images. A 128 MiB pixel budget would hold about five of these particular pages, with the current image retained and least recently viewed images evicted first. It must cache only source pixels, so takeoff edits, selection, calibration and names remain live. Key by source asset, page, rotation, dimensions and requested resolution; clear it when closing the project. Preserve cancellation of abandoned renders. Explicitly release evicted owned buffers. The pixel budget is not a cap on total app memory.
+
+For slower first visits, reuse an already available sidebar preview while the main image renders. Keep any retained preview bytes bounded and decode only those being displayed. Do not require a new low-resolution render before starting the main render: this experiment found it costs almost as much as the full image. Prioritizing the selected page over queued thumbnails and pre-rendering one likely next page during idle time are further candidates, but their benefit and contention need separate measurement. Do not render the entire document ahead of use.
+
+Choose the transition after the production cache is verified. Cache hits should switch directly. An existing preview could remain visible and briefly fade into the completed image on a miss. Blur is optional styling; it does not reduce load time, and a never-previewed page still needs a fallback. Windows WebView2 and a full estimating session remain unmeasured.
+
+Ignored reproducibility files: `tmp/page-load-profile/{bench.tsx,vite.config.ts,run.py,switch-results.json,results.json,page83.png,page164.png}` and `tmp/memory-profile/{page-switch-measured,page-resolution-probes}.json`. Build and native runs used `scripts/heavy.ts` sequentially. The screenshots were inspected to confirm the actual A5-9 and K400 page content. This was a focused performance experiment, not a rerun of the full verification suite below.
+
+Independent read-only review used Banana Split workflow `wf_3df6afab-c73a-4fe8-9b1f-2879e417fb62`, completed successfully. The configured default tier stayed unchanged: one root coordinator, GPT-6.1-Sol with resolved high reasoning, observed Sol routing, and zero child agents. No workflow revisions, rejections, approval requests or retries were recorded. The host, GPT-6-Astra with ultra reasoning, ran the guarded measurements and corrected the initial hidden-window measurement failure. The review supported a recent-image cache and identified ownership and invalidation requirements; it did not run benchmarks or change files.
+
 ## Verification scope
 
 | Check                              | Result                                                                                                    |
