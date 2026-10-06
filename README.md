@@ -55,7 +55,7 @@ The 3D viewer uses Three.js with WebGL 2 for depth-correct rendering and selecti
 
 Use **Review** for source-linked snippets, geometry highlights, annotations, and review marks. Relevant dependency changes flag previously reviewed sources as changed. Generation shares a 50,000-piece/surface budget and reports incomplete results when exhausted. The 3D viewer displays all generated objects matching its filters; CSV retains all generated pieces regardless of scene filters or selection.
 
-This development release supports project format 4 only. Start a new takeoff for older projects; there are no old-format loading or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 6 for backups, bounded PDF transfers, and Wingman screenshot attachments.
+This development release supports project format 4 only. Start a new takeoff for older projects; there are no old-format loading or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 6 for disposable page-image storage, backups, bounded PDF transfers, and Wingman screenshot attachments.
 
 The CLI operates the running desktop app:
 

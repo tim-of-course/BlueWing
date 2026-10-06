@@ -81,6 +81,46 @@ Ignored reproducibility files: `tmp/page-load-profile/{bench.tsx,vite.config.ts,
 
 Independent read-only review used Banana Split workflow `wf_3df6afab-c73a-4fe8-9b1f-2879e417fb62`, completed successfully. The configured default tier stayed unchanged: one root coordinator, GPT-6.1-Sol with resolved high reasoning, observed Sol routing, and zero child agents. No workflow revisions, rejections, approval requests or retries were recorded. The host, GPT-6-Astra with ultra reasoning, ran the guarded measurements and corrected the initial hidden-window measurement failure. The review supported a recent-image cache and identified ownership and invalidation requirements; it did not run benchmarks or change files.
 
+## Implemented page cache
+
+The main viewer now uses 3,300 pixels along the longest edge, a 10% increase in linear resolution. Previews remain at 640 pixels. Page images use a 256 MiB pixel budget and previews a separate 32 MiB budget. These limits exclude caller-owned display copies, active jobs, PDF workers, GPU storage and encoding/decoding allocations. Background images enter below recent foreground images in eviction priority.
+
+Requests reuse memory first, then a lossless PNG disk image, then render the PDF. The native adapter stores images in `std::env::temp_dir()/bluewing-page-images-v1`, independently of the takeoff file and app profile. It uses blocking-pool file I/O and atomic writes. Cache keys include the immutable source asset, page index, rotation, dimensions, requested resolution and renderer version. Names, calibration, geometry and calculation changes do not change source pixels. Browser development uses Cache Storage instead of the native adapter. Unavailable or corrupt caches fall back to the original PDF.
+
+Closing a project releases memory and cancels preparation, leaving disk images disposable in the OS temporary directory. There is no reboot detector, app-owned age/size cleanup or project migration. Operating systems need not erase temporary files at a particular time. Disk images can be reused after restarting the app or moving the same project file, and can always be regenerated if removed.
+
+Preparation starts near the selected sheet and proceeds through every remaining page, one job at a time. It waits after input, yields between PDF drawing chunks and pauses drawing for foreground work. A foreground request can share an in-progress background image. Full-page completion also generates the preview, avoiding a second PDF render. Existing complete disk pairs are skipped without decoding. PNG writes do not delay foreground image delivery, while preparation waits for each page's writes before starting another.
+
+The loading transition is unchanged. The native bridge is now version 6, so older desktop binaries must be rebuilt.
+
+### Native verification with the implemented cache
+
+The same 164-page Bingham project was opened through the real CLI in an isolated native profile using bridge 6 and production web assets. The harness clicked actual sheet rows in the mounted application. Main images measured 3,300 × 2,358 pixels. Background preparation was initially held so the first visits and cache hits could be measured separately.
+
+| Operation                                          | A5-9, page 83 | K400, page 164 |
+| -------------------------------------------------- | ------------- | -------------- |
+| Uncached image ready, hidden window                | 3.126 s       | 0.665 s        |
+| Memory image ready, visible window                 | 3–4 ms        | 6 ms           |
+| Disk image ready, visible window                   | 138–153 ms    | 124–130 ms     |
+| Disk image ready after app restart, visible window | 150 ms        | 130 ms         |
+
+Image-ready timings stop when the main viewer receives its owned canvas. The initial cold run had a hidden, unfocused window and used the existing screenshot hook to force a canvas paint; its timings are not screen-presentation measurements and are not directly comparable to the earlier visible-window baseline. In the visible follow-up, memory selections reached the first correct paint plus two animation frames in 60–68 ms, and disk selections in 165–207 ms. These are single-run observations on this Mac, not Windows guarantees or timing gates.
+
+The initial preparation pass reached 159 pages before the temporary harness's 15-minute timeout. No PDF render failure or resource-guard stop occurred. After extending only that harness timeout, the follow-up reused the 159 disk pairs, rendered the remaining five pages, and completed the 164-page preparation pass in 22.525 seconds. This is a resumed pass, not a 22-second cold preparation claim. A subsequent app restart loaded both target pages with **zero PDF renders**. Their recent memory entries also remained usable after preparation. First-render and disk-loaded drawing screenshots matched byte for byte, and the actual A5-9 content was visually inspected.
+
+All 328 PNG files, one main image and one preview per page, were present and totaled 247.54 MiB. The cache retained 215.65 MiB of pixel buffers after the successful follow-up, within the separate full-image and preview budgets. Across the long cold pass, peak physical footprint was 4,112 MiB and peak resident memory was 2,469 MiB for the isolated native/Python harness and new WebKit helpers. The footprint was about 1,806 MiB near the end before app termination. The follow-up/restart run peaked at 2,910 MiB physical footprint and 2,516 MiB resident memory. These whole-process peaks include transient PDF/rendering/browser allocations and are not the incremental cost of retained page images. The cold pass saw normal and warning macOS pressure; the follow-up stayed normal. No critical pressure was recorded.
+
+Given the visible cache-hit measurements, direct switching remains appropriate for memory hits. A future transition should reuse an already available preview only while a slower image is pending, then briefly fade to the completed page. It should not add a delay to cached switches. No blur/fade transition was added here.
+
+Ignored evidence lives in `tmp/page-cache-verification/`: `cold-first.json` preserves the original cold run; `first.json` and `restart.json` record successful completion and restart; `cold-first-A.png` and `cold-disk-A.png` preserve the cold pixel comparison. The harness, Vite config and CLI driver remain there. Memory samples are `tmp/memory-profile/page-cache-all-bingham.json` and `page-cache-bingham-resume.json`. Source plans and these private artifacts are not committed. All builds and native runs used the resource guard sequentially.
+
+### Delegated implementation and review
+
+Both Banana Split workflows completed mechanically with successful root outcomes, and the host reviewed their changes and ran the guarded verification. They used the configured `default` tier with no override or tier change. Each had one root coordinator, observed GPT-6.1-Sol routing with resolved high reasoning, and zero child agents. The host used GPT-6-Astra with ultra reasoning. No managed tool rejections, formal revisions, approvals or retry events were recorded.
+
+- Native adapter: workflow `wf_971417bc-bb76-4a81-bf4a-4e95b766f6df`, root `agt_c2c3d2f0-0395-431c-9b7c-88212dba0a7c`. Added byte read/write commands and four unit cases. The host added the existence command and bridge version update.
+- Browser regressions: workflow `wf_356ddfaa-4c17-44d6-881e-a19feb803610`, root `agt_33d9f561-a39d-4392-a7e2-02e5cd79c256`. Added the cache harness and scenarios; no heavy tests ran in the delegated workflow. The agent identified a rejected-existence-check fallback, which the host corrected. The host also fixed a test-only Chromium canvas readback warning and updated the existing sidebar test to observe cache requests instead of requiring redundant PDF rendering, then reran both browser engines successfully.
+
 ## Verification scope
 
 | Check                        | Result                                                         |
@@ -113,5 +153,5 @@ Page-image regressions cover memory reuse, independent canvas ownership, PNG dis
 
 - PDF.js still reserves a source-length worker buffer and retains fetched source bytes until worker destruction. Random-access input avoids eager copies and reads; it is not a constant-memory PDF engine. Browser development still reads imported assets in full.
 - Complex pages still need seconds for their first render. The input-yielding tests establish scheduling behavior, not a measured Windows interaction latency.
-- The real-plan workflow rendered three representative pages and one reopened page. It did not scroll through and render every page, measure a long estimating session, or profile the original Windows machine.
+- All 164 Bingham pages and their previews were prepared across the cold and resumed native runs. This does not measure a long interactive estimating session or the original Windows machine.
 - The actual Windows development app still needs checking with Bingham after these changes, including WebView2 rendering and the copied CLI prompt. Solid diagnostics are already enabled in development; see the README for recording instructions.
