@@ -1,3 +1,4 @@
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { PdfDocuments } from '../../src/pdf/documents';
 import type { Sheet } from '../../src/core/types';
 import type { AssetRange } from '../../src/platform/storage-model';
@@ -543,7 +544,80 @@ async function backgroundPause(cancel: boolean) {
   }
 }
 
+async function nameCache() {
+  const bytes = new Uint8Array(
+    await (await fetch('/tests/fixtures/sheet-name-plan.pdf')).arrayBuffer(),
+  );
+  let opens = 0;
+  const documents = new PdfDocuments(() => {
+    opens++;
+    return Promise.resolve(bytes.slice());
+  });
+  const [sheet] = await documents.import('names', 'names.pdf', bytes);
+  if (!sheet) throw new Error('Missing name fixture sheet');
+  const entries = (
+    documents as unknown as {
+      documents: Map<string, { promise: Promise<PDFDocumentProxy> }>;
+    }
+  ).documents;
+  const entry = entries.get('names');
+  if (!entry) throw new Error('Missing loaded PDF');
+  const pdf = await entry.promise;
+  const page = await pdf.getPage(1);
+  const original = page.getTextContent.bind(page);
+  let extractions = 0;
+  let fail = false;
+  page.getTextContent = (...args) => {
+    extractions++;
+    if (fail) return Promise.reject(new Error('Text read failed'));
+    return original(...args);
+  };
+  try {
+    const [first, duplicate] = await Promise.all([
+      documents.suggestName(sheet),
+      documents.suggestName({
+        ...sheet,
+        id: 'duplicate',
+        name: 'Renamed copy',
+      }),
+    ]);
+    const sharedExtractions = extractions;
+    if (first.status === 'suggested') first.name = 'Caller edit';
+    const unchanged = await documents.suggestName({
+      ...sheet,
+      name: 'New label',
+    });
+    await documents.suggestName({ ...sheet, rotation: 90 });
+    fail = true;
+    const failure = await documents
+      .suggestName({ ...sheet, rotation: 180 })
+      .then(
+        () => '',
+        (error: unknown) => String(error),
+      );
+    fail = false;
+    await documents.suggestName({ ...sheet, rotation: 180 });
+    await documents.release('names');
+    const released = await documents.suggestName(sheet);
+    await documents.clear();
+    const cleared = await documents.suggestName(sheet);
+    return {
+      duplicate,
+      unchanged,
+      released,
+      cleared,
+      sharedExtractions,
+      extractions,
+      failure,
+      opens,
+    };
+  } finally {
+    await documents.clear();
+  }
+}
+
 const harness = {
+  nameCache,
   backgroundPause,
   yielding,
   cancellation,

@@ -91,17 +91,29 @@ export default function RecipeEditor(props: {
   let libraryRevision = 0;
   const [error, setError] = createSignal('');
   const [saving, setSaving] = createSignal(false);
+  const [previewOpen, setPreviewOpen] = createSignal(false);
+  const assemblyError = createMemo(() => {
+    const recipe = draft();
+    if (!recipe) return '';
+    try {
+      validateAssembly(recipe);
+      return '';
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : String(cause);
+    }
+  });
+  const canPreview = () =>
+    !!draft() && !!props.controller.selection().length && !assemblyError();
+  createEffect(canPreview, (available) => {
+    if (!available) setPreviewOpen(false);
+  });
   const preview = createMemo(
     () => {
+      if (!previewOpen() || !canPreview()) return null;
       const recipe = draft();
       const project = props.controller.project();
       const ids = props.controller.selection();
       if (!recipe || !project || !ids.length) return null;
-      try {
-        validateAssembly(recipe);
-      } catch {
-        return null;
-      }
       const previewProject = { ...project };
       delete previewProject.construction;
       delete previewProject.review;
@@ -132,12 +144,7 @@ export default function RecipeEditor(props: {
     () => {
       const recipe = draft();
       if (!recipe) return [];
-      const messages: string[] = [];
-      try {
-        validateAssembly(recipe);
-      } catch (cause) {
-        messages.push(cause instanceof Error ? cause.message : String(cause));
-      }
+      const messages: string[] = assemblyError() ? [assemblyError()] : [];
       for (const kind of recipe.geometryKinds) {
         for (const output of recipe.outputs) {
           try {
@@ -567,32 +574,34 @@ export default function RecipeEditor(props: {
                 }}
               />
             </label>
-            <Show when={preview()}>
-              {(result) => (
-                <details class="formula-reference">
-                  <summary>Preview on selected drawing</summary>
-                  <p>
-                    Base quantities using this assembly's default inputs, before
-                    waste and package rounding. Preview does not save or assign
-                    the assembly.
-                  </p>
-                  <For each={result().outputs}>
-                    {(output) => (
-                      <div>
-                        <strong>
-                          {output.name}:{' '}
-                          {output.complete
-                            ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
-                            : 'Unavailable'}
-                        </strong>
-                        <For each={output.diagnostics}>
-                          {(message) => <p class="warning">{message}</p>}
-                        </For>
-                      </div>
-                    )}
-                  </For>
-                </details>
-              )}
+            <Show when={canPreview()}>
+              <details
+                class="formula-reference"
+                open={previewOpen()}
+                onToggle={(event) => setPreviewOpen(event.currentTarget.open)}
+              >
+                <summary>Preview on selected drawing</summary>
+                <p>
+                  Base quantities using this assembly's default inputs, before
+                  waste and package rounding. Preview does not save or assign
+                  the assembly.
+                </p>
+                <For each={preview()?.outputs ?? []}>
+                  {(output) => (
+                    <div>
+                      <strong>
+                        {output.name}:{' '}
+                        {output.complete
+                          ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
+                          : 'Unavailable'}
+                      </strong>
+                      <For each={output.diagnostics}>
+                        {(message) => <p class="warning">{message}</p>}
+                      </For>
+                    </div>
+                  )}
+                </For>
+              </details>
             </Show>
             <Show when={recipe().wallTemplate}>
               {(template) => (

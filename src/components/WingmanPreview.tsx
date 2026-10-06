@@ -66,13 +66,23 @@ export default function WingmanPreview(props: {
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let raster:
-    | { key: string; image: Promise<HTMLCanvasElement>; abort: AbortController }
+    | {
+        key: string;
+        image: Promise<HTMLCanvasElement>;
+        value?: HTMLCanvasElement;
+        abort: AbortController;
+      }
     | undefined;
   let snapshot: ReturnType<typeof acquireConstructionSnapshot> | undefined;
   const [status, setStatus] = createSignal('');
+  const clearRaster = () => {
+    raster?.abort.abort();
+    if (raster?.value) raster.value.width = raster.value.height = 0;
+    raster = undefined;
+  };
   onCleanup(() => {
     snapshot?.dispose();
-    raster?.abort.abort();
+    clearRaster();
   });
   createEffect(
     () => ({
@@ -85,23 +95,34 @@ export default function WingmanPreview(props: {
       const element = canvas;
       if (!element) return;
       let cancelled = false;
-      element.width = 640;
-      element.height = 400;
+      const scale =
+        view.kind === 'plan'
+          ? 640 / Math.max(view.bounds.width, view.bounds.height)
+          : 1;
+      const width =
+        view.kind === 'plan'
+          ? Math.max(1, Math.round(view.bounds.width * scale))
+          : 640;
+      const height =
+        view.kind === 'plan'
+          ? Math.max(1, Math.round(view.bounds.height * scale))
+          : 400;
+      if (element.width !== width) element.width = width;
+      if (element.height !== height) element.height = height;
       const context = element.getContext('2d');
       if (!context) return;
-      context.clearRect(0, 0, element.width, element.height);
       setStatus('');
       if (view.kind === '3d' || view.mode === 'takeoff') {
-        raster?.abort.abort();
-        raster = undefined;
+        clearRaster();
       }
       if (!project || (view.kind === 'plan' && !project.sheets[view.sheetId])) {
-        raster?.abort.abort();
-        raster = undefined;
+        clearRaster();
+        context.clearRect(0, 0, element.width, element.height);
         setStatus('Source sheet is no longer available.');
         return;
       }
       if (view.kind === '3d') {
+        context.clearRect(0, 0, element.width, element.height);
         if (!result) {
           setStatus('No construction is available.');
           return;
@@ -165,9 +186,6 @@ export default function WingmanPreview(props: {
       }
       const sheet = project.sheets[view.sheetId];
       if (!sheet) return;
-      const scale = 640 / Math.max(view.bounds.width, view.bounds.height);
-      element.width = Math.max(1, Math.round(view.bounds.width * scale));
-      element.height = Math.max(1, Math.round(view.bounds.height * scale));
       const draw = (image?: HTMLCanvasElement) => {
         if (cancelled) return;
         context.fillStyle = '#0f1218';
@@ -210,17 +228,18 @@ export default function WingmanPreview(props: {
         paintPlanPresentation(context, geometries, view, 1 / scale);
         context.restore();
       };
-      draw();
-      if (view.mode !== 'takeoff') {
-        setStatus('Loading plan…');
+      if (view.mode === 'takeoff') draw();
+      else {
         const key = JSON.stringify([
           sheet.assetId,
           sheet.pageIndex,
           sheet.rotation,
+          sheet.width,
+          sheet.height,
           view.bounds,
         ]);
         if (raster?.key !== key) {
-          raster?.abort.abort();
+          clearRaster();
           const abort = new AbortController();
           raster = {
             key,
@@ -233,20 +252,31 @@ export default function WingmanPreview(props: {
             abort,
           };
         }
-        void raster.image
-          .then((image) => {
-            if (cancelled) return;
-            draw(image);
-            setStatus('');
-          })
-          .catch((error: unknown) => {
-            if (!cancelled)
-              setStatus(
-                error instanceof Error
-                  ? error.message
-                  : 'Plan preview unavailable.',
-              );
-          });
+        const currentRaster = raster;
+        if (currentRaster.value) draw(currentRaster.value);
+        else {
+          draw();
+          setStatus('Loading plan…');
+          void currentRaster.image
+            .then((image) => {
+              if (currentRaster.abort.signal.aborted) {
+                image.width = image.height = 0;
+                return;
+              }
+              currentRaster.value = image;
+              if (cancelled) return;
+              draw(image);
+              setStatus('');
+            })
+            .catch((error: unknown) => {
+              if (!cancelled)
+                setStatus(
+                  error instanceof Error
+                    ? error.message
+                    : 'Plan preview unavailable.',
+                );
+            });
+        }
       }
       return () => {
         cancelled = true;

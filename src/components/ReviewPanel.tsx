@@ -66,19 +66,20 @@ export default function ReviewPanel(props: {
       Object.keys(records ?? {}).map((id) => ({ kind, id })),
     );
   });
+  const reviewRows = createMemo(() => [
+    ...(review()?.marks.map((mark) => ({
+      target: mark.target,
+      status: mark.effectiveStatus,
+      note: mark.note,
+    })) ?? []),
+    ...(review()?.unreviewed.map((target) => ({
+      target,
+      status: 'needs-review',
+      note: '',
+    })) ?? []),
+  ]);
   const rows = createMemo(() =>
-    [
-      ...(review()?.marks.map((mark) => ({
-        target: mark.target,
-        status: mark.effectiveStatus,
-        note: mark.note,
-      })) ?? []),
-      ...(review()?.unreviewed.map((target) => ({
-        target,
-        status: 'needs-review',
-        note: '',
-      })) ?? []),
-    ].filter((row) =>
+    reviewRows().filter((row) =>
       `${row.target.kind} ${sourceName(row.target)} ${row.target.id} ${row.status} ${row.note}`
         .toLowerCase()
         .includes(filter().toLowerCase()),
@@ -307,19 +308,22 @@ export default function ReviewPanel(props: {
               />
             </label>
             <div class="review-list">
-              <For each={rows().slice(0, 300)}>
+              <For
+                each={rows().slice(0, 300)}
+                keyed={(row) => `${row.target.kind}:${row.target.id}`}
+              >
                 {(row) => (
                   <div class="review-row">
                     <button
                       type="button"
                       disabled={dirty()}
                       onClick={() => {
-                        selectSource(row.target);
+                        selectSource(row().target);
                       }}
                     >
-                      {row.target.kind} · {sourceName(row.target)}
+                      {row().target.kind} · {sourceName(row().target)}
                     </button>
-                    <span>{row.status}</span>
+                    <span>{row().status}</span>
                   </div>
                 )}
               </For>

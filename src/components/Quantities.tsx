@@ -1,8 +1,10 @@
 import PieceSchedule, { displayLength } from './PieceSchedule';
 import { createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
-const number = (value: number) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
+const formatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 3,
+});
+const number = (value: number) => formatter.format(value);
 export default function Quantities(props: {
   controller: WorkspaceController;
   onError: (message: string) => void;

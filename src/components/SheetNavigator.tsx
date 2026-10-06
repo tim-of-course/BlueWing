@@ -421,14 +421,14 @@ export default function SheetNavigator(props: Props) {
       }
     return [...kinds];
   };
-  const groupRow = (group: Group, sheetId?: string) => {
+  const GroupRow = (row: { group: Group; sheetId?: string }) => {
     const totals = createMemo(
       () => {
         const project = props.controller.project();
         if (!project) return [];
-        const measured = group.geometryIds.flatMap((id) => {
+        const measured = row.group.geometryIds.flatMap((id) => {
           const geometry = project.geometries[id];
-          return geometry && geometry.sheetId === sheetId
+          return geometry && geometry.sheetId === row.sheetId
             ? [
                 {
                   kind: geometry.kind,
@@ -460,38 +460,38 @@ export default function SheetNavigator(props: Props) {
       },
       { name: 'navigator.groupTotals' },
     );
+    const kinds = createMemo(() => groupKinds(row.group, row.sheetId));
     const visible = () =>
-      !sheetId || props.controller.isGroupVisible(group.id, sheetId);
+      !row.sheetId ||
+      props.controller.isGroupVisible(row.group.id, row.sheetId);
     return (
       <div class={['group-line', !visible() ? 'geometry-hidden' : '']}>
         <button
           type="button"
           class={[
             'group-row',
-            props.controller.activeGroupId() === group.id &&
-            (!sheetId || props.controller.activeSheetId() === sheetId)
+            props.controller.activeGroupId() === row.group.id &&
+            (!row.sheetId || props.controller.activeSheetId() === row.sheetId)
               ? 'active'
               : '',
           ]}
           onClick={() => {
-            selectGroup(group, sheetId);
+            selectGroup(row.group, row.sheetId);
           }}
-          aria-label={`${group.name}, ${String(sheetId ? members(group, sheetId).length : group.geometryIds.length)} drawing objects`}
-          title={`${group.name} · ${groupKinds(group, sheetId).join(', ') || 'Empty group'} · ${String(Object.values(props.controller.project()?.assignments ?? {}).filter((entry) => entry.groupId === group.id).length)} recipes`}
+          aria-label={`${row.group.name}, ${String(row.sheetId ? members(row.group, row.sheetId).length : row.group.geometryIds.length)} drawing objects`}
+          title={`${row.group.name} · ${kinds().join(', ') || 'Empty group'} · ${String(Object.values(props.controller.project()?.assignments ?? {}).filter((entry) => entry.groupId === row.group.id).length)} recipes`}
         >
           <span class="group-kind">
             <Show
-              when={groupKinds(group, sheetId).length === 1}
+              when={kinds().length === 1}
               fallback={
-                <span aria-hidden="true">
-                  {groupKinds(group, sheetId).length ? '◈' : '○'}
-                </span>
+                <span aria-hidden="true">{kinds().length ? '◈' : '○'}</span>
               }
             >
-              <ToolIcon tool={groupKinds(group, sheetId)[0] ?? 'select'} />
+              <ToolIcon tool={kinds()[0] ?? 'select'} />
             </Show>
           </span>
-          <span class="row-name">{group.name}</span>
+          <span class="row-name">{row.group.name}</span>
           <span class="group-totals">
             <For each={totals()} fallback={<small>Empty</small>}>
               {(total) => <small title={total.title}>{total.text}</small>}
@@ -499,19 +499,23 @@ export default function SheetNavigator(props: Props) {
           </span>
           <span
             class="group-color"
-            style={{ 'background-color': group.color ?? '#3b82f6' }}
+            style={{ 'background-color': row.group.color ?? '#3b82f6' }}
             aria-hidden="true"
           />
         </button>
-        <Show when={sheetId} fallback={<span class="visibility-spacer" />}>
+        <Show when={row.sheetId} fallback={<span class="visibility-spacer" />}>
           {(id) => (
             <button
               type="button"
               class="navigator-visibility"
-              aria-label={`${visible() ? 'Hide' : 'Show'} ${group.name} on ${props.controller.project()?.sheets[id()]?.name ?? 'sheet'}`}
+              aria-label={`${visible() ? 'Hide' : 'Show'} ${row.group.name} on ${props.controller.project()?.sheets[id()]?.name ?? 'sheet'}`}
               title={`${visible() ? 'Hide' : 'Show'} group drawing objects`}
               onClick={() => {
-                props.controller.setGroupVisible(group.id, id(), !visible());
+                props.controller.setGroupVisible(
+                  row.group.id,
+                  id(),
+                  !visible(),
+                );
               }}
             >
               <VisibilityIcon visible={visible()} />
@@ -585,6 +589,7 @@ export default function SheetNavigator(props: Props) {
       >
         <For
           each={visibleSheets()}
+          keyed={(sheet) => sheet.id}
           fallback={
             <p class="muted">
               {sheets().length
@@ -597,12 +602,12 @@ export default function SheetNavigator(props: Props) {
             <section
               class={[
                 'sheet-branch',
-                rowState[sheet.id]?.drop ? 'drop-target' : '',
+                rowState[sheet().id]?.drop ? 'drop-target' : '',
               ]}
-              aria-label={sheet.name}
-              data-sheet-id={sheet.id}
+              aria-label={sheet().name}
+              data-sheet-id={sheet().id}
               onMouseEnter={(event) => {
-                showPreview(sheet, event.currentTarget);
+                showPreview(sheet(), event.currentTarget);
               }}
               onMouseLeave={leavePreview}
               onFocusIn={(event) => {
@@ -610,7 +615,7 @@ export default function SheetNavigator(props: Props) {
                   event.target instanceof HTMLElement &&
                   event.target.matches(':focus-visible')
                 )
-                  showPreview(sheet, event.currentTarget, true);
+                  showPreview(sheet(), event.currentTarget, true);
               }}
               onFocusOut={(event) => {
                 if (
@@ -623,46 +628,48 @@ export default function SheetNavigator(props: Props) {
               <div
                 class={[
                   'sheet-line',
-                  !rowState[sheet.id]?.visible ? 'geometry-hidden' : '',
+                  !rowState[sheet().id]?.visible ? 'geometry-hidden' : '',
                 ]}
               >
                 <button
                   type="button"
                   class="sheet-expand"
-                  aria-label={`${rowState[sheet.id]?.expanded ? 'Collapse' : 'Expand'} groups for ${sheet.name}`}
+                  aria-label={`${rowState[sheet().id]?.expanded ? 'Collapse' : 'Expand'} groups for ${sheet().name}`}
                   aria-expanded={
-                    rowState[sheet.id]?.expanded ? 'true' : 'false'
+                    rowState[sheet().id]?.expanded ? 'true' : 'false'
                   }
-                  disabled={!sheetGroups(sheet.id).length}
+                  disabled={!sheetGroups(sheet().id).length}
                   onClick={() =>
                     setCollapsed((ids) =>
-                      ids.includes(sheet.id)
-                        ? ids.filter((id) => id !== sheet.id)
-                        : [...ids, sheet.id],
+                      ids.includes(sheet().id)
+                        ? ids.filter((id) => id !== sheet().id)
+                        : [...ids, sheet().id],
                     )
                   }
                 >
-                  {rowState[sheet.id]?.expanded ? '▾' : '▸'}
+                  {rowState[sheet().id]?.expanded ? '▾' : '▸'}
                 </button>
                 <button
                   type="button"
                   class={[
                     'sheet-row',
-                    rowState[sheet.id]?.active ? 'active' : '',
-                    !sheet.calibration ? 'uncalibrated' : '',
+                    rowState[sheet().id]?.active ? 'active' : '',
+                    !sheet().calibration ? 'uncalibrated' : '',
                   ]}
-                  aria-label={`${sheet.name}${sheet.calibration ? '' : ', uncalibrated'}`}
-                  title={sheet.name}
-                  aria-current={rowState[sheet.id]?.active ? 'page' : undefined}
+                  aria-label={`${sheet().name}${sheet().calibration ? '' : ', uncalibrated'}`}
+                  title={sheet().name}
+                  aria-current={
+                    rowState[sheet().id]?.active ? 'page' : undefined
+                  }
                   draggable="true"
                   onClick={() => {
                     hidePreview();
-                    props.controller.setActiveSheetId(sheet.id);
+                    props.controller.setActiveSheetId(sheet().id);
                     props.controller.setActiveGroupId(null);
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    openMenu(sheet, event.clientX, event.clientY);
+                    openMenu(sheet(), event.clientX, event.clientY);
                   }}
                   onDragStart={(event) => {
                     if (props.disabled) {
@@ -670,22 +677,22 @@ export default function SheetNavigator(props: Props) {
                       return;
                     }
                     hidePreview();
-                    draggedId = sheet.id;
+                    draggedId = sheet().id;
                     if (event.dataTransfer) {
                       event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData('text/plain', sheet.id);
+                      event.dataTransfer.setData('text/plain', sheet().id);
                     }
                   }}
                   onDragOver={(event) => {
                     if (draggedId && !props.disabled) {
                       event.preventDefault();
-                      setDropTarget(sheet.id);
+                      setDropTarget(sheet().id);
                     }
                   }}
                   onDrop={(event) => {
                     event.preventDefault();
                     if (draggedId && !props.disabled)
-                      reorder(draggedId, sheet.id);
+                      reorder(draggedId, sheet().id);
                     draggedId = null;
                     setDropTarget(null);
                   }}
@@ -701,7 +708,7 @@ export default function SheetNavigator(props: Props) {
                     ) {
                       event.preventDefault();
                       const rect = event.currentTarget.getBoundingClientRect();
-                      openMenu(sheet, rect.left + 20, rect.bottom);
+                      openMenu(sheet(), rect.left + 20, rect.bottom);
                     }
                     if (
                       event.altKey &&
@@ -709,49 +716,52 @@ export default function SheetNavigator(props: Props) {
                     ) {
                       event.preventDefault();
                       const index = sheets().findIndex(
-                        (item) => item.id === sheet.id,
+                        (item) => item.id === sheet().id,
                       );
                       const target =
                         sheets()[index + (event.key === 'ArrowUp' ? -1 : 1)];
-                      if (target) reorder(sheet.id, target.id);
+                      if (target) reorder(sheet().id, target.id);
                     }
                   }}
                 >
-                  <span class="row-name">{sheet.name}</span>
+                  <span class="row-name">{sheet().name}</span>
                 </button>
                 <button
                   type="button"
                   class="navigator-visibility"
-                  aria-label={`${rowState[sheet.id]?.visible ? 'Hide' : 'Show'} drawing objects on ${sheet.name}`}
-                  title={`${rowState[sheet.id]?.visible ? 'Hide' : 'Show'} sheet drawing objects`}
+                  aria-label={`${rowState[sheet().id]?.visible ? 'Hide' : 'Show'} drawing objects on ${sheet().name}`}
+                  title={`${rowState[sheet().id]?.visible ? 'Hide' : 'Show'} sheet drawing objects`}
                   onClick={() => {
                     props.controller.setSheetVisible(
-                      sheet.id,
-                      !props.controller.isSheetVisible(sheet.id),
+                      sheet().id,
+                      !props.controller.isSheetVisible(sheet().id),
                     );
                   }}
                 >
                   <VisibilityIcon
-                    visible={rowState[sheet.id]?.visible ?? true}
+                    visible={rowState[sheet().id]?.visible ?? true}
                   />
                 </button>
               </div>
               <Show
                 when={
-                  sheetGroups(sheet.id).length > 0 &&
-                  rowState[sheet.id]?.expanded
+                  sheetGroups(sheet().id).length > 0 &&
+                  rowState[sheet().id]?.expanded
                 }
               >
                 <div class="sheet-groups">
                   <For
-                    each={sheetGroups(sheet.id).filter(
+                    keyed={(group) => group.id}
+                    each={sheetGroups(sheet().id).filter(
                       (group) =>
                         !term() ||
-                        sheet.name.toLowerCase().includes(term()) ||
+                        sheet().name.toLowerCase().includes(term()) ||
                         group.name.toLowerCase().includes(term()),
                     )}
                   >
-                    {(group) => groupRow(group, sheet.id)}
+                    {(group) => (
+                      <GroupRow group={group()} sheetId={sheet().id} />
+                    )}
                   </For>
                 </div>
               </Show>
@@ -761,13 +771,14 @@ export default function SheetNavigator(props: Props) {
         <Show when={groups().some((group) => !group.geometryIds.length)}>
           <h3 class="unplaced-heading">Empty groups</h3>
           <For
+            keyed={(group) => group.id}
             each={groups().filter(
               (group) =>
                 !group.geometryIds.length &&
                 (!term() || group.name.toLowerCase().includes(term())),
             )}
           >
-            {(group) => groupRow(group)}
+            {(group) => <GroupRow group={group()} />}
           </For>
         </Show>
       </fieldset>

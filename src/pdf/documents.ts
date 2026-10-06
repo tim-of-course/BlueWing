@@ -11,6 +11,7 @@ interface LoadedDocument {
   promise: Promise<PDFDocumentProxy>;
   task?: PDFDocumentLoadingTask;
   users: number;
+  names: Map<string, Promise<SheetNameSuggestion>>;
 }
 
 /** Imported coordinates are the rotated, top-left PDF viewport at scale 1. */
@@ -72,7 +73,11 @@ export class PdfDocuments {
         throw error;
       }
     });
-    const entry: LoadedDocument = { promise: result, users: 0 };
+    const entry: LoadedDocument = {
+      promise: result,
+      users: 0,
+      names: new Map(),
+    };
     this.documents.set(id, entry);
     void result.catch(() => {
       if (this.documents.get(id) === entry) this.documents.delete(id);
@@ -82,7 +87,7 @@ export class PdfDocuments {
 
   private async useDocument<T>(
     id: string,
-    use: (pdf: PDFDocumentProxy) => Promise<T>,
+    use: (pdf: PDFDocumentProxy, entry: LoadedDocument) => Promise<T>,
     source?: Uint8Array | AssetRange,
     signal?: AbortSignal,
   ): Promise<T> {
@@ -105,7 +110,7 @@ export class PdfDocuments {
     try {
       const operation = entry.promise.then((pdf) => {
         signal?.throwIfAborted();
-        return use(pdf);
+        return use(pdf, entry);
       });
       return await (cancelled
         ? Promise.race([operation, cancelled])
@@ -181,17 +186,30 @@ export class PdfDocuments {
   }
 
   async suggestName(sheet: Sheet): Promise<SheetNameSuggestion> {
-    return this.useDocument(sheet.assetId, async (pdf) => {
-      const page = await pdf.getPage(sheet.pageIndex + 1);
-      const viewport = page.getViewport({
-        scale: 1,
-        rotation: sheet.rotation ?? 0,
-      });
-      const text = await page.getTextContent();
-      return suggestSheetName(
-        text.items.filter((item) => 'str' in item),
-        viewport,
-      );
+    return this.useDocument(sheet.assetId, async (pdf, entry) => {
+      const key = `${String(sheet.pageIndex)}:${String(sheet.rotation ?? 0)}`;
+      let pending = entry.names.get(key);
+      if (!pending) {
+        pending = (async () => {
+          const page = await pdf.getPage(sheet.pageIndex + 1);
+          const viewport = page.getViewport({
+            scale: 1,
+            rotation: sheet.rotation ?? 0,
+          });
+          const text = await page.getTextContent();
+          return suggestSheetName(
+            text.items.filter((item) => 'str' in item),
+            viewport,
+          );
+        })();
+        entry.names.set(key, pending);
+      }
+      try {
+        return { ...(await pending) };
+      } catch (error) {
+        entry.names.delete(key);
+        throw error;
+      }
     });
   }
 

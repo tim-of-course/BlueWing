@@ -168,3 +168,20 @@ for (const action of ['release', 'clear'] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+test('sheet naming reuses source suggestions and retries failures without retaining released documents', async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  await page.goto('/tests/browser/pdf-rendering-harness.html');
+  const result = await page.evaluate(() => window.pdfRendering.nameCache());
+  expect(result.duplicate.status).toBe('suggested');
+  expect(result.unchanged).toEqual(result.duplicate);
+  expect(result.released).toEqual(result.duplicate);
+  expect(result.cleared).toEqual(result.duplicate);
+  expect(result.sharedExtractions).toBe(1);
+  expect(result.extractions).toBe(4);
+  expect(result.opens).toBe(2);
+  expect(result.failure).toContain('Text read failed');
+  expect(errors).toEqual([]);
+});

@@ -419,28 +419,31 @@ export default function ConstructionEditor(props: {
         ),
     ),
   );
-  const entries = createMemo(() =>
+  const records = createMemo(() =>
     Object.entries(
       data()[kind()] as Record<
         string,
         { id: string; name?: string; geometryId?: string }
       >,
-    ).filter(([id, item]) =>
+    ),
+  );
+  const entries = createMemo(() =>
+    records().filter(([id, item]) =>
       `${id} ${'name' in item ? (item.name ?? '') : ''} ${'geometryId' in item ? (props.controller.project()?.geometries[item.geometryId ?? '']?.name ?? '') : ''}`
         .toLowerCase()
         .includes(filter().toLowerCase()),
     ),
   );
-  const pieces = createMemo(
-    () =>
+  const pieces = createMemo(() => {
+    const selected = new Set(props.controller.selection());
+    return (
       props.controller
         .construction()
         ?.pieces.filter(
-          (p) =>
-            !props.controller.selection().length ||
-            props.controller.selection().includes(p.geometryId ?? ''),
-        ) ?? [],
-  );
+          (piece) => !selected.size || selected.has(piece.geometryId ?? ''),
+        ) ?? []
+    );
+  });
   createEffect(
     () => ({ dirty: dirty(), notify: props.onDraftChange }),
     (value) => {
@@ -682,22 +685,22 @@ export default function ConstructionEditor(props: {
               value={filter()}
               onInput={(e) => setFilter(e.currentTarget.value)}
             />
-            <For each={entries().slice(0, 200)}>
-              {([id, item]) => (
+            <For each={entries().slice(0, 200)} keyed={([id]) => id}>
+              {(entry) => (
                 <button
                   type="button"
                   disabled={dirty()}
                   onClick={() => {
-                    begin(item);
+                    begin(entry()[1]);
                   }}
                 >
-                  {'name' in item
-                    ? (item.name ?? '')
-                    : 'geometryId' in item
+                  {'name' in entry()[1]
+                    ? (entry()[1].name ?? '')
+                    : 'geometryId' in entry()[1]
                       ? (props.controller.project()?.geometries[
-                          item.geometryId ?? ''
-                        ]?.name ?? id)
-                      : id}
+                          entry()[1].geometryId ?? ''
+                        ]?.name ?? entry()[0])
+                      : entry()[0]}
                 </button>
               )}
             </For>
