@@ -1,0 +1,384 @@
+{
+  "auditDate": "2026-10-06",
+  "commit": "8c35b6be3e1f1c2f60b00c644f08e5b8bae05b22",
+  "limitations": [
+    "Core timings are Bun microbenchmarks on this Linux machine, not browser or native frame timing.",
+    "State probe elapsedMs values include instrumentation; use counts and serialized sizes, not latency comparisons.",
+    "Canvas probes use repository effects with production Solid 2, mocked canvas/PDF/image APIs and stripped JSX/mount lifecycle. They establish calls, not pixel correctness or GPU cost.",
+    "Native storage and messaging file invocations are mocked; payloads/call flow are real repository code.",
+    "T3 browser samples could not be verified against the checkout and are excluded."
+  ],
+  "existingCoreTests": {
+    "passed": 177,
+    "failed": 0,
+    "files": 25
+  },
+  "derived": {
+    "unrelatedMutationEquivalence": {
+      "wallCount": 100,
+      "pieces": 2000,
+      "surfaces": 400,
+      "variants": ["project name", "group name and color", "review mark"],
+      "identicalResults": true,
+      "fullCalculation": {
+        "medianMs": 12.044171000000006,
+        "minMs": 11.118714000000011,
+        "maxMs": 16.383724
+      },
+      "resolve": {
+        "medianMs": 1.2191020000000208,
+        "minMs": 1.1788460000000214,
+        "maxMs": 1.2411899999999605
+      },
+      "sceneInput": {
+        "medianMs": 0.4131999999999607,
+        "minMs": 0.3955879999999752,
+        "maxMs": 0.5096189999999865
+      },
+      "scene": {
+        "medianMs": 3.0201549999999884,
+        "minMs": 2.0433800000000133,
+        "maxMs": 4.711617999999987
+      }
+    },
+    "openings": {
+      "walls": 100,
+      "openings": 100,
+      "sortCalls": 100,
+      "openingElementsProcessed": 10000
+    },
+    "schedule": {
+      "fullRows": 2000,
+      "visibleLimit": 300,
+      "discardedDisplayRows": 1700,
+      "time": {
+        "medianMs": 0.2431399999999826,
+        "minMs": 0.19779099999999517,
+        "maxMs": 0.43355999999999995
+      }
+    },
+    "formulaMeasurements": {
+      "geometries": 100,
+      "outputs": 4,
+      "calibrationPropertyReads": 400,
+      "formulaTokenizerExecCalls": 400,
+      "sources": 400
+    },
+    "review": {
+      "marks": 100,
+      "allMarkedReviewed": true,
+      "openingSortCalls": 100,
+      "openingElementsProcessed": 10000,
+      "time": {
+        "medianMs": 8.584199999999953,
+        "minMs": 7.591994999999997,
+        "maxMs": 10.675187999999991
+      }
+    },
+    "numberFormatting": {
+      "numbers": 3000,
+      "perNumberConstructor": {
+        "medianMs": 67.56286899999998,
+        "minMs": 63.299322000000075,
+        "maxMs": 68.49379399999998
+      },
+      "sharedConstructor": {
+        "medianMs": 1.3415610000000697,
+        "minMs": 1.3060319999999592,
+        "maxMs": 1.3502710000000206
+      },
+      "outputsIdentical": true
+    }
+  },
+  "canvas": {
+    "method": "Executed transpiled repository classes under Node with mock PDF pages and mock browser canvas/image/idle callbacks. No browser pixel timing claimed.",
+    "nameExtraction": {
+      "extractionCalls": 3,
+      "requests": 3,
+      "suggestions": [
+        {
+          "status": "suggested",
+          "code": "A101",
+          "title": "FLOOR PLAN",
+          "name": "A101 \u00b7 FLOOR PLAN"
+        },
+        {
+          "status": "suggested",
+          "code": "A101",
+          "title": "FLOOR PLAN",
+          "name": "A101 \u00b7 FLOOR PLAN"
+        },
+        {
+          "status": "suggested",
+          "code": "A101",
+          "title": "FLOOR PLAN",
+          "name": "A101 \u00b7 FLOOR PLAN"
+        }
+      ]
+    },
+    "eagerThumbnails": {
+      "requestedSheets": 165,
+      "uniqueSourcePages": 164,
+      "initialQueue": 164,
+      "afterFirstSync": {
+        "renderCalls": 164,
+        "encodeCalls": 164,
+        "decodeCalls": 164,
+        "changedCalls": 164,
+        "cachedEntries": 164
+      },
+      "afterMetadataSync": {
+        "renderCalls": 164,
+        "queued": 0,
+        "scheduled": 0
+      }
+    },
+    "drawingEffects": {
+      "method": "Repository DrawingCanvas setup/effects and painter, with JSX/mount lifecycle removed and mocked browser canvas; production Solid 2 reactive runtime.",
+      "pathHoverWithNoDraft": {
+        "paints": 20,
+        "widthWrites": 20,
+        "heightWrites": 20,
+        "planDraws": 20,
+        "pdfRenders": 0
+      },
+      "selectHoverWithNoDraft": {
+        "paints": 0,
+        "widthWrites": 0,
+        "heightWrites": 0,
+        "planDraws": 0,
+        "pdfRenders": 0
+      },
+      "metadataOnlyPublish": {
+        "paints": 1,
+        "widthWrites": 1,
+        "heightWrites": 1,
+        "planDraws": 1,
+        "pdfRenders": 0
+      },
+      "sameRevisionClonePublish": {
+        "paints": 1,
+        "widthWrites": 1,
+        "heightWrites": 1,
+        "planDraws": 1,
+        "pdfRenders": 0
+      }
+    },
+    "wingmanEffects": {
+      "method": "Repository WingmanPreview effects and painter, with JSX removed, 3D imports stubbed, mock browser canvas; production Solid 2 runtime.",
+      "cachedPlanMetadataPublish": {
+        "previewClears": 1,
+        "previewWidthWrites": 2,
+        "previewHeightWrites": 2,
+        "previewPlanDraws": 1,
+        "regionRenders": 0,
+        "constructionReads": 1,
+        "previewFills": 4
+      }
+    }
+  },
+  "state": [
+    {
+      "label": "Session project.inspect",
+      "elapsedMs": 18.19,
+      "projects": 3,
+      "projectBytes": 1047654,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 0,
+      "transcriptBytes": 0,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "Session project.rename",
+      "elapsedMs": 67.45,
+      "projects": 5,
+      "projectBytes": 1746093,
+      "extensions": 8,
+      "extensionBytes": 301726,
+      "transcriptClones": 0,
+      "transcriptBytes": 0,
+      "jsonCalls": 8008,
+      "jsonBytes": 1027186,
+      "transactions": 1,
+      "sqlStatements": 1
+    },
+    {
+      "label": "Application project.inspect",
+      "elapsedMs": 34.4,
+      "projects": 6,
+      "projectBytes": 2095308,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 0,
+      "transcriptBytes": 0,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "Application project.rename incl subscriber",
+      "elapsedMs": 82.18,
+      "projects": 11,
+      "projectBytes": 3841404,
+      "extensions": 8,
+      "extensionBytes": 301726,
+      "transcriptClones": 0,
+      "transcriptBytes": 0,
+      "jsonCalls": 8008,
+      "jsonBytes": 1027186,
+      "transactions": 1,
+      "sqlStatements": 1
+    },
+    {
+      "label": "Application library.inspect incl subscriber",
+      "elapsedMs": 19.67,
+      "projects": 3,
+      "projectBytes": 1047657,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 0,
+      "transcriptBytes": 0,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "library publication",
+      "sameProjectIdentity": false,
+      "sameRevision": true
+    },
+    {
+      "label": "Controller-like visibility getter sequence",
+      "elapsedMs": 17.22,
+      "projects": 3,
+      "projectBytes": 1047657,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 0,
+      "transcriptBytes": 0,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "one review snippet edit",
+      "records": [
+        {
+          "collection": "extensions",
+          "id": "review",
+          "serializedBytes": 150519
+        }
+      ],
+      "changedSnippetBytes": 567
+    },
+    {
+      "label": "CLI response all messages acknowledged",
+      "elapsedMs": 9.32,
+      "projects": 0,
+      "projectBytes": 0,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 1,
+      "transcriptBytes": 2107039,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "Wingman Pause with old screenshots",
+      "elapsedMs": 3.07,
+      "projects": 0,
+      "projectBytes": 0,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 1,
+      "transcriptBytes": 2107039,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "Pause snapshots",
+      "sameFirstMessage": false,
+      "sameAttachments": false
+    },
+    {
+      "label": "Wingman messages.read immediate",
+      "elapsedMs": 6.56,
+      "projects": 0,
+      "projectBytes": 0,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 2,
+      "transcriptBytes": 4214078,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "Wingman text send persistence",
+      "elapsedMs": 4.73,
+      "projects": 0,
+      "projectBytes": 0,
+      "extensions": 0,
+      "extensionBytes": 0,
+      "transcriptClones": 1,
+      "transcriptBytes": 2107137,
+      "jsonCalls": 0,
+      "jsonBytes": 0,
+      "transactions": 0
+    },
+    {
+      "label": "Conversation text-send storage payload",
+      "savedTranscriptBytes": 2107137,
+      "newMessageBytes": 97
+    },
+    {
+      "label": "Restage cached version",
+      "fetched": [
+        "https://updates.example/manifest.json",
+        "https://updates.example/index.html",
+        "https://updates.example/assets/app.js"
+      ],
+      "error": "Web version already exists; use a new version"
+    }
+  ],
+  "stateExtra": [
+    {
+      "label": "Native conversation bind",
+      "ipcCalls": 21,
+      "attachmentFileReads": 20,
+      "loadedBase64Chars": 20971960
+    },
+    {
+      "label": "Native text send storage",
+      "ipcCalls": 1,
+      "storedBytes": 12348,
+      "screenshotPayloadStored": false
+    },
+    {
+      "label": "Sheet import batch",
+      "pages": 1,
+      "preexistingGeometries": 2000,
+      "wholeProjectCloneCount": 4,
+      "ms": 46.51
+    },
+    {
+      "label": "Sheet import batch",
+      "pages": 10,
+      "preexistingGeometries": 2000,
+      "wholeProjectCloneCount": 13,
+      "ms": 71.01
+    },
+    {
+      "label": "Sheet import batch",
+      "pages": 100,
+      "preexistingGeometries": 2000,
+      "wholeProjectCloneCount": 103,
+      "ms": 431.38
+    }
+  ]
+}
