@@ -101,6 +101,8 @@ Project recipes are independent copies of any starter library. Updating the app 
 
 Use a single calculation path for the inspector, quantity table, export, and CLI. Results retain the group, assignment, geometry source, recipe, effective inputs, output unit, and diagnostic. Sum compatible outputs; preserve different units and material identities. An invalid calculation remains visible and makes affected totals incomplete instead of quietly contributing zero.
 
+The open project session owns one lazy, deeply readonly calculation result shared by UI, CLI, exports, and 3D views. Project names, sheet names/order, geometry names, group names/colors, snippets, and review marks retain it when calculation inputs are unchanged. All other mutations invalidate it by default, including new commands. Compare only the replaced record for these exceptions; do not hash the whole project. Report labels and revisions come from current project data. Batch and preview reads use their current draft, and only a successfully saved batch can publish its final calculation. Undo/redo retains results only for presentation/review edits. Command replies remain independent copies, and closing the session drops its cache. Standalone core calculation functions and unsaved assembly previews remain independent of this session cache.
+
 Example expectations to retain as independent checks: a 24 ft wall at 8 ft high with two layers gives 384 sq ft; a 24 by 15 ft rectangle gives 360 sq ft; three markers give 3 items. These examples establish arithmetic, not every construction rule.
 
 ## Commands, saving, and history
