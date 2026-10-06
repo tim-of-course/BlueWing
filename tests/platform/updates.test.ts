@@ -10,7 +10,7 @@ void test('update verifies every file before staging and never activates', async
   let corrupt = true;
   const call: NativeInvoke = <T>(command: string): Promise<T> => {
     calls.push(command);
-    return Promise.resolve({ bridgeVersion: 1 } as T);
+    return Promise.resolve({ bridgeVersion: 1, cachedVersions: [] } as T);
   };
   const hash = createHash('sha256').update('content').digest('hex');
   const fetchFile: typeof fetch = (input) => {
@@ -58,7 +58,7 @@ void test('update verifies every file before staging and never activates', async
 
 void test('bridge mismatch rejects before downloading bundle files', async () => {
   const call: NativeInvoke = <T>(): Promise<T> =>
-    Promise.resolve({ bridgeVersion: 1 } as T);
+    Promise.resolve({ bridgeVersion: 1, cachedVersions: [] } as T);
   let downloads = 0;
   const fetchFile: typeof fetch = () => {
     downloads++;
@@ -75,4 +75,35 @@ void test('bridge mismatch rejects before downloading bundle files', async () =>
     /bridge/,
   );
   assert.equal(downloads, 1);
+});
+
+void test('installed version rejects after the manifest without fetching assets', async () => {
+  const calls: string[] = [];
+  const urls: string[] = [];
+  const call: NativeInvoke = <T>(command: string): Promise<T> => {
+    calls.push(command);
+    return Promise.resolve({ bridgeVersion: 6, cachedVersions: ['v2'] } as T);
+  };
+  const fetchFile: typeof fetch = (input) => {
+    urls.push(
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url,
+    );
+    return Promise.resolve(
+      Response.json({
+        version: 'v2',
+        bridgeVersion: 6,
+        files: [{ path: 'index.html', sha256: '0'.repeat(64) }],
+      }),
+    );
+  };
+  await assert.rejects(
+    stageWebUpdate('https://example.test/manifest.json', call, fetchFile),
+    /Web version already exists; use a new version/,
+  );
+  assert.deepEqual(calls, ['cache_info']);
+  assert.deepEqual(urls, ['https://example.test/manifest.json']);
 });

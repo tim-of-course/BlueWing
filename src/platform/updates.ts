@@ -65,6 +65,8 @@ export async function stageWebUpdate(
     throw new Error(
       'This web release requires a different native bridge version',
     );
+  if (info.cachedVersions.includes(release.version))
+    throw new Error('Web version already exists; use a new version');
   const base = response.url || manifestUrl;
   const files: { path: string; data: string }[] = [];
   for (const file of release.files) {

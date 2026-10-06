@@ -67,9 +67,12 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
       throw error;
     }
   }
-  private transaction(mode: IDBTransactionMode): IDBTransaction {
+  private transaction(
+    mode: IDBTransactionMode,
+    stores: string[] = ['projects', 'records'],
+  ): IDBTransaction {
     if (!this.database) throw new Error('No open project');
-    return this.database.transaction(['projects', 'records', 'assets'], mode);
+    return this.database.transaction(stores, mode);
   }
   async load(): Promise<Project> {
     const transaction = this.transaction('readonly');
@@ -104,8 +107,10 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
     previous: Project | undefined,
     next: Project,
   ): Promise<void> {
-    validateProject(next);
-    const transaction = this.transaction('readwrite');
+    const transaction = this.transaction(
+      'readwrite',
+      this.staged.size ? ['projects', 'records', 'assets'] : undefined,
+    );
     const done = completion(transaction);
     try {
       const projects = transaction.objectStore('projects');
@@ -155,6 +160,7 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
     }
   }
   initialize(project: Project): Promise<void> {
+    validateProject(project);
     return this.persist(undefined, project);
   }
   save(previous: Project, next: Project): Promise<void> {
@@ -162,7 +168,7 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
     return this.persist(previous, next);
   }
   async readAsset(id: string): Promise<Uint8Array> {
-    const transaction = this.transaction('readonly');
+    const transaction = this.transaction('readonly', ['assets']);
     const done = completion(transaction);
     const asset = (await request(
       transaction.objectStore('assets').get([this.path, id]),
