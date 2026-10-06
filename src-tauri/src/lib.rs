@@ -1,5 +1,6 @@
 mod cache;
 mod cli_wait;
+mod page_cache;
 mod storage;
 pub mod transport;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -230,7 +231,7 @@ fn bridge_ready(
         window.config().build.dev_url.as_ref(),
         &state.cache.active,
     );
-    let info = json!({"bridgeVersion":5,"webVersion":version,"webSource":source,"cliPath":cli,
+    let info = json!({"bridgeVersion":6,"webVersion":version,"webSource":source,"cliPath":cli,
         "dataDir":bridge.data_dir,"shell": if cfg!(windows) { "powershell" } else { "posix" }});
     bridge.ready.store(true, Ordering::SeqCst);
     Ok(info)
@@ -268,6 +269,9 @@ pub fn run() {
             app_data_export,
             read_file,
             write_file,
+            page_cache::page_cache_read,
+            page_cache::page_cache_exists,
+            page_cache::page_cache_write,
             cache_stage,
             cache_info,
             cache_activate,

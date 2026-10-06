@@ -2,6 +2,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   onSettled,
   Show,
   untrack,
@@ -18,6 +19,7 @@ import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
 import { registerCanvasCapture } from '../../platform/canvas-capture';
+import { PAGE_IMAGE_DIMENSION } from '../../pdf/page-images';
 
 /** Canvas-local CSS pixels = camera offset + page coordinates * zoom. */
 interface Camera {
@@ -388,12 +390,14 @@ export default function DrawingCanvas(props: {
       const renderAbort = new AbortController();
       setLoading(true);
       void controller
-        .renderSheet(current, 3000, renderAbort.signal)
+        .renderSheet(current, PAGE_IMAGE_DIMENSION, renderAbort.signal)
         .then((rendered) => {
           if (!cancelled) {
+            const previous = untrack(renderedImage)?.canvas;
             setRenderedImage({ sheet: current, canvas: rendered });
+            if (previous) previous.width = previous.height = 0;
             setLoading(false);
-          }
+          } else rendered.width = rendered.height = 0;
         })
         .catch((reason: unknown) => {
           if (cancelled) return;
@@ -410,6 +414,10 @@ export default function DrawingCanvas(props: {
     },
     { name: 'canvas.loadPdf' },
   );
+  onCleanup(() => {
+    const previous = untrack(renderedImage)?.canvas;
+    if (previous) previous.width = previous.height = 0;
+  });
   const paintState = createMemo(
     () => {
       if (props.active === false) return null;

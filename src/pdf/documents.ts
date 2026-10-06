@@ -169,12 +169,14 @@ export class PdfDocuments {
     sheet: Sheet,
     maxDimension = 2400,
     signal?: AbortSignal,
+    paused?: () => boolean,
   ): Promise<HTMLCanvasElement> {
     return this.renderRegion(
       sheet,
       { x: 0, y: 0, width: sheet.width, height: sheet.height },
       maxDimension,
       signal,
+      paused,
     );
   }
 
@@ -198,6 +200,7 @@ export class PdfDocuments {
     bounds: { x: number; y: number; width: number; height: number },
     maxDimension: number,
     signal?: AbortSignal,
+    paused?: () => boolean,
   ): Promise<HTMLCanvasElement> {
     signal?.throwIfAborted();
     return this.useDocument(
@@ -230,7 +233,14 @@ export class PdfDocuments {
         // animation frames or background-throttled timers.
         const continuation = new MessageChannel();
         let resume: (() => void) | undefined;
+        let retry: ReturnType<typeof setTimeout> | undefined;
         continuation.port1.onmessage = () => {
+          if (paused?.()) {
+            retry = setTimeout(() => {
+              continuation.port2.postMessage(null);
+            }, 50);
+            return;
+          }
           const next = resume;
           resume = undefined;
           next?.();
@@ -246,6 +256,7 @@ export class PdfDocuments {
           throw error;
         } finally {
           signal?.removeEventListener('abort', cancel);
+          clearTimeout(retry);
           resume = undefined;
           continuation.port1.close();
           continuation.port2.close();

@@ -8,6 +8,26 @@ declare global {
   }
 }
 
+for (const cancel of [false, true]) {
+  test(`background PDF pauses for a foreground render and ${cancel ? 'cancels' : 'resumes'}`, async ({
+    page,
+  }) => {
+    const errors = captureErrors(page);
+    await page.goto('/tests/browser/pdf-rendering-harness.html');
+    const result = await page.evaluate(
+      (stop) => window.pdfRendering.backgroundPause(stop),
+      cancel,
+    );
+    expect(result.backgroundStillPaused).toBe(true);
+    expect(result.foreground.left).toEqual([255, 0, 0, 255]);
+    expect(result.foreground.right).toEqual([0, 0, 255, 255]);
+    expect(result.result).toEqual(cancel ? 'cancelled' : result.foreground);
+    expect(result.channels).toHaveLength(2);
+    expect(result.channels.every((channel) => channel.closed === 2)).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}
+
 test('PDF chunks yield to input while rendering without animation frames', async ({
   page,
 }, info) => {

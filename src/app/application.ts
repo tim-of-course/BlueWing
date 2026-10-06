@@ -34,6 +34,8 @@ import {
 } from '../three/scene';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
+import { PageImages } from '../pdf/page-images';
+import { pageImageStore } from '../platform/page-image-store';
 import {
   readNativeFile,
   releaseNativeFile,
@@ -76,6 +78,7 @@ export class Application {
   presentation?: WingmanPresentation | undefined;
   readonly storage;
   readonly pdf;
+  readonly pageImages;
   readonly libraryStore;
   library: AssemblyLibrary | null = null;
   session: ProjectSession | null = null;
@@ -95,6 +98,11 @@ export class Application {
       this.storage instanceof NativeStorage
         ? this.storage.openAsset(id)
         : this.storage.readAsset(id),
+    );
+    this.pageImages = new PageImages(
+      (sheet, dimension, signal, paused) =>
+        this.pdf.render(sheet, dimension, signal, paused),
+      pageImageStore(native),
     );
   }
   get project(): Project | null {
@@ -536,6 +544,7 @@ export class Application {
               );
             // Capture workers before UI teardown aborts its renders, then detach
             // immediately so queued previews cannot reopen PDFs during cleanup.
+            this.pageImages.clear();
             const clearing = this.pdf.clear();
             this.session = null;
             this.disposeConstructionRenderer();

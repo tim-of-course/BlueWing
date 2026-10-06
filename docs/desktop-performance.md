@@ -4,7 +4,7 @@ This work addresses the reported Windows lag during large-plan import, page chan
 
 ## Product changes
 
-- Sidebar previews render only for visible rows and an open preview. Scrolling or hiding the sidebar cancels obsolete work and releases its decoded images and object URLs. Duplicate sheets share one source preview.
+- The sidebar requests previews only for visible rows and an open preview. Scrolling or hiding it cancels obsolete requests and releases displayed images and object URLs. A separate bounded cache retains reusable page images and previews; idle preparation covers the whole project. Duplicate sheets share one source preview.
 - Sidebar row state updates by sheet ID. One fieldset disables sheet actions during edits/saves; group membership is indexed once rather than scanned separately for every row. Saving an edit preserves collapsed groups.
 - Native PDF imports and saved projects read requested byte ranges from disk through bounded IPC. Automatic whole-file prefetch is disabled. Import parsing finishes before the saved sheets appear, so viewers reopen the saved asset rather than retaining the temporary import snapshot.
 - PDF rendering yields between chunks so input and painting can run. It still works while the native window is in the background. Superseded renders are canceled; at most two idle PDF workers remain cached, while active operations stay pinned.
@@ -69,11 +69,11 @@ Starting a 640 px preview and 3,000 px render together on a fresh worker did not
 
 The full experiment stayed at normal macOS memory pressure. The two successful runs peaked at 1,821 and 1,710 MiB physical footprint for the isolated native/Python harness plus new WebKit helpers. These are whole-run peaks, not incremental cache cost. An initial attempt ran with a hidden, unfocused native window and timed out waiting for animation frames after the PDF finished. It is excluded from the page-switch results. The temporary harness gained an explicit screenshot-hook fallback for hidden windows; neither successful run used that fallback.
 
-### Recommended next change
+### Initial recommendation, superseded by the implemented cache
 
-Add a small cache of completed main-view PDF images. A 128 MiB pixel budget would hold about five of these particular pages, with the current image retained and least recently viewed images evicted first. It must cache only source pixels, so takeoff edits, selection, calibration and names remain live. Key by source asset, page, rotation, dimensions and requested resolution; clear it when closing the project. Preserve cancellation of abandoned renders. Explicitly release evicted owned buffers. The pixel budget is not a cap on total app memory.
+The initial recommendation was a small cache of completed main-view PDF images. A 128 MiB pixel budget would hold about five of these particular pages, with the current image retained and least recently viewed images evicted first. It must cache only source pixels, so takeoff edits, selection, calibration and names remain live. Key by source asset, page, rotation, dimensions and requested resolution; clear it when closing the project. Preserve cancellation of abandoned renders. Explicitly release evicted owned buffers. The pixel budget is not a cap on total app memory.
 
-For slower first visits, reuse an already available sidebar preview while the main image renders. Keep any retained preview bytes bounded and decode only those being displayed. Do not require a new low-resolution render before starting the main render: this experiment found it costs almost as much as the full image. Prioritizing the selected page over queued thumbnails and pre-rendering one likely next page during idle time are further candidates, but their benefit and contention need separate measurement. Do not render the entire document ahead of use.
+For slower first visits, reuse an already available sidebar preview while the main image renders. Keep any retained preview bytes bounded and decode only those being displayed. Do not require a new low-resolution render before starting the main render: this experiment found it costs almost as much as the full image. Prioritizing the selected page over queued thumbnails and pre-rendering one likely next page during idle time are further candidates, but their benefit and contention need separate measurement. The user subsequently requested generous memory caching, disposable disk caching and eventual background preparation of every page. The implementation below replaces this initial nearby-only recommendation.
 
 Choose the transition after the production cache is verified. Cache hits should switch directly. An existing preview could remain visible and briefly fade into the completed image on a miss. Blur is optional styling; it does not reduce load time, and a never-previewed page still needs a fallback. Windows WebView2 and a full estimating session remain unmeasured.
 
@@ -83,24 +83,21 @@ Independent read-only review used Banana Split workflow `wf_3df6afab-c73a-4fe8-9
 
 ## Verification scope
 
-| Check                              | Result                                                                                                    |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Frozen dependency install          | Passed; applies the pinned PDF.js patch                                                                   |
-| TypeScript, lint, formatting       | Passed on the final source                                                                                |
-| Core                               | 180 passed                                                                                                |
-| Tooling/resource guard             | 11 passed                                                                                                 |
-| Platform storage                   | 11 passed                                                                                                 |
-| Rust unit tests                    | 14 passed                                                                                                 |
-| Focused PDF browsers               | 20 passed across Chromium/WebKit                                                                          |
-| Final focused sidebar/navigation   | 8 passed across Chromium/WebKit                                                                           |
-| Final full development run         | All 39 Chromium cases passed; WebKit stopped after its first 2 passes when macOS pressure became critical |
-| Production browsers                | 32 passed before the final sidebar row-state optimization                                                 |
-| Web/native builds                  | Passed before the final sidebar row-state optimization                                                    |
-| Native smoke and detailed workflow | Passed, including the real Bingham run above, before the final sidebar row-state optimization             |
+| Check                        | Result                                                         |
+| ---------------------------- | -------------------------------------------------------------- |
+| Frozen dependency install    | Passed earlier on this branch; applies the pinned PDF.js patch |
+| TypeScript, lint, formatting | Passed with the page cache                                     |
+| Core                         | 180 passed                                                     |
+| Tooling/resource guard       | 11 passed earlier on this branch; unchanged by the cache       |
+| Platform storage             | 11 passed earlier on this branch; unchanged by the cache       |
+| Rust unit tests              | 18 passed, including four page-cache cases                     |
+| Full development browsers    | 108 passed across Chromium/WebKit                              |
+| Production browsers          | 32 passed across Chromium/WebKit                               |
+| Web/native builds            | Passed with bridge 6                                           |
+| Native smoke                 | Passed, including actual page-cache read/write/existence IPC   |
+| Native detailed workflow     | Passed before the cache; real Bingham results recorded above   |
 
-The remaining full WebKit pass, rebuilt production verification, and native rerun are not claimed as final passes. The guard stopped the last development run with exit code 75 and cleaned up its processes. Subsequent checks reported warning memory pressure and load around 49–54 on eight CPU cores, above the guard's startup limit of 16. After load recovered to 9 and the guard reported no startup problem, a WebKit-only retry started but was also stopped by critical memory pressure before completing a test. No guard threshold was bypassed or changed.
-
-Once the host can sustain heavy work, complete `bun run test:dev --project=webkit`, `bun run build`, `bun run test:production`, and `bun run native:build`, then rerun `tests/desktop/detailed.py` with `BLUEWING_TEST_DETAILED_PLAN` pointing to the original Bingham PDF. Keep the guard enabled and run these sequentially. The native workflow should retain its current import/render/close timing evidence; the optional macOS memory monitor is in ignored `tmp/memory-profile/`.
+Earlier full development runs were stopped by critical macOS memory pressure. After resources recovered, the complete development and production suites passed sequentially under the unchanged resource guard, with one browser worker. The final production run reported warning pressure but completed without a guard stop. No threshold was bypassed.
 
 Focused PDF regressions cover real vector output while yielding to input, background-compatible scheduling, pending-load and pending-render cancellation, late byte delivery, failed reads and retry, idle-worker eviction, active-worker pinning, and sparse range access without reading unused streams. Pixel assertions check that scheduling and cancellation changes preserve output.
 
@@ -109,6 +106,8 @@ Canvas checks count actual paints and backing-buffer assignments during pointer 
 The 164-row sidebar test records Solid diagnostics during selection, scrolling, and collapse after initial setup. It asserts visible-row rendering and cancellation directly, rather than imposing a wall-clock limit on mounting all 164 DOM rows. The shared navigation workflow checks disabled actions during an edit and preserved collapsed groups after saving. A WebKit reload race in that persistence test was resolved by waiting for reopened images before reloading; cancellation retains separate regression coverage and worker warnings remain failures.
 
 The native detailed workflow also checks calculated pieces and finishes, previews, undo/redo, PNGs, snippets, review state, live assembly overrides, restart equality, and explicit backup. Native smoke covers CLI discovery, profile identity, SQLite, cached web activation, and offline reopening. Browser tests exercise Chromium and WebKit with one worker; native checks exercise macOS WebKit, not Windows WebView2.
+
+Page-image regressions cover memory reuse, independent canvas ownership, PNG disk reuse, missing/corrupt/unavailable caches, eviction and disk reload, source-key invalidation, metadata reuse, shared-request cancellation, clearing active jobs and queued work, nearby-first preparation of all pages, derived previews and foreground priority. Real PDF tests verify that paused background drawing resumes after foreground work and that cancellation releases its scheduling resources. Both Chromium and WebKit run these checks.
 
 ## Remaining limits
 

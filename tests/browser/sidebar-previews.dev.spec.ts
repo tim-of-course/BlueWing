@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import type { PdfDocuments as PdfDocumentCache } from '../../src/pdf/documents';
+import type { PageImages as PageImageCache } from '../../src/pdf/page-images';
 import { captureErrors } from './wingman';
 
 declare global {
@@ -18,7 +19,7 @@ declare global {
   }
 }
 
-test('the real sidebar renders only visible rows and cancels work on scroll and collapse', async ({
+test('the real sidebar requests only visible previews and cancels work on scroll and collapse', async ({
   page,
 }, info) => {
   const errors = captureErrors(page);
@@ -28,13 +29,25 @@ test('the real sidebar renders only visible rows and cancels work on scroll and 
     const { PdfDocuments } = (await import(modulePath)) as {
       PdfDocuments: typeof PdfDocumentCache;
     };
-    const descriptors = ['import', 'render'].map(
-      (key) =>
+    const imagesPath = '/src/pdf/page-images.ts';
+    const { PageImages } = (await import(imagesPath)) as {
+      PageImages: typeof PageImageCache;
+    };
+    const descriptors = [
+      [PdfDocuments.prototype, 'import'],
+      [PageImages.prototype, 'render'],
+      [PageImages.prototype, 'prepare'],
+    ].map(
+      ([target, key]) =>
         [
-          key,
-          Object.getOwnPropertyDescriptor(PdfDocuments.prototype, key),
+          target as object,
+          key as string,
+          Object.getOwnPropertyDescriptor(target, key as string),
         ] as const,
     );
+    // Background preparation has separate coverage. This test observes the
+    // sidebar's requests to the cache, whether a request hits disk or renders.
+    PageImages.prototype.prepare = () => {};
     const idleDescriptors = ['requestIdleCallback', 'cancelIdleCallback'].map(
       (key) => [key, Object.getOwnPropertyDescriptor(window, key)] as const,
     );
@@ -66,7 +79,7 @@ test('the real sidebar renders only visible rows and cancels work on scroll and 
       visible: boolean;
       signal: AbortSignal;
     }[] = [];
-    PdfDocuments.prototype.render = (sheet, size, signal) => {
+    PageImages.prototype.render = (sheet, size, signal) => {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 16;
       if (size !== 640) return Promise.resolve(canvas);
@@ -114,9 +127,8 @@ test('the real sidebar renders only visible rows and cancels work on scroll and 
         next[1]({ didTimeout: false, timeRemaining: () => 50 });
       },
       restore: () => {
-        for (const [key, descriptor] of descriptors)
-          if (descriptor)
-            Object.defineProperty(PdfDocuments.prototype, key, descriptor);
+        for (const [target, key, descriptor] of descriptors)
+          if (descriptor) Object.defineProperty(target, key, descriptor);
         for (const [key, descriptor] of idleDescriptors) {
           if (descriptor) Object.defineProperty(window, key, descriptor);
           else Reflect.deleteProperty(window, key);

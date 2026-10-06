@@ -1,5 +1,6 @@
 """Real webview/CLI/cache integration check; run after building both binaries."""
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,7 @@ const handler = api.transformCallback(async ({payload:r}) => {
       response = {status:asset.status,body:await asset.text()};
     } else if (r.args[0] === 'invoke') {
       response = await invoke(r.args[1], JSON.parse(r.input || '{}'));
+      if (response instanceof ArrayBuffer) response = [...new Uint8Array(response)];
     } else {
       response = {version:VERSION, bridge:await invoke('bridge_ready'), args:r.args,input:r.input};
     }
@@ -100,6 +102,13 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
         if os.name == "posix":
             assert stat.S_IMODE((data / "cli-session.json").stat().st_mode) == 0o600
         assert cli("echo", payload={"hello": "stdin"})["input"] == '{"hello": "stdin"}'
+        key = hashlib.sha256(directory.encode()).hexdigest()
+        assert cli("invoke", "page_cache_exists", payload={"key": key}) is False
+        assert cli("invoke", "page_cache_read", payload={"key": key}) == []
+        image_bytes = b'cache bytes independent of any project'
+        cli("invoke", "page_cache_write", payload={"key": key, "data": base64.b64encode(image_bytes).decode()})
+        assert cli("invoke", "page_cache_exists", payload={"key": key}) is True
+        assert bytes(cli("invoke", "page_cache_read", payload={"key": key})) == image_bytes
         project = str(data / "project.sqlite")
         cli("invoke", "database_open", payload={"path": project, "create": True})
         cli("invoke", "database_transaction", payload={"statements": [

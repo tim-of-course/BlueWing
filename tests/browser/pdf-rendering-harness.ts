@@ -491,7 +491,60 @@ async function idleCache() {
   }
 }
 
+async function backgroundPause(cancel: boolean) {
+  const bytes = vectorPdf();
+  const pdf = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  const [sheet] = await pdf.import('pause', 'Vector plan.pdf', bytes);
+  if (!sheet) throw new Error('PDF fixture has no page');
+  const originalDate = Date.now;
+  let clock = originalDate();
+  Date.now = () => (clock += 20);
+  let paused = true;
+  let settled = false;
+  let notify = () => {};
+  const blocked = new Promise<void>((resolve) => {
+    notify = resolve;
+  });
+  const abort = new AbortController();
+  const channels = trackChannels();
+  const background = pdf
+    .render(sheet, 64, abort.signal, () => {
+      notify();
+      return paused;
+    })
+    .then(
+      (canvas) => {
+        settled = true;
+        return pixels(canvas);
+      },
+      () => {
+        settled = true;
+        return 'cancelled' as const;
+      },
+    );
+  try {
+    await blocked;
+    const foreground = pixels(await pdf.render(sheet, 64));
+    const backgroundStillPaused = !settled;
+    if (cancel) abort.abort();
+    else paused = false;
+    const result = await background;
+    return {
+      foreground,
+      backgroundStillPaused,
+      result,
+      channels: channels.records,
+    };
+  } finally {
+    abort.abort();
+    Date.now = originalDate;
+    channels.restore();
+    await pdf.clear();
+  }
+}
+
 const harness = {
+  backgroundPause,
   yielding,
   cancellation,
   rangedRendering,

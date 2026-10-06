@@ -1,4 +1,11 @@
-import { createMemo, createSignal, onCleanup, onSettled } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  onSettled,
+} from 'solid-js';
+import { pageImageKey, PAGE_IMAGE_DIMENSION } from '../pdf/page-images';
 import { isTauri } from '@tauri-apps/api/core';
 import { calculateProject, exportQuantities, exportPieces } from '../core';
 import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
@@ -20,6 +27,7 @@ export function createWorkspace(
 ): WorkspaceController {
   onCleanup(() => {
     app.disposeConstructionRenderer();
+    app.pageImages.clear();
   });
   const [cliConnection, setCliConnection] = createSignal(app.cliConnection);
   const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
@@ -119,6 +127,45 @@ export function createWorkspace(
   });
   const saved = createMemo(() => !busy() && !error(), {
     name: 'workspace.saved',
+  });
+  const cacheSheets = createMemo(
+    () =>
+      Object.values(project()?.sheets ?? {}).sort(
+        (a, b) => (a.order ?? a.pageIndex) - (b.order ?? b.pageIndex),
+      ),
+    {
+      name: 'workspace.cacheSheets',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every(
+          (sheet, index) =>
+            sheet.id === next[index]?.id &&
+            pageImageKey(sheet, PAGE_IMAGE_DIMENSION) ===
+              pageImageKey(next[index], PAGE_IMAGE_DIMENSION),
+        ),
+    },
+  );
+  createEffect(
+    () => ({
+      sheets: cacheSheets(),
+      activeId: activeSheetId(),
+      suspended: busy(),
+    }),
+    ({ sheets, activeId, suspended }) => {
+      app.pageImages.prepare(sheets, activeId, suspended);
+    },
+    { name: 'workspace.preparePages' },
+  );
+  onSettled(() => {
+    const defer = () => {
+      app.pageImages.deferPreparation();
+    };
+    const events = ['pointerdown', 'keydown', 'wheel'] as const;
+    for (const event of events)
+      window.addEventListener(event, defer, { passive: true });
+    return () => {
+      for (const event of events) window.removeEventListener(event, defer);
+    };
   });
   let pending = 0;
   let publishedId: string | null = null;
@@ -565,7 +612,7 @@ export function createWorkspace(
     saveRecipe: (recipe, expected) => command('assembly.put', recipe, expected),
     deleteRecipe: (id) => command('assembly.delete', { id }),
     renderSheet: (sheet, maxDimension, signal) =>
-      app.pdf.render(sheet, maxDimension, signal),
+      app.pageImages.render(sheet, maxDimension, signal),
     renderRegion: (sheet, bounds, maxDimension, signal) =>
       app.pdf.renderRegion(sheet, bounds, maxDimension, signal),
     async exportQuantities(format) {
