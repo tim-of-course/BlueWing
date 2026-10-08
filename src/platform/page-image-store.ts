@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { encodeBase64 } from './base64';
 import type { PageImageStore } from '../pdf/page-images';
 
 async function digest(key: string) {
@@ -25,9 +24,8 @@ export function pageImageStore(native: boolean): PageImageStore | undefined {
         return data.length ? data : null;
       },
       async write(key, bytes) {
-        await invoke('page_cache_write', {
-          key: await digest(key),
-          data: encodeBase64(bytes),
+        await invoke('page_cache_write', bytes, {
+          headers: { 'x-bluewing-page-cache-key': await digest(key) },
         });
       },
       async exists(key) {

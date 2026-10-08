@@ -33,6 +33,11 @@ const handler = api.transformCallback(async ({payload:r}) => {
     } else if (r.args[0] === 'asset') {
       const asset = await fetch('/missing.js');
       response = {status:asset.status,body:await asset.text()};
+    } else if (r.args[0] === 'cache-write') {
+      const body = JSON.parse(r.input);
+      response = await invoke('page_cache_write', new Uint8Array(body.bytes), {
+        headers: { 'x-bluewing-page-cache-key': body.key }
+      });
     } else if (r.args[0] === 'invoke') {
       response = await invoke(r.args[1], JSON.parse(r.input || '{}'));
       if (response instanceof ArrayBuffer) response = [...new Uint8Array(response)];
@@ -106,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
         assert cli("invoke", "page_cache_exists", payload={"key": key}) is False
         assert cli("invoke", "page_cache_read", payload={"key": key}) == []
         image_bytes = b'cache bytes independent of any project'
-        cli("invoke", "page_cache_write", payload={"key": key, "data": base64.b64encode(image_bytes).decode()})
+        cli("cache-write", payload={"key": key, "bytes": list(image_bytes)})
         assert cli("invoke", "page_cache_exists", payload={"key": key}) is True
         assert bytes(cli("invoke", "page_cache_read", payload={"key": key})) == image_bytes
         project = str(data / "project.sqlite")

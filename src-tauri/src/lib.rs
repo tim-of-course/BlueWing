@@ -231,7 +231,7 @@ fn bridge_ready(
         window.config().build.dev_url.as_ref(),
         &state.cache.active,
     );
-    let info = json!({"bridgeVersion":6,"webVersion":version,"webSource":source,"cliPath":cli,
+    let info = json!({"bridgeVersion":7,"webVersion":version,"webSource":source,"cliPath":cli,
         "dataDir":bridge.data_dir,"shell": if cfg!(windows) { "powershell" } else { "posix" }});
     bridge.ready.store(true, Ordering::SeqCst);
     Ok(info)

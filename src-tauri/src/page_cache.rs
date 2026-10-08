@@ -1,8 +1,8 @@
-use base64::{Engine, engine::general_purpose::STANDARD};
 use std::{
-    io::ErrorKind,
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
+use tauri::ipc::{InvokeBody, Request};
 
 fn cache_root() -> PathBuf {
     std::env::temp_dir().join("bluewing-page-images-v1")
@@ -27,11 +27,16 @@ fn read(root: &Path, key: &str) -> Result<Vec<u8>, String> {
     }
 }
 
-fn write(root: &Path, key: &str, data: &str) -> Result<(), String> {
+fn write(root: &Path, key: &str, data: &[u8]) -> Result<(), String> {
     let path = cache_path(root, key)?;
-    let bytes = STANDARD.decode(data).map_err(|error| error.to_string())?;
     std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
-    crate::storage::atomic_write(&path, &bytes)
+    let mut temporary = tempfile::NamedTempFile::new_in(root).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(data)
+        .map_err(|error| error.to_string())?;
+    // Disposable images need atomic replacement, not forced durable disk writes.
+    temporary.persist(path).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -54,7 +59,18 @@ pub async fn page_cache_read(key: String) -> Result<tauri::ipc::Response, String
 }
 
 #[tauri::command]
-pub async fn page_cache_write(key: String, data: String) -> Result<(), String> {
+pub async fn page_cache_write(request: Request<'_>) -> Result<(), String> {
+    let key = request
+        .headers()
+        .get("x-bluewing-page-cache-key")
+        .ok_or("Page cache key header is missing")?
+        .to_str()
+        .map_err(|error| error.to_string())?
+        .to_owned();
+    let data = match request.body() {
+        InvokeBody::Raw(bytes) => bytes.clone(),
+        InvokeBody::Json(_) => return Err("Page cache write requires raw bytes".into()),
+    };
     tauri::async_runtime::spawn_blocking(move || write(&cache_root(), &key, &data))
         .await
         .map_err(|error| error.to_string())?
@@ -71,9 +87,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("cache");
         let bytes = [0, 255, 128, 13, 10];
-        write(&root, KEY, &STANDARD.encode(bytes)).unwrap();
+        write(&root, KEY, &bytes).unwrap();
         assert_eq!(read(&root, KEY).unwrap(), bytes);
-        write(&root, KEY, &STANDARD.encode(b"replacement")).unwrap();
+        write(&root, KEY, b"replacement").unwrap();
         assert_eq!(read(&root, KEY).unwrap(), b"replacement");
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
     }
@@ -92,10 +108,10 @@ mod tests {
     fn write_recreates_a_removed_cache_directory() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path().join("cache");
-        write(&root, KEY, &STANDARD.encode(b"old")).unwrap();
+        write(&root, KEY, b"old").unwrap();
         std::fs::remove_dir_all(&root).unwrap();
         assert!(read(&root, KEY).unwrap().is_empty());
-        write(&root, KEY, &STANDARD.encode(b"new")).unwrap();
+        write(&root, KEY, b"new").unwrap();
         assert_eq!(read(&root, KEY).unwrap(), b"new");
     }
 
@@ -114,7 +130,7 @@ mod tests {
             "é".repeat(32),
         ] {
             assert!(read(&root, &key).is_err(), "Accepted key: {key}");
-            assert!(write(&root, &key, "AA==").is_err(), "Accepted key: {key}");
+            assert!(write(&root, &key, &[0]).is_err(), "Accepted key: {key}");
         }
         assert!(!root.exists());
     }

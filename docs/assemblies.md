@@ -124,7 +124,7 @@ Use `bluewing help <command>` or `commands.list` for complete schemas. Commands 
 
 `assignment.put` replaces a complete assignment. Geometry overrides must reference group members. Removing a member or geometry removes its overrides in the same undoable edit. Duplicating a group copies assignments and overrides while retaining geometry references.
 
-Project format 4 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 2 in `data/assemblies-v2.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 6 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
+Project format 4 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 2 in `data/assemblies-v2.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 7 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
 
 ## Review and verification
 
