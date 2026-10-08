@@ -139,6 +139,8 @@ Choose **Record performance** in the footer, reproduce the slowdown, then choose
 
 Activity summaries preserve whole-recording counts, durations, worst completed stages and latest preparation progress after detailed events are overwritten. See the [real-plan before/after comparison](docs/performance-diagnostics-comparison.md) for what the diagnostics detected and what remains unverified.
 
+Recordings also time pointer handling, canvas painting, trace commits, full-page display and CLI commands. Frame summaries count gaps above 17, 33, 50 and 100 ms. A small [workflow performance suite](docs/workflow-performance.md) runs as part of `verify`; use `bun run test:performance` for just tracing, page navigation, navigator search and CLI lookup/view scenarios. The document defines measurement boundaries, budgets and report locations.
+
 `src/core` owns plain TypeScript geometry, measurement, recipes, commands, and accepted state. `src/platform` maps records/assets to storage and orchestrates web updates. `src/app` connects UI and CLI to the session. `src/pdf` and the shared canvas painter serve both drawing and CLI images. Rust in `src-tauri` supplies generic native capabilities.
 
 Use Git checkpoints after relevant checks pass. The old PlanVyper project is a separate reference, never a runtime dependency.

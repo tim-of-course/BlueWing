@@ -72,8 +72,15 @@ export interface PerformanceReport {
     p95Window: 'retained-events';
     inputEventDurationThresholdMs: 16;
     counts: Record<PerformanceEventKind, number>;
-    frames: PerformanceMetricSummary & { over50Ms: number; over100Ms: number };
+    /** Whole-session, cumulative counts of visible frame gaps strictly above each threshold. */
+    frames: PerformanceMetricSummary & {
+      over17Ms: number;
+      over33Ms: number;
+      over50Ms: number;
+      over100Ms: number;
+    };
     inputDelay: PerformanceMetricSummary;
+    /** Browser Long Tasks API entries (>50 ms), independent of frame gaps. */
     longTasks: PerformanceMetricSummary;
     longAnimationFrames: PerformanceMetricSummary;
     /** Grouped by activity and purpose/resolution/cache/priority, never by page ID. */
@@ -214,6 +221,8 @@ export class PerformanceRecorder {
   private metrics = emptyMetrics();
   private activities = new Map<string, PerformanceActivitySummary>();
   private ungroupedActivityEvents = 0;
+  private over17Ms = 0;
+  private over33Ms = 0;
   private over50Ms = 0;
   private over100Ms = 0;
   private capabilities = emptyCapabilities();
@@ -260,6 +269,8 @@ export class PerformanceRecorder {
     this.metrics = emptyMetrics();
     this.activities.clear();
     this.ungroupedActivityEvents = 0;
+    this.over17Ms = 0;
+    this.over33Ms = 0;
     this.over50Ms = 0;
     this.over100Ms = 0;
     this.capabilities = emptyCapabilities();
@@ -411,6 +422,8 @@ export class PerformanceRecorder {
         counts: { ...this.counts },
         frames: {
           ...metric('frame'),
+          over17Ms: this.over17Ms,
+          over33Ms: this.over33Ms,
           over50Ms: this.over50Ms,
           over100Ms: this.over100Ms,
         },
@@ -452,6 +465,8 @@ export class PerformanceRecorder {
     metric.totalMs += value;
     metric.worstMs = Math.max(metric.worstMs, value);
     if (kind === 'frame') {
+      if (value > 17) this.over17Ms++;
+      if (value > 33) this.over33Ms++;
       if (value > 50) this.over50Ms++;
       if (value > 100) this.over100Ms++;
     }

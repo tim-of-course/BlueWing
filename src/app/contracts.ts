@@ -15,6 +15,10 @@ import type { DrawingVisibility } from './visibility';
 import type { PreparationStatus } from '../pdf/page-images';
 import type { RasterLease } from '../pdf/raster';
 import type {
+  FinishPerformanceSpan,
+  PerformanceData,
+} from '../performance/recorder';
+import type {
   AssemblyLibrary,
   Assignment,
   GeometryKind,
@@ -37,6 +41,7 @@ export interface WorkspaceController {
   preparationStatus: Accessor<PreparationStatus>;
   setPreparationPaused(paused: boolean): void;
   recordSheetPaint(pageId: string): void;
+  performanceSpan(name: string, data?: PerformanceData): FinishPerformanceSpan;
   performanceRecording: Accessor<boolean>;
   startPerformanceRecording(): Promise<void>;
   savePerformanceRecording(): Promise<void>;

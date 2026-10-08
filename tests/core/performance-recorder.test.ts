@@ -144,7 +144,17 @@ void test('idle calls are inert and an empty report is JSON-compatible', () => {
     longtask: 'not-attached',
     'long-animation-frame': 'not-attached',
   });
-  assert.equal(report.summary.frames.p95Ms, null);
+  assert.deepEqual(report.summary.frames, {
+    count: 0,
+    meanMs: null,
+    worstMs: null,
+    p95Ms: null,
+    retainedSamples: 0,
+    over17Ms: 0,
+    over33Ms: 0,
+    over50Ms: 0,
+    over100Ms: 0,
+  });
 });
 
 void test('spans retain stage timestamps, merge results and finish once', () => {
@@ -425,6 +435,8 @@ void test('browser attachment is idle until start and RAF samples only visible i
     worstMs: 60,
     p95Ms: 60,
     retainedSamples: 3,
+    over17Ms: 2,
+    over33Ms: 1,
     over50Ms: 1,
     over100Ms: 0,
   });
@@ -436,26 +448,92 @@ void test('browser attachment is idle until start and RAF samples only visible i
   assert.equal(browser.frames.size, 0);
 });
 
-void test('frame p95 describes retained samples while count and worst cover the whole session', () => {
+void test('frame gap buckets are cumulative and exclude equality at each threshold', () => {
+  const { recorder, time, advance } = fixture();
+  const browser = browserFixture();
+  recorder.attachBrowser(browser.browser);
+  recorder.start();
+  browser.frame(time());
+  for (const [gap, counts] of [
+    [17, [0, 0, 0, 0]],
+    [17.5, [1, 0, 0, 0]],
+    [33, [2, 0, 0, 0]],
+    [33.5, [3, 1, 0, 0]],
+    [50, [4, 2, 0, 0]],
+    [50.5, [5, 3, 1, 0]],
+    [100, [6, 4, 2, 0]],
+    [100.5, [7, 5, 3, 1]],
+  ] as const) {
+    browser.frame(advance(gap));
+    const frames = recorder.report().summary.frames;
+    assert.deepEqual(
+      [frames.over17Ms, frames.over33Ms, frames.over50Ms, frames.over100Ms],
+      counts,
+      `after a ${String(gap)} ms frame gap`,
+    );
+  }
+  const report = recorder.stop();
+  assert.equal(report.summary.frames.count, 8);
+  assert.equal(report.summary.longTasks.count, 0);
+});
+
+void test('frame p95 describes retained samples while totals and gap buckets survive eviction', () => {
   const { recorder, time, advance } = fixture(20);
   const browser = browserFixture([]);
   recorder.attachBrowser(browser.browser);
   recorder.start();
   browser.frame(time());
-  browser.frame(advance(500));
+  for (const gap of [18, 34, 51, 101, 500]) browser.frame(advance(gap));
   for (let gap = 1; gap <= 20; gap++) browser.frame(advance(gap));
   const report = recorder.stop();
   assert.deepEqual(report.summary.frames, {
-    count: 21,
-    meanMs: 710 / 21,
+    count: 25,
+    meanMs: 914 / 25,
     worstMs: 500,
     p95Ms: 19,
     retainedSamples: 20,
-    over50Ms: 1,
-    over100Ms: 1,
+    over17Ms: 8,
+    over33Ms: 4,
+    over50Ms: 3,
+    over100Ms: 2,
   });
-  assert.equal(report.droppedEvents, 1);
-  assert.equal(report.summary.counts.frame, 21);
+  assert.equal(report.droppedEvents, 5);
+  assert.equal(report.summary.counts.frame, 25);
+  assert.deepEqual(
+    report.events.map((event) => event.durationMs),
+    Array.from({ length: 20 }, (_, index) => index + 1),
+  );
+});
+
+void test('start resets all frame gap buckets and the previous frame timestamp', () => {
+  const { recorder, time, advance } = fixture();
+  const browser = browserFixture([]);
+  recorder.attachBrowser(browser.browser);
+  recorder.start();
+  browser.frame(time());
+  browser.frame(advance(101));
+  assert.equal(recorder.report().summary.frames.over100Ms, 1);
+  for (const stopFirst of [false, true]) {
+    if (stopFirst) recorder.stop();
+    advance(1000);
+    recorder.start();
+    assert.deepEqual(recorder.report().summary.frames, {
+      count: 0,
+      meanMs: null,
+      worstMs: null,
+      p95Ms: null,
+      retainedSamples: 0,
+      over17Ms: 0,
+      over33Ms: 0,
+      over50Ms: 0,
+      over100Ms: 0,
+    });
+    browser.frame(time());
+    assert.equal(recorder.report().summary.frames.count, 0);
+    browser.frame(advance(101));
+    assert.equal(recorder.report().summary.frames.over100Ms, 1);
+  }
+  recorder.stop();
 });
 
 void test('supported observers capture input delay and long work without private attribution', () => {
@@ -513,6 +591,10 @@ void test('supported observers capture input delay and long work without private
     buffered: false,
     durationThreshold: 16,
   });
+  assert.deepEqual(browser.observer('longtask').options, {
+    type: 'longtask',
+    buffered: false,
+  });
   const report = recorder.stop();
   assert.equal(report.events.length, 5);
   assert.deepEqual(report.capabilities, {
@@ -536,6 +618,7 @@ void test('supported observers capture input delay and long work without private
   assert.equal(report.summary.longTasks.count, 2);
   assert.equal(report.summary.longTasks.meanMs, 70);
   assert.equal(report.summary.longTasks.worstMs, 80);
+  assert.equal(report.summary.frames.count, 0);
   assert.equal(report.summary.longAnimationFrames.worstMs, 120);
   assert.deepEqual(required(report.events[3]).data, { blockingDurationMs: 65 });
   assert.equal(JSON.stringify(report).includes('Private'), false);

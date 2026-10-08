@@ -21,6 +21,7 @@ import { paintPlanPresentation } from '../WingmanPreview';
 import { registerCanvasCapture } from '../../platform/canvas-capture';
 import { PAGE_IMAGE_DIMENSION } from '../../pdf/page-images';
 import type { RasterLease } from '../../pdf/raster';
+import type { FinishPerformanceSpan } from '../../performance/recorder';
 
 /** Canvas-local CSS pixels = camera offset + page coordinates * zoom. */
 interface Camera {
@@ -37,6 +38,7 @@ interface SheetImage {
   sheet: Sheet;
   lease: RasterLease;
   full: boolean;
+  finishDisplay?: FinishPerformanceSpan;
 }
 
 function cameraForView(
@@ -412,6 +414,11 @@ export default function DrawingCanvas(props: {
       let cancelled = false;
       const renderAbort = new AbortController();
       const startedAt = performance.now();
+      // Includes acquisition, decoding and the wait for the first full canvas
+      // draw. This measures draw submission, not GPU presentation to the screen.
+      const finishDisplay = controller.performanceSpan('page.display', {
+        pageId: current.id,
+      });
       const cached = controller.cachedSheetPreview(current);
       replaceImage(
         cached ? { sheet: current, lease: cached, full: false } : null,
@@ -422,13 +429,19 @@ export default function DrawingCanvas(props: {
         .acquireSheet(current, PAGE_IMAGE_DIMENSION, renderAbort.signal)
         .then((rendered) => {
           if (!cancelled) {
-            replaceImage({ sheet: current, lease: rendered, full: true });
+            replaceImage({
+              sheet: current,
+              lease: rendered,
+              full: true,
+              finishDisplay,
+            });
             setFadeImage(performance.now() - startedAt > 120);
             setLoading(false);
           } else rendered.release();
         })
         .catch((reason: unknown) => {
           if (cancelled) return;
+          finishDisplay({ success: false });
           const message =
             reason instanceof Error ? reason.message : String(reason);
           setRenderError(message);
@@ -438,6 +451,7 @@ export default function DrawingCanvas(props: {
       return () => {
         cancelled = true;
         renderAbort.abort();
+        finishDisplay({ success: false, cancelled: true });
       };
     },
     { name: 'canvas.loadPdf' },
@@ -604,7 +618,23 @@ export default function DrawingCanvas(props: {
     if (paintFrame) cancelAnimationFrame(paintFrame);
     paintFrame = 0;
     const state = untrack(paintState);
-    if (state) paintScene(state);
+    if (state) {
+      const finish = props.controller.performanceSpan('canvas.paint', {
+        purpose: state.edit?.kind ?? state.draft?.kind ?? 'plan',
+        geometryCount: state.geometries.length,
+      });
+      try {
+        paintScene(state);
+        if (
+          state.image?.full &&
+          paintedImage === state.image.lease &&
+          state.presentation?.mode !== 'takeoff'
+        )
+          state.image.finishDisplay?.({ success: true });
+      } finally {
+        finish();
+      }
+    }
   }
   createEffect(
     paintState,
@@ -709,6 +739,10 @@ export default function DrawingCanvas(props: {
         return;
       }
     }
+    const finish = controller.performanceSpan('canvas.commit', {
+      purpose: currentEdit?.kind ?? currentDraft?.kind,
+    });
+    let success = false;
     savingNow = true;
     setSaving(true);
     setFailure('');
@@ -753,6 +787,7 @@ export default function DrawingCanvas(props: {
       setEdit(null);
       setHover(null);
       setLength('');
+      success = true;
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);
       setFailure(message);
@@ -760,6 +795,7 @@ export default function DrawingCanvas(props: {
     } finally {
       savingNow = false;
       setSaving(false);
+      finish({ success });
     }
   }
   function stopBrush() {
@@ -919,6 +955,16 @@ export default function DrawingCanvas(props: {
     canvas?.setPointerCapture(event.pointerId);
   }
   function pointerMove(event: PointerEvent) {
+    const finish = props.controller.performanceSpan('canvas.pointer', {
+      purpose: gesture?.kind ?? props.tool,
+    });
+    try {
+      movePointer(event);
+    } finally {
+      finish();
+    }
+  }
+  function movePointer(event: PointerEvent) {
     if (savingNow) return;
     const local = localPoint(event);
     const currentSheet = sheet();

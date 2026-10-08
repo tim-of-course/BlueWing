@@ -18,6 +18,7 @@
     "format:check": "prettier . --check",
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "test:dev": "bun scripts/heavy.ts -- bun x --no-install playwright test",
+    "test:performance": "bun scripts/heavy.ts -- bun x --no-install playwright test tests/browser/performance-workflows.dev.spec.ts",
     "test:production": "bun scripts/heavy.ts -- bun x --no-install playwright test --config playwright.production.config.ts",
     "verify": "bun run check && bun run test:tooling && bun run test:core && bun run test:platform && bun run test:dev && bun run build && bun run test:production",
     "desktop": "bun scripts/heavy.ts -- bun scripts/desktop-dev.ts",

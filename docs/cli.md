@@ -52,6 +52,8 @@ The footer offers the same recording flow. Reports retain a bounded set of stage
 
 Read `summary.activities` for whole-recording counts, total durations, worst completed spans and latest events, including `page.preparation` progress. These survive detailed timeline eviction; the summary holds at most 64 activity/purpose/resolution/cache/priority groups and reports overflow in `ungroupedActivityEvents`. Page IDs do not create groups. Nested stage durations overlap and must not be added together. Frame p95 describes retained samples only, so also inspect worst frame gaps, long tasks and page-request durations. See the [measured comparison](performance-diagnostics-comparison.md) for examples and limitations.
 
+Recordings now include `canvas.pointer`, `canvas.paint`, `canvas.commit`, `page.display` and `cli.command` spans. CLI timing includes application queue wait and response formatting, but excludes process launch/IPC and the subsequent UI paint. `performance.*` commands do not time themselves. `summary.frames.over17Ms`, `over33Ms`, `over50Ms` and `over100Ms` are cumulative counts of frame intervals strictly above those thresholds; the browser Long Tasks API still has its fixed 50 ms threshold. See [workflow performance checks](workflow-performance.md) for exact boundaries and the standard regression suite.
+
 ## Detailed takeoff
 
 The structured Construction and Review panels use the same commands below. Consult `commands.list` for complete required fields. Most `put` commands replace full records; `wall.put` and `ceiling.put` accept a resolved specification and store its local differences from the applied project assembly. All examples use the usual `payload` envelope, with project identity and expected revision on mutations.

@@ -3,6 +3,8 @@ import { listen } from '@tauri-apps/api/event';
 import type { Application, ApplicationRequest } from './application';
 import { wireMessage, type Message, type MessageWait } from './messaging';
 import { messageGuidance, type CliConnection } from './cli-guide';
+import { registry } from './registry';
+import type { FinishPerformanceSpan } from '../performance/recorder';
 
 interface CliRequest {
   id: string;
@@ -100,11 +102,14 @@ export async function connectCli(
 }
 
 export async function dispatchCli(
-  application: Pick<Application, 'dispatch' | 'messaging' | 'project'>,
+  application: Pick<Application, 'dispatch' | 'messaging' | 'project'> &
+    Partial<Pick<Application, 'performance'>>,
   args: string[],
   input?: string,
 ) {
   let request: ApplicationRequest | undefined;
+  let finish: FinishPerformanceSpan | undefined;
+  let success = false;
   const delivery = (wait?: MessageWait) => {
     if (wait)
       return {
@@ -128,6 +133,13 @@ export async function dispatchCli(
   };
   try {
     request = parseCli(args, input);
+    const name = request.name;
+    const definition = registry.find((entry) => entry.name === name);
+    if (definition && !definition.name.startsWith('performance.'))
+      // Includes queue wait and response formatting, before the native roundtrip.
+      finish = application.performance?.span('cli.command', {
+        purpose: definition.name,
+      });
     const result = await application.dispatch(request);
     if (request.name === 'messages.send')
       result.data = wireMessage(result.data as Message);
@@ -139,7 +151,7 @@ export async function dispatchCli(
         : undefined;
     if (wait)
       result.data = { ...wait, messages: wait.messages.map(wireMessage) };
-    return {
+    const reply = {
       exitCode: 0,
       response: {
         ok: true,
@@ -147,6 +159,8 @@ export async function dispatchCli(
         ...delivery(wait),
       },
     };
+    success = true;
+    return reply;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const code =
@@ -163,5 +177,7 @@ export async function dispatchCli(
         ...(request ? delivery() : {}),
       },
     };
+  } finally {
+    finish?.({ success });
   }
 }

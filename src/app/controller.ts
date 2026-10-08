@@ -290,6 +290,7 @@ export function createWorkspace(
     recordSheetPaint(pageId) {
       app.performance.event('page.paint', { pageId });
     },
+    performanceSpan: (name, data) => app.performance.span(name, data),
     performanceRecording,
     async startPerformanceRecording() {
       await app.dispatch({ name: 'performance.start', origin: 'ui' });
