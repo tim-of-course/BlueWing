@@ -234,6 +234,81 @@ void test('the ring retains the newest events and counts every dropped event', (
   recorder.stop();
 });
 
+void test('long recordings retain slow page timing and preparation progress after timeline eviction', () => {
+  const { recorder, time, advance } = fixture();
+  const browser = browserFixture([]);
+  recorder.attachBrowser(browser.browser);
+  recorder.start();
+  const slow = recorder.span('page.request', {
+    pageId: 'slow-page',
+    purpose: 'selected',
+    dimension: 3300,
+  });
+  advance(4563);
+  slow();
+  const cached = recorder.span('page.request', {
+    pageId: 'other-page',
+    purpose: 'selected',
+    dimension: 3300,
+  });
+  advance(1);
+  cached();
+  recorder.span('page.request', { purpose: 'preview', dimension: 640 })();
+  recorder.event('page.preparation', { total: 3, completed: 0, running: true });
+  recorder.event('page.preparation', {
+    total: 3,
+    completed: 3,
+    running: false,
+  });
+  browser.frame(time());
+  for (let index = 0; index < 36_000; index++)
+    browser.frame(advance(1000 / 60));
+  const report = recorder.stop();
+  assert.equal(
+    report.events.some((event) => event.kind === 'span'),
+    false,
+  );
+  const selected = required(
+    report.summary.activities.find(
+      (activity) => activity.dimensions.purpose === 'selected',
+    ),
+  );
+  assert.equal(selected.count, 2);
+  assert.equal(selected.timedCount, 2);
+  assert.equal(selected.totalDurationMs, 4564);
+  assert.equal(selected.worst?.durationMs, 4563);
+  assert.equal(selected.worst.data.pageId, 'slow-page');
+  assert.equal(selected.latest.data.pageId, 'other-page');
+  assert.deepEqual(
+    required(
+      report.summary.activities.find(
+        (activity) => activity.name === 'page.preparation',
+      ),
+    ).latest.data,
+    { total: 3, completed: 3, running: false },
+  );
+  assert.equal(report.summary.ungroupedActivityEvents, 0);
+  selected.latest.data.pageId = 'mutated';
+  assert.equal(
+    recorder.report().summary.activities[0]?.latest.data.pageId,
+    'other-page',
+  );
+  recorder.start();
+  assert.deepEqual(recorder.report().summary.activities, []);
+});
+
+void test('activity summaries bound distinct groups while continuing existing totals', () => {
+  const { recorder } = fixture();
+  recorder.start();
+  for (let index = 0; index < 65; index++)
+    recorder.event(`stage-${String(index)}`);
+  recorder.event('stage-0');
+  const report = recorder.stop();
+  assert.equal(report.summary.activities.length, 64);
+  assert.equal(report.summary.ungroupedActivityEvents, 1);
+  assert.equal(report.summary.activities[0]?.count, 2);
+});
+
 void test('snapshots do not expose mutable recorder metadata, events or summaries', () => {
   const { recorder } = fixture();
   const browser = browserFixture();

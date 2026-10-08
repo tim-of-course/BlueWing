@@ -39,6 +39,17 @@ export interface PerformanceMetricSummary {
   retainedSamples: number;
 }
 
+/** Whole-session activity totals survive eviction from the detailed timeline. */
+export interface PerformanceActivitySummary {
+  name: string;
+  dimensions: Dimensions;
+  count: number;
+  timedCount: number;
+  totalDurationMs: number;
+  worst: PerformanceCaptureEvent | null;
+  latest: PerformanceCaptureEvent;
+}
+
 export interface PerformanceReport {
   version: 1;
   startedAt: string | null;
@@ -65,6 +76,10 @@ export interface PerformanceReport {
     inputDelay: PerformanceMetricSummary;
     longTasks: PerformanceMetricSummary;
     longAnimationFrames: PerformanceMetricSummary;
+    /** Grouped by activity and purpose/resolution/cache/priority, never by page ID. */
+    activities: PerformanceActivitySummary[];
+    /** New groups beyond the bounded 64-group summary, counted per event. */
+    ungroupedActivityEvents: number;
   };
 }
 
@@ -197,6 +212,8 @@ export class PerformanceRecorder {
   private recordedEvents = 0;
   private counts = emptyCounts();
   private metrics = emptyMetrics();
+  private activities = new Map<string, PerformanceActivitySummary>();
+  private ungroupedActivityEvents = 0;
   private over50Ms = 0;
   private over100Ms = 0;
   private capabilities = emptyCapabilities();
@@ -241,6 +258,8 @@ export class PerformanceRecorder {
     this.recordedEvents = 0;
     this.counts = emptyCounts();
     this.metrics = emptyMetrics();
+    this.activities.clear();
+    this.ungroupedActivityEvents = 0;
     this.over50Ms = 0;
     this.over100Ms = 0;
     this.capabilities = emptyCapabilities();
@@ -398,6 +417,8 @@ export class PerformanceRecorder {
         inputDelay: metric('input'),
         longTasks: metric('longtask'),
         longAnimationFrames: metric('long-animation-frame'),
+        activities: structuredClone([...this.activities.values()]),
+        ungroupedActivityEvents: this.ungroupedActivityEvents,
       },
     };
   }
@@ -409,7 +430,7 @@ export class PerformanceRecorder {
     durationMs: number | null,
     data: Dimensions,
   ): void {
-    this.buffer[this.nextIndex] = {
+    const event: PerformanceCaptureEvent = {
       sequence: ++this.recordedEvents,
       kind,
       name: name.slice(0, 160),
@@ -417,9 +438,13 @@ export class PerformanceRecorder {
       durationMs,
       data,
     };
+    this.buffer[this.nextIndex] = event;
     this.nextIndex = (this.nextIndex + 1) % this.capacity;
     this.counts[kind]++;
-    if (kind === 'event' || kind === 'span') return;
+    if (kind === 'event' || kind === 'span') {
+      this.summarizeActivity(event);
+      return;
+    }
     const value = kind === 'input' ? (data.inputDelayMs as number) : durationMs;
     if (value === null) return;
     const metric = this.metrics[kind];
@@ -430,6 +455,42 @@ export class PerformanceRecorder {
       if (value > 50) this.over50Ms++;
       if (value > 100) this.over100Ms++;
     }
+  }
+
+  private summarizeActivity(event: PerformanceCaptureEvent): void {
+    const group: Dimensions = {};
+    for (const key of ['purpose', 'dimension', 'cacheSource', 'priority']) {
+      const value = event.data[key];
+      if (value !== undefined) group[key] = value;
+    }
+    const key = JSON.stringify([event.name, group]);
+    let activity = this.activities.get(key);
+    if (!activity) {
+      if (this.activities.size >= 64) {
+        this.ungroupedActivityEvents++;
+        return;
+      }
+      activity = {
+        name: event.name,
+        dimensions: group,
+        count: 0,
+        timedCount: 0,
+        totalDurationMs: 0,
+        worst: null,
+        latest: event,
+      };
+      this.activities.set(key, activity);
+    }
+    activity.count++;
+    activity.latest = event;
+    if (event.durationMs === null) return;
+    activity.timedCount++;
+    activity.totalDurationMs += event.durationMs;
+    if (
+      activity.worst === null ||
+      event.durationMs > (activity.worst.durationMs ?? 0)
+    )
+      activity.worst = event;
   }
 
   private notify(): void {

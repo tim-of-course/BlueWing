@@ -137,6 +137,8 @@ PDF.js 6.4.299 runs page drawing, preview resizing, and PNG encoding in a dedica
 
 Choose **Record performance** in the footer, reproduce the slowdown, then choose **Save performance recording**. The JSON includes page/cache stages, worker draw/resize/encoding times, frame gaps, and supported browser input-delay and long-task measurements. Capture is bounded and starts only on request. Reports omit plan text, file paths, screenshots, and DOM targets; they include browser/device context and source page IDs. Missing timing APIs are reported explicitly. The CLI offers `performance.start`, `performance.status`, `performance.stop`, and `performance.export`; see [CLI diagnostics](docs/cli.md#performance-recordings).
 
+Activity summaries preserve whole-recording counts, durations, worst completed stages and latest preparation progress after detailed events are overwritten. See the [real-plan before/after comparison](docs/performance-diagnostics-comparison.md) for what the diagnostics detected and what remains unverified.
+
 `src/core` owns plain TypeScript geometry, measurement, recipes, commands, and accepted state. `src/platform` maps records/assets to storage and orchestrates web updates. `src/app` connects UI and CLI to the session. `src/pdf` and the shared canvas painter serve both drawing and CLI images. Rust in `src-tauri` supplies generic native capabilities.
 
 Use Git checkpoints after relevant checks pass. The old PlanVyper project is a separate reference, never a runtime dependency.

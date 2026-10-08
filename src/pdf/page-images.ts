@@ -122,6 +122,7 @@ export class PageImages {
     this.schedule();
   }
   private changed() {
+    this.recorder?.event('page.preparation', { ...this.status() });
     for (const listener of this.listeners) listener();
   }
 
