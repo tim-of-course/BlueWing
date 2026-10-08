@@ -1,5 +1,7 @@
 # Desktop responsiveness, October 5, 2026
 
+This record covers the earlier main-thread PDF renderer and its cache. See [the PDF worker refactor record](pdf-worker-performance.md) for the subsequent implementation and current verification limits. The measurements below are historical and do not measure the worker backend.
+
 This work addresses the reported Windows lag during large-plan import, page changes, mouse movement, menus, and typing. The separate agent-created Python title-extraction process started after that lag; it does not explain the original problem. The Windows machine has not been profiled locally, so the changes below fix verified sources of unnecessary work without claiming a complete diagnosis of that machine.
 
 ## Product changes

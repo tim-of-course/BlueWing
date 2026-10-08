@@ -35,6 +35,21 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
 
+## Performance recordings
+
+Record a slowdown while using the actual desktop app:
+
+```sh
+bluewing performance.start
+bluewing performance.status
+bluewing performance.stop
+bluewing performance.export '{"payload":{"path":"/absolute/path/performance.json"}}'
+```
+
+Start before importing or switching pages. Use menus, type, pan, and change sheets while preparation runs, then stop. `performance.status` includes preparation progress. Stop returns the report; export saves the current or last recording. These commands work without a project and bypass the project edit queue, so a long import cannot prevent stopping a recording. Pause CLI still blocks them, and messages still accompany CLI results.
+
+The footer offers the same recording flow. Reports retain a bounded set of stage timings, worker drawing/resize/encoding measurements, frame gaps, and available input-delay/long-task measurements. Capability fields identify browser APIs that are unsupported. Capture starts only on request and has no observers or animation loop while idle. Reports contain page IDs and browser/device context, but omit plan text, paths, screenshots, and DOM targets. The report describes the recorded session, not a hardware-independent performance guarantee.
+
 ## Detailed takeoff
 
 The structured Construction and Review panels use the same commands below. Consult `commands.list` for complete required fields. Most `put` commands replace full records; `wall.put` and `ceiling.put` accept a resolved specification and store its local differences from the applied project assembly. All examples use the usual `payload` envelope, with project identity and expected revision on mutations.
@@ -106,7 +121,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 4 is supported. Recreate older development takeoffs; the app does not load or migrate them. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 6.
+Only project format 4 is supported. Recreate older development takeoffs; the app does not load or migrate them. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

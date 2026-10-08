@@ -90,7 +90,41 @@ function draw(source: Sheet, dimension: number, pair = colors(source)) {
   return canvas;
 }
 
-function pixels(canvas: HTMLCanvasElement) {
+function png(canvas: HTMLCanvasElement): Promise<Uint8Array> {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('Fixture PNG encoding failed'));
+    }, 'image/png');
+  }).then(async (blob) => new Uint8Array(await blob.arrayBuffer()));
+}
+
+async function raster(canvas: HTMLCanvasElement, dimension: number) {
+  const bitmap = await createImageBitmap(canvas);
+  let preview: HTMLCanvasElement | undefined;
+  let previewBitmap: ImageBitmap | undefined;
+  if (dimension === PAGE_IMAGE_DIMENSION) {
+    preview = document.createElement('canvas');
+    const scale =
+      PAGE_PREVIEW_DIMENSION / Math.max(canvas.width, canvas.height);
+    preview.width = Math.ceil(canvas.width * scale);
+    preview.height = Math.ceil(canvas.height * scale);
+    const context = preview.getContext('2d');
+    if (!context) throw new Error('Fixture preview context unavailable');
+    context.drawImage(canvas, 0, 0, preview.width, preview.height);
+    previewBitmap = await createImageBitmap(preview);
+  }
+  const encoded = Promise.all([
+    png(canvas),
+    preview ? png(preview) : undefined,
+  ]).then(([bytes, previewBytes]) => ({
+    bytes,
+    ...(previewBytes ? { previewBytes } : {}),
+  }));
+  return { bitmap, ...(previewBitmap ? { previewBitmap } : {}), encoded };
+}
+
+function pixels(canvas: HTMLCanvasElement | ImageBitmap) {
   // Read a tiny test-owned buffer, not a production GPU canvas repeatedly.
   const probe = document.createElement('canvas');
   probe.width = 2;
@@ -119,10 +153,26 @@ function pixels(canvas: HTMLCanvasElement) {
 }
 
 function renderer() {
-  const calls: { id: string; pageIndex: number; dimension: number }[] = [];
-  const render = (source: Sheet, dimension: number) => {
-    calls.push({ id: source.id, pageIndex: source.pageIndex, dimension });
-    return Promise.resolve(draw(source, dimension));
+  const calls: {
+    id: string;
+    pageIndex: number;
+    dimension: number;
+    priority: number;
+  }[] = [];
+  const render: ConstructorParameters<typeof PageImages>[0] = (
+    source,
+    dimension,
+    _signal,
+    _paused,
+    priority,
+  ) => {
+    calls.push({
+      id: source.id,
+      pageIndex: source.pageIndex,
+      dimension,
+      priority: priority(),
+    });
+    return raster(draw(source, dimension), dimension);
   };
   return { calls, render };
 }
@@ -155,6 +205,101 @@ async function ownership() {
       calls: fake.calls,
     };
   } finally {
+    images.clear();
+  }
+}
+
+async function leaseLifetime() {
+  const store = new MemoryStore();
+  const fake = renderer();
+  const images = new PageImages(
+    fake.render,
+    store,
+    PAGE_IMAGE_DIMENSION * 33 * 4,
+  );
+  const a = sheet('a');
+  const first = await images.acquire(a);
+  const second = await images.acquire(a);
+  try {
+    const sameSource = first.source === second.source;
+    const original = pixels(first.source);
+    await store.written(a, PAGE_IMAGE_DIMENSION);
+    const other = await images.acquire(sheet('b'));
+    other.release();
+    const afterEviction = pixels(first.source);
+    const reloaded = await images.acquire(a);
+    reloaded.release();
+    const readsOfA = store.reads.filter(
+      (key) => key === pageImageKey(a, PAGE_IMAGE_DIMENSION),
+    ).length;
+    images.clear();
+    const afterClear = pixels(first.source);
+    first.release();
+    first.release();
+    const surviving = pixels(second.source);
+    second.release();
+    return {
+      original,
+      afterEviction,
+      afterClear,
+      surviving,
+      sameSource,
+      readsOfA,
+      released: second.source.width === 0,
+      calls: fake.calls.length,
+    };
+  } finally {
+    first.release();
+    second.release();
+    images.clear();
+  }
+}
+
+async function displayBeforeEncoding() {
+  const store = new MemoryStore();
+  const encode = gate();
+  const fake = renderer();
+  const images = new PageImages(async (...args) => {
+    const output = await fake.render(...args);
+    return { ...output, encoded: encode.promise.then(() => output.encoded) };
+  }, store);
+  const a = sheet('a');
+  try {
+    const full = images.acquire(a);
+    let previewFinished = false;
+    const preview = images.preview(a).then((bytes) => {
+      previewFinished = true;
+      return bytes;
+    });
+    const lease = await full;
+    try {
+      const visible = pixels(lease.source);
+      const thumbnail = await images.acquire(a, PAGE_PREVIEW_DIMENSION);
+      const previewPixels = pixels(thumbnail.source);
+      thumbnail.release();
+      await nextTask();
+      const pending = !previewFinished;
+      const writesBeforeEncoding = store.writes.length;
+      encode.open();
+      const bytes = await preview;
+      await Promise.all([
+        store.written(a, PAGE_IMAGE_DIMENSION),
+        store.written(a, PAGE_PREVIEW_DIMENSION),
+      ]);
+      return {
+        visible,
+        previewPixels,
+        pending,
+        writesBeforeEncoding,
+        header: [...bytes.slice(0, 8)],
+        calls: fake.calls,
+        writes: store.writes.length,
+      };
+    } finally {
+      lease.release();
+    }
+  } finally {
+    encode.open();
     images.clear();
   }
 }
@@ -193,6 +338,59 @@ async function diskReuse() {
 }
 
 type DiskFailure = 'missing' | 'corrupt' | 'reject-read' | 'reject-write';
+async function previewRecovery(failure: 'missing' | 'corrupt') {
+  const store = new MemoryStore();
+  const fake = renderer();
+  const a = sheet('a');
+  const images = new PageImages(fake.render, store);
+  const reopened = new PageImages(
+    () => Promise.reject(new Error('Preview recovery opened the PDF')),
+    store,
+  );
+  try {
+    const lease = await images.acquire(a);
+    lease.release();
+    await Promise.all([
+      store.written(a, PAGE_IMAGE_DIMENSION),
+      store.written(a, PAGE_PREVIEW_DIMENSION),
+    ]);
+    images.clear();
+    const previewKey = pageImageKey(a, PAGE_PREVIEW_DIMENSION);
+    if (failure === 'missing') store.bytes.delete(previewKey);
+    else store.bytes.set(previewKey, new Uint8Array([0, 1, 2, 3]));
+    const writesBeforeRecovery = store.writes.length;
+    // A concurrent full disk hit must still let the preview request recover
+    // separately from the saved full PNG, without another PDF operator pass.
+    const [full, preview] = await Promise.all([
+      reopened.acquire(a),
+      reopened.preview(a),
+    ]);
+    try {
+      const bitmap = await createImageBitmap(
+        new Blob([preview.slice().buffer], { type: 'image/png' }),
+      );
+      try {
+        const previewPixels = pixels(bitmap);
+        await until(() => store.writes.length > writesBeforeRecovery);
+        return {
+          full: pixels(full.source),
+          preview: previewPixels,
+          calls: fake.calls.length,
+          writes: store.writes.length - writesBeforeRecovery,
+          header: [...preview.slice(0, 8)],
+        };
+      } finally {
+        bitmap.close();
+      }
+    } finally {
+      full.release();
+    }
+  } finally {
+    images.clear();
+    reopened.clear();
+  }
+}
+
 async function diskFailure(failure: DiskFailure) {
   const store = new MemoryStore();
   store.readFailure =
@@ -282,7 +480,7 @@ async function sharedCancellation() {
     started.open();
     await release.promise;
     signal.throwIfAborted();
-    return draw(source, dimension);
+    return raster(draw(source, dimension), dimension);
   });
   const cancel = new AbortController();
   try {
@@ -310,12 +508,13 @@ async function cancellation(action: 'abort' | 'clear') {
   const started = gate();
   const aborted = gate();
   const release = gate();
-  let oldCanvas: HTMLCanvasElement | undefined;
+  let oldRaster: Awaited<ReturnType<typeof raster>> | undefined;
   let calls = 0;
   const images = new PageImages(async (source, dimension, signal) => {
     calls++;
-    if (calls !== 1) return draw(source, dimension, [...palettes[1]]);
-    oldCanvas = draw(source, dimension);
+    if (calls !== 1)
+      return raster(draw(source, dimension, [...palettes[1]]), dimension);
+    oldRaster = await raster(draw(source, dimension), dimension);
     signal.addEventListener(
       'abort',
       () => {
@@ -324,9 +523,9 @@ async function cancellation(action: 'abort' | 'clear') {
       { once: true },
     );
     started.open();
-    // Simulate a PDF continuation delivering its old canvas after cancellation.
+    // Simulate a worker transferring an old bitmap after cancellation.
     await release.promise;
-    return oldCanvas;
+    return oldRaster;
   }, store);
   const firstController = new AbortController();
   const secondController = new AbortController();
@@ -349,7 +548,7 @@ async function cancellation(action: 'abort' | 'clear') {
     release.open();
     const settled = await Promise.all(outcomes);
     // Flush the cancelled job even when its consumers already rejected.
-    await until(() => oldCanvas?.width === 0);
+    await until(() => oldRaster?.bitmap.width === 0);
     const cached = pixels(await images.render(sheet('a'), 64));
     const reopened = new PageImages(
       () => Promise.reject(new Error('Fresh disk image was not reusable')),
@@ -361,7 +560,8 @@ async function cancellation(action: 'abort' | 'clear') {
         fresh,
         cached,
         disk: pixels(await reopened.render(sheet('a'), 64)),
-        oldCanvasReleased: oldCanvas?.width === 0 && oldCanvas.height === 0,
+        oldBitmapReleased:
+          oldRaster?.bitmap.width === 0 && oldRaster.bitmap.height === 0,
         calls,
         writes: store.writes.length,
       };
@@ -379,7 +579,12 @@ function nextTask() {
 }
 
 async function until(ready: () => boolean) {
-  while (!ready()) await nextTask();
+  const deadline = performance.now() + 10_000;
+  while (!ready()) {
+    if (performance.now() > deadline)
+      throw new Error('Image fixture did not settle');
+    await nextTask();
+  }
 }
 
 async function clearPreparation() {
@@ -387,12 +592,13 @@ async function clearPreparation() {
   const started = gate();
   const aborted = gate();
   const release = gate();
-  let oldCanvas: HTMLCanvasElement | undefined;
+  let oldRaster: Awaited<ReturnType<typeof raster>> | undefined;
   const calls: string[] = [];
   const images = new PageImages(async (source, dimension, signal) => {
     calls.push(source.id);
-    if (calls.length !== 1) return draw(source, dimension, [...palettes[1]]);
-    oldCanvas = draw(source, dimension);
+    if (calls.length !== 1)
+      return raster(draw(source, dimension, [...palettes[1]]), dimension);
+    oldRaster = await raster(draw(source, dimension), dimension);
     signal.addEventListener(
       'abort',
       () => {
@@ -402,7 +608,7 @@ async function clearPreparation() {
     );
     started.open();
     await release.promise;
-    return oldCanvas;
+    return oldRaster;
   }, store);
   const a = sheet('a');
   try {
@@ -416,13 +622,14 @@ async function clearPreparation() {
       store.written(a, PAGE_PREVIEW_DIMENSION),
     ]);
     release.open();
-    await until(() => oldCanvas?.width === 0);
+    await until(() => oldRaster?.bitmap.width === 0);
     return {
       fresh,
       cached: pixels(await images.render(a, PAGE_IMAGE_DIMENSION)),
       calls,
       writes: store.writes.length,
-      oldCanvasReleased: oldCanvas?.width === 0,
+      oldBitmapReleased:
+        oldRaster?.bitmap.width === 0 && oldRaster.previewBitmap?.width === 0,
     };
   } finally {
     release.open();
@@ -450,15 +657,25 @@ async function preparation() {
         store.written(source, PAGE_PREVIEW_DIMENSION),
       ]),
     );
+    await until(() => !images.status().running);
+    const status = images.status();
     const previews = [];
-    for (const source of sheets)
-      previews.push(
-        pixels(await reopened.render(source, PAGE_PREVIEW_DIMENSION)),
+    for (const source of sheets) {
+      const bytes = await reopened.preview(source);
+      const bitmap = await createImageBitmap(
+        new Blob([bytes.slice().buffer], { type: 'image/png' }),
       );
+      try {
+        previews.push(pixels(bitmap));
+      } finally {
+        bitmap.close();
+      }
+    }
     return {
       calls: fake.calls,
       previews,
       pngCount: store.bytes.size,
+      status,
     };
   } finally {
     images.clear();
@@ -466,7 +683,153 @@ async function preparation() {
   }
 }
 
-async function foregroundPriority() {
+async function preparationProgress() {
+  const store = new MemoryStore();
+  const started = gate();
+  const encode = gate();
+  const fake = renderer();
+  const images = new PageImages(async (...args) => {
+    const output = await fake.render(...args);
+    if (fake.calls.length !== 1) return output;
+    started.open();
+    return { ...output, encoded: encode.promise.then(() => output.encoded) };
+  }, store);
+  const statuses: ReturnType<PageImages['status']>[] = [];
+  const unsubscribe = images.subscribe(() => statuses.push(images.status()));
+  const a = sheet('a');
+  const sheets = [a, sheet('b'), sheet('c')];
+  try {
+    images.setPreparationPaused(true);
+    images.prepare(sheets, 'a');
+    await nextTask();
+    const queued = images.status();
+    const callsWhilePaused = fake.calls.length;
+    images.setPreparationPaused(false);
+    await started.promise;
+    const encoding = images.status();
+    images.setPreparationPaused(true);
+    encode.open();
+    await until(() => images.status().completed === 1);
+    const paused = images.status();
+    const visible = await images.acquire(a);
+    const selected = pixels(visible.source);
+    visible.release();
+    const callsBeforeResume = fake.calls.length;
+    images.setPreparationPaused(false);
+    await until(() => !images.status().running);
+    return {
+      queued,
+      callsWhilePaused,
+      encoding,
+      paused,
+      callsBeforeResume,
+      selected,
+      final: images.status(),
+      statuses,
+      calls: fake.calls,
+    };
+  } finally {
+    encode.open();
+    unsubscribe();
+    images.clear();
+  }
+}
+
+async function reusePreparation() {
+  const store = new MemoryStore();
+  const started = gate();
+  const deliver = gate();
+  const fake = renderer();
+  let paused: (() => boolean) | undefined;
+  let priority: (() => number) | undefined;
+  let initialPriority: number | undefined;
+  const images = new PageImages(async (...args) => {
+    paused = args[3];
+    priority = args[4];
+    initialPriority = priority();
+    started.open();
+    await deliver.promise;
+    return fake.render(...args);
+  }, store);
+  const a = sheet('a');
+  try {
+    images.prepare([a], a.id);
+    await started.promise;
+    const selected = images.acquire(a);
+    await until(() => paused?.() === false);
+    const pauseAfterReuse = paused?.();
+    const priorityAfterReuse = priority?.();
+    deliver.open();
+    const lease = await selected;
+    const visible = pixels(lease.source);
+    lease.release();
+    await store.written(a, PAGE_IMAGE_DIMENSION);
+    await until(() => !images.status().running);
+    return {
+      pauseAfterReuse,
+      initialPriority,
+      priorityAfterReuse,
+      visible,
+      calls: fake.calls,
+      status: images.status(),
+    };
+  } finally {
+    deliver.open();
+    images.clear();
+  }
+}
+
+async function preparationFailure(failure: 'write' | 'encode') {
+  const store = new MemoryStore();
+  store.rejectWrites = failure === 'write';
+  const encode = gate();
+  const started = gate();
+  const fake = renderer();
+  const images = new PageImages(async (...args) => {
+    const output = await fake.render(...args);
+    started.open();
+    return {
+      ...output,
+      encoded: encode.promise.then(() => {
+        if (failure === 'encode')
+          throw new Error('Fixture PNG encoding failed');
+        return output.encoded;
+      }),
+    };
+  }, store);
+  const a = sheet('a');
+  let lease: Awaited<ReturnType<PageImages['acquire']>> | undefined;
+  try {
+    images.prepare([a], a.id);
+    await started.promise;
+    lease = await images.acquire(a);
+    const completedBeforeEncoding = images.status().completed;
+    encode.open();
+    await until(() => !images.status().running);
+    const visible = pixels(lease.source);
+    const cached = images.peek(a);
+    const previewCached = Boolean(cached);
+    cached?.release();
+    const result = {
+      completedBeforeEncoding,
+      visible,
+      previewCached,
+      status: images.status(),
+      calls: fake.calls.length,
+      writes: store.writes.length,
+      saved: store.bytes.size,
+    };
+    lease.release();
+    images.clear();
+    return { ...result, released: lease.source.width === 0 };
+  } finally {
+    encode.open();
+    lease?.release();
+    images.clear();
+  }
+}
+
+async function backgroundProgress(userPause: boolean) {
   const store = new MemoryStore();
   const chunk = gate();
   const continueChunk = gate();
@@ -504,20 +867,31 @@ async function foregroundPriority() {
       backgroundFinished = true;
     }
     events.push(`${source.id}:end`);
-    return canvas;
+    return raster(canvas, dimension);
   }, store);
   const background = sheet('background');
   try {
     images.prepare([background], background.id);
     await chunk.promise;
     images.deferPreparation();
+    if (userPause) images.setPreparationPaused(true);
     const foreground = images.render(
       { ...sheet('foreground'), assetId: 'b' },
       64,
     );
     await foregroundStarted.promise;
     continueChunk.open();
-    await paused.promise;
+    let finishedDuringUserPause: boolean | undefined;
+    if (userPause) {
+      await paused.promise;
+      finishedDuringUserPause = backgroundFinished;
+      images.setPreparationPaused(false);
+    }
+    await Promise.all([
+      store.written(background, PAGE_IMAGE_DIMENSION),
+      store.written(background, PAGE_PREVIEW_DIMENSION),
+    ]);
+    await until(() => images.status().completed === 1);
     const finishedWhileForegroundHeld = backgroundFinished;
     releaseForeground.open();
     const foregroundPixels = pixels(await foreground);
@@ -526,6 +900,7 @@ async function foregroundPriority() {
       pauseObserved,
       firstChunk,
       finishedWhileForegroundHeld,
+      finishedDuringUserPause,
       backgroundAborted: backgroundSignal?.aborted,
       foreground: foregroundPixels,
       background: pixels(await images.render(background, PAGE_IMAGE_DIMENSION)),
@@ -540,14 +915,20 @@ async function foregroundPriority() {
 
 const harness = {
   ownership,
+  leaseLifetime,
+  displayBeforeEncoding,
   diskReuse,
   diskFailure,
+  previewRecovery,
   evictionAndChanges,
   sharedCancellation,
   cancellation,
   clearPreparation,
   preparation,
-  foregroundPriority,
+  preparationProgress,
+  reusePreparation,
+  preparationFailure,
+  backgroundProgress,
 };
 export type PageImagesHarness = typeof harness;
 Object.assign(window, { pageImages: harness });

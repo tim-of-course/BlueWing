@@ -19,10 +19,7 @@ export class SheetThumbnails {
   private cancelScheduled: (() => void) | undefined;
 
   constructor(
-    private render: (
-      sheet: Sheet,
-      signal: AbortSignal,
-    ) => Promise<HTMLCanvasElement>,
+    private render: (sheet: Sheet, signal: AbortSignal) => Promise<Uint8Array>,
     private changed: () => void,
   ) {}
 
@@ -112,30 +109,30 @@ export class SheetThumbnails {
     if (!entry) return;
     const abort = new AbortController();
     this.running = { entry, abort };
-    let canvas: HTMLCanvasElement | undefined;
+    let image: HTMLImageElement | undefined;
     let source = '';
     try {
-      const rendered = await this.render(entry.sheet, abort.signal);
-      canvas = rendered;
-      if (!this.current(entry)) return;
-      const blob = await new Promise<Blob | null>((resolve) => {
-        rendered.toBlob(resolve);
-      });
-      if (!blob) throw new Error('Thumbnail encoding failed');
-      if (!this.current(entry)) return;
+      const bytes = await this.render(entry.sheet, abort.signal);
+      if (!this.current(entry) || abort.signal.aborted) return;
+      const blob = new Blob([bytes.slice().buffer], { type: 'image/png' });
       source = URL.createObjectURL(blob);
-      const image = new Image();
+      image = new Image();
+      entry.image = image;
       image.src = source;
       await image.decode();
+      abort.signal.throwIfAborted();
       if (!this.current(entry)) return;
-      entry.image = image;
       entry.source = source;
       source = '';
     } catch {
-      if (this.current(entry)) entry.error = 'Preview unavailable';
+      if (this.current(entry) && !abort.signal.aborted)
+        entry.error = 'Preview unavailable';
     } finally {
-      if (canvas) canvas.width = canvas.height = 0;
-      if (source) URL.revokeObjectURL(source);
+      if (source) {
+        URL.revokeObjectURL(source);
+        image?.removeAttribute('src');
+        entry.image = undefined;
+      }
       this.running = undefined;
       if (this.current(entry)) this.changed();
       this.schedule();

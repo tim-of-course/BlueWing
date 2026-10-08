@@ -232,7 +232,9 @@ test('returning to a sheet restores its camera', async ({ page }) => {
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   await (await choosing).setFiles('tests/fixtures/assessment-plan.pdf');
   await expect(canvas).not.toHaveAttribute('data-sheet-id', firstId);
-  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toHaveAttribute('aria-busy', 'false');
   await page.locator('.sheet-row').first().click();
   await expect(canvas).toHaveAttribute('data-sheet-id', firstId);
   await expect.poll(async () => (await view(canvas)).zoom).toBe(firstView.zoom);
@@ -323,8 +325,8 @@ test('drawing pointer bursts repaint once without resizing the PDF canvas', asyn
       await page.getByRole('button', { name: 'Drawing', exact: true }).click();
       await expect(canvas).toBeVisible();
       await expect(
-        page.getByText('Rendering PDF…', { exact: true }),
-      ).toBeHidden();
+        page.getByLabel('Drawing canvas', { exact: true }),
+      ).toHaveAttribute('aria-busy', 'false');
     },
     { scenario: 'canvas-scheduled-paint' },
   );

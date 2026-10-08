@@ -220,9 +220,13 @@ export default function ReviewPanel(props: {
         const sheet = project.sheets[snippet.sheetId];
         if (!sheet) throw new Error('Sheet not found');
         const canvas = await props.controller.renderSheet(sheet, 1200);
-        if (request === imageRequest) {
-          setImage(canvas.toDataURL('image/png'));
-          setPicking(true);
+        try {
+          if (request === imageRequest) {
+            setImage(canvas.toDataURL('image/png'));
+            setPicking(true);
+          }
+        } finally {
+          canvas.width = canvas.height = 0;
         }
       } else {
         const result = await props.controller.renderSnippet(snippet);

@@ -95,6 +95,34 @@ for (const failure of [
   });
 }
 
+for (const failure of ['missing', 'corrupt'] as const) {
+  test(`${failure} preview cache recovers from the saved full PNG alongside a full disk hit`, async ({
+    page,
+  }) => {
+    const errors = captureErrors(page);
+    const result = await page.evaluate(
+      (mode) => window.pageImages.previewRecovery(mode),
+      failure,
+    );
+    expect(result.full).toEqual({
+      width: 3300,
+      height: 33,
+      left: red,
+      right: blue,
+    });
+    expect(result.preview).toEqual({
+      width: 640,
+      height: 7,
+      left: red,
+      right: blue,
+    });
+    expect(result.calls).toBe(1);
+    expect(result.writes).toBe(1);
+    expect(result.header).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    expect(errors).toEqual([]);
+  });
+}
+
 test('memory eviction reloads disk; metadata reuses pixels while source, rotation, size and resolution changes refresh them', async ({
   page,
 }) => {
@@ -162,7 +190,7 @@ for (const action of ['abort', 'clear'] as const) {
     });
     expect(result.cached).toEqual(result.fresh);
     expect(result.disk).toEqual(result.fresh);
-    expect(result.oldCanvasReleased).toBe(true);
+    expect(result.oldBitmapReleased).toBe(true);
     expect(result.calls).toBe(2);
     expect(result.writes).toBe(1);
     expect(errors).toEqual([]);
@@ -185,7 +213,7 @@ test('project clear aborts background preparation and discards its queue and lat
   expect(result.cached).toEqual(result.fresh);
   expect(result.calls).toEqual(['a', 'a']);
   expect(result.writes).toBe(2);
-  expect(result.oldCanvasReleased).toBe(true);
+  expect(result.oldBitmapReleased).toBe(true);
   expect(errors).toEqual([]);
 });
 
@@ -203,6 +231,14 @@ test('preparation visits every page nearby first and saves previews derived from
   expect(distances).toEqual([...distances].sort());
   expect(result.calls.every((call) => call.dimension === 3300)).toBe(true);
   expect(result.pngCount).toBe(10);
+  expect(result.status).toEqual({
+    total: 5,
+    completed: 5,
+    failed: 0,
+    running: false,
+    paused: false,
+  });
+  expect(result.calls.every((call) => call.priority === 10)).toBe(true);
   expect(result.previews).toEqual([
     { width: 640, height: 7, left: red, right: blue },
     { width: 640, height: 7, left: green, right: magenta },
@@ -213,40 +249,195 @@ test('preparation visits every page nearby first and saves previews derived from
   expect(errors).toEqual([]);
 });
 
-test('foreground rendering pauses background at a chunk boundary, completes, then lets background resume', async ({
+test('display leases retain their pixels through eviction, clear and another lease release', async ({
   page,
 }) => {
   const errors = captureErrors(page);
-  const result = await page.evaluate(() =>
-    window.pageImages.foregroundPriority(),
-  );
-  expect(result.pauseObserved).toBe(true);
-  expect(result.finishedWhileForegroundHeld).toBe(false);
-  expect(result.backgroundAborted).toBe(false);
-  expect(result.firstChunk).toEqual({
-    width: 3300,
-    height: 33,
-    left: red,
-    right: [0, 0, 0, 0],
-  });
-  expect(result.foreground).toEqual({
-    width: 64,
-    height: 1,
-    left: green,
-    right: magenta,
-  });
-  expect(result.background).toEqual({
+  const result = await page.evaluate(() => window.pageImages.leaseLifetime());
+  expect(result.original).toEqual({
     width: 3300,
     height: 33,
     left: red,
     right: blue,
   });
-  expect(result.events).toEqual([
-    'background:start',
-    'foreground:start',
-    'foreground:end',
-    'background:resume',
-    'background:end',
-  ]);
+  for (const image of [
+    result.afterEviction,
+    result.afterClear,
+    result.surviving,
+  ])
+    expect(image).toEqual(result.original);
+  expect(result.sameSource).toBe(true);
+  expect(result.readsOfA).toBe(2);
+  expect(result.calls).toBe(2);
+  expect(result.released).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('full and preview display arrive while encoding is held and share one PDF render', async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const result = await page.evaluate(() =>
+    window.pageImages.displayBeforeEncoding(),
+  );
+  expect(result.visible).toEqual({
+    width: 3300,
+    height: 33,
+    left: red,
+    right: blue,
+  });
+  expect(result.previewPixels).toEqual({
+    width: 640,
+    height: 7,
+    left: red,
+    right: blue,
+  });
+  expect(result.pending).toBe(true);
+  expect(result.writesBeforeEncoding).toBe(0);
+  expect(result.header).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+  expect(result.calls).toHaveLength(1);
+  expect(result.calls[0]?.dimension).toBe(3300);
+  expect(result.writes).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test('preparation pause preserves its queue and progress counts saved pages after encoding', async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const result = await page.evaluate(() =>
+    window.pageImages.preparationProgress(),
+  );
+  expect(result.queued).toEqual({
+    total: 3,
+    completed: 0,
+    failed: 0,
+    running: true,
+    paused: true,
+  });
+  expect(result.callsWhilePaused).toBe(0);
+  expect(result.encoding.completed).toBe(0);
+  expect(result.encoding.running).toBe(true);
+  expect(result.paused).toEqual({
+    total: 3,
+    completed: 1,
+    failed: 0,
+    running: true,
+    paused: true,
+  });
+  expect(result.callsBeforeResume).toBe(1);
+  expect(result.selected).toEqual({
+    width: 3300,
+    height: 33,
+    left: red,
+    right: blue,
+  });
+  expect(result.final).toEqual({
+    total: 3,
+    completed: 3,
+    failed: 0,
+    running: false,
+    paused: false,
+  });
+  expect(
+    result.statuses.some((status) => status.completed === 1 && status.paused),
+  ).toBe(true);
+  expect(result.calls).toHaveLength(3);
+  expect(errors).toEqual([]);
+});
+
+test('selecting the page being prepared reuses its work and promotes its priority', async ({
+  page,
+}) => {
+  const errors = captureErrors(page);
+  const result = await page.evaluate(() =>
+    window.pageImages.reusePreparation(),
+  );
+  expect(result.initialPriority).toBe(10);
+  expect(result.priorityAfterReuse).toBe(100);
+  expect(result.pauseAfterReuse).toBe(false);
+  expect(result.visible).toEqual({
+    width: 3300,
+    height: 33,
+    left: red,
+    right: blue,
+  });
+  expect(result.calls).toHaveLength(1);
+  expect(result.calls[0]?.priority).toBe(100);
+  expect(result.status.completed).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+for (const failure of ['write', 'encode'] as const) {
+  test(`${failure} failure counts preparation as failed while held display pixels remain usable`, async ({
+    page,
+  }) => {
+    const errors = captureErrors(page);
+    const result = await page.evaluate(
+      (mode) => window.pageImages.preparationFailure(mode),
+      failure,
+    );
+    expect(result.completedBeforeEncoding).toBe(0);
+    expect(result.status).toEqual({
+      total: 1,
+      completed: 0,
+      failed: 1,
+      running: false,
+      paused: false,
+    });
+    expect(result.visible).toEqual({
+      width: 3300,
+      height: 33,
+      left: red,
+      right: blue,
+    });
+    expect(result.previewCached).toBe(failure === 'write');
+    expect(result.calls).toBe(1);
+    expect(result.writes).toBe(failure === 'write' ? 2 : 0);
+    expect(result.saved).toBe(0);
+    expect(result.released).toBe(true);
+    expect(errors).toEqual([]);
+  });
+}
+
+for (const userPause of [false, true]) {
+  test(`${userPause ? 'user pause stops active preparation, then resuming' : 'input and foreground requests'} lets active background preparation make progress`, async ({
+    page,
+  }) => {
+    const errors = captureErrors(page);
+    const result = await page.evaluate(
+      (pause) => window.pageImages.backgroundProgress(pause),
+      userPause,
+    );
+    expect(result.pauseObserved).toBe(userPause);
+    expect(result.finishedDuringUserPause).toBe(userPause ? false : undefined);
+    expect(result.finishedWhileForegroundHeld).toBe(true);
+    expect(result.backgroundAborted).toBe(false);
+    expect(result.firstChunk).toEqual({
+      width: 3300,
+      height: 33,
+      left: red,
+      right: [0, 0, 0, 0],
+    });
+    expect(result.foreground).toEqual({
+      width: 64,
+      height: 1,
+      left: green,
+      right: magenta,
+    });
+    expect(result.background).toEqual({
+      width: 3300,
+      height: 33,
+      left: red,
+      right: blue,
+    });
+    expect(result.events).toEqual([
+      'background:start',
+      'foreground:start',
+      'background:resume',
+      'background:end',
+      'foreground:end',
+    ]);
+    expect(errors).toEqual([]);
+  });
+}

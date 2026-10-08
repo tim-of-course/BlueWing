@@ -271,13 +271,24 @@ footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 24px;
-  padding: 0 12px;
+  min-height: 24px;
+  padding: 3px 12px;
+  gap: 6px 16px;
+  flex-wrap: wrap;
   flex-shrink: 0;
   border-top: 1px solid #242c3b;
   color: #94a3b8;
   font-size: 11px;
   background: #161b24;
+}
+footer button {
+  padding: 2px 5px;
+  font-size: inherit;
+}
+.page-preparation {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .error-banner {
   display: flex;
@@ -422,6 +433,33 @@ th {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+.pdf-load-status {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #364256;
+  border-radius: 4px;
+  background: #161b24;
+  pointer-events: none;
+}
+.pdf-reveal {
+  animation: pdf-reveal 140ms ease-out;
+}
+@keyframes pdf-reveal {
+  from {
+    opacity: 0.92;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pdf-reveal {
+    animation: none;
+  }
 }
 @media (max-width: 1100px) {
   .brand {

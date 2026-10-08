@@ -46,12 +46,17 @@ export async function renderImage(
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   if (options.mode !== 'takeoff') {
-    const plan = await pdf.renderRegion(
+    const plan = await pdf.rasterRegion(
       sheet,
       bounds,
       options.maxDimension ?? 2048,
     );
-    context.drawImage(plan, 0, 0);
+    try {
+      context.drawImage(plan.bitmap, 0, 0);
+    } finally {
+      plan.bitmap.close();
+      plan.previewBitmap?.close();
+    }
   }
   context.scale(scale, scale);
   context.translate(-bounds.x, -bounds.y);

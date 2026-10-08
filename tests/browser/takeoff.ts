@@ -40,7 +40,9 @@ export async function startProject(page: Page): Promise<void> {
   await expect(
     page.getByLabel('Drawing canvas', { exact: true }),
   ).toHaveAttribute('data-sheet-id', /.+/);
-  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toHaveAttribute('aria-busy', 'false');
 }
 
 export async function drawWall(page: Page): Promise<void> {

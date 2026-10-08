@@ -147,7 +147,7 @@ export default function SheetNavigator(props: Props) {
   const [thumbnailVersion, setThumbnailVersion] = createSignal(0);
   const controller = untrack(() => props.controller);
   const thumbnails = new SheetThumbnails(
-    (sheet, signal) => controller.renderSheet(sheet, 640, signal),
+    (sheet, signal) => controller.previewSheet(sheet, signal),
     () => setThumbnailVersion((version) => version + 1),
   );
   const currentPreview = createMemo(() => {

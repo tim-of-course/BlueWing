@@ -37,7 +37,7 @@
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.7.3",
     "modern-screenshot": "4.7.0",
-    "pdfjs-dist": "6.3.289",
+    "pdfjs-dist": "6.4.299",
     "solid-js": "2.0.0-rc.8",
     "three": "0.186.1"
   },
@@ -63,8 +63,5 @@
     "@solidjs/signals": "2.0.0-rc.8",
     "@solidjs/compiler": "2.0.0-rc.8",
     "@solidjs/babel-plugin": "2.0.0-rc.8"
-  },
-  "patchedDependencies": {
-    "pdfjs-dist@6.3.289": "patches/pdfjs-dist@6.3.289.patch"
   }
 }

@@ -29,6 +29,38 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'performance.start',
+    'Start a bounded performance recording, including PDF/cache stages and supported browser responsiveness measurements. No project changes.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'performance.status',
+    'Inspect whether performance recording is active and how much evidence is retained.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'performance.stop',
+    'Stop performance recording and return its report. Works while another command is running.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'performance.export',
+    'Export the current or last performance recording as JSON. No plan text or screenshots are included.',
+    { path: string },
+    [],
+    false,
+    { path: '/path/bluewing-performance.json' },
+  ),
+  entry(
     'help',
     'Get a short CLI introduction or the schema and examples for one command.',
     { command: string },

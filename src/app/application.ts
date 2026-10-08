@@ -32,7 +32,7 @@ import {
 } from '../three/scene';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
-import { PageImages } from '../pdf/page-images';
+import { PageImages, PAGE_RENDERER_VERSION } from '../pdf/page-images';
 import { pageImageStore } from '../platform/page-image-store';
 import {
   readNativeFile,
@@ -53,6 +53,7 @@ import { messagingStorage } from '../platform/messaging-storage';
 import type { WingmanPresentation } from './wingman-types';
 import type { PlanSnippet } from '../core/review';
 import type { acquireConstructionSnapshot } from '../three/renderer';
+import { PerformanceRecorder } from '../performance/recorder';
 
 export interface Observation {
   projectId: string;
@@ -71,6 +72,7 @@ export interface ApplicationResult {
 }
 
 export class Application {
+  readonly performance = new PerformanceRecorder();
   readonly messaging: Messaging;
   cliConnection: CliConnection | null = null;
   presentation?: WingmanPresentation | undefined;
@@ -92,15 +94,20 @@ export class Application {
     this.messaging = new Messaging(messagingStorage(native));
     this.storage = createStorage(native);
     this.libraryStore = new AssemblyLibraryStore(libraryStorage(native));
-    this.pdf = new PdfDocuments((id) =>
-      this.storage instanceof NativeStorage
-        ? this.storage.openAsset(id)
-        : this.storage.readAsset(id),
+    this.pdf = new PdfDocuments(
+      (id) =>
+        this.storage instanceof NativeStorage
+          ? this.storage.openAsset(id)
+          : this.storage.readAsset(id),
+      this.performance,
     );
     this.pageImages = new PageImages(
-      (sheet, dimension, signal, paused) =>
-        this.pdf.render(sheet, dimension, signal, paused),
+      (sheet, dimension, signal, paused, priority) =>
+        this.pdf.raster(sheet, dimension, signal, paused, priority),
       pageImageStore(native),
+      undefined,
+      undefined,
+      this.performance,
     );
   }
   get project(): Project | null {
@@ -158,6 +165,13 @@ export class Application {
   }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
+    if (request.name.startsWith('performance.')) {
+      // A recording can stop/export while a long render or import is still queued.
+      const run = () => this.dispatchPerformance(request);
+      return request.origin === 'cli'
+        ? this.messaging.scheduleCli((operation) => operation(), run)
+        : run();
+    }
     if (
       request.name === 'messages.read' ||
       request.name === 'messages.send' ||
@@ -636,6 +650,58 @@ export class Application {
     });
   }
 
+  private async dispatchPerformance(
+    request: ApplicationRequest,
+  ): Promise<ApplicationResult> {
+    const definition = applicationCommands.find(
+      (entry) => entry.name === request.name,
+    );
+    if (!definition) throw new Error(`Unknown command ${request.name}`);
+    validatePayload(definition.schema, request.payload ?? {});
+    const payload = (request.payload ?? {}) as Record<string, unknown>;
+    let data: unknown;
+    switch (request.name) {
+      case 'performance.start':
+        this.performance.attachBrowser();
+        data = this.performance.start({
+          native: this.native,
+          development: import.meta.env.DEV,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          sheetCount: Object.keys(this.project?.sheets ?? {}).length,
+          rendererVersion: PAGE_RENDERER_VERSION,
+        });
+        break;
+      case 'performance.status':
+        data = {
+          ...this.performance.status(),
+          preparation: this.pageImages.status(),
+        };
+        break;
+      case 'performance.stop':
+        data = this.performance.stop();
+        break;
+      case 'performance.export':
+        data = {
+          path: await writeOutput(
+            this.native,
+            'bluewing-performance.json',
+            new TextEncoder().encode(
+              JSON.stringify(this.performance.report(), null, 2),
+            ),
+            payload.path as string | undefined,
+          ),
+        };
+        break;
+      default:
+        throw new Error(`Unknown performance command ${request.name}`);
+    }
+    return {
+      data,
+      projectId: this.project?.id ?? null,
+      revision: this.project?.revision ?? null,
+    };
+  }
+
   private async dispatchMessage(
     request: ApplicationRequest,
   ): Promise<ApplicationResult> {
@@ -702,6 +768,9 @@ export class Application {
     request: ApplicationRequest,
   ): Promise<Sheet[]> {
     const id = crypto.randomUUID();
+    const finish = this.performance.span('project.pdf.import', {
+      bytes: file.nativeSource?.length ?? file.data.byteLength,
+    });
     try {
       this.check(request);
       const session = this.session;
@@ -743,6 +812,7 @@ export class Application {
       throw error;
     } finally {
       await releaseNativeFile(file);
+      finish();
     }
   }
 }

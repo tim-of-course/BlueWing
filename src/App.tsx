@@ -781,6 +781,21 @@ export default function App(props: { application?: Application }) {
         </nav>
       </div>
       <footer>
+        <button
+          type="button"
+          title="Record a performance report while you use Bluewing, then save it to help investigate slowdowns."
+          onClick={() => {
+            run(() =>
+              controller.performanceRecording()
+                ? controller.savePerformanceRecording()
+                : controller.startPerformanceRecording(),
+            );
+          }}
+        >
+          {controller.performanceRecording()
+            ? 'Save performance recording'
+            : 'Record performance'}
+        </button>
         <span>
           {controller.project()
             ? controller.busy()
@@ -792,6 +807,42 @@ export default function App(props: { application?: Application }) {
                   : 'Not saved'
             : 'No project open'}
         </span>
+        <Show when={controller.preparationStatus().total > 0}>
+          <span class="page-preparation">
+            <span>
+              Prepared {controller.preparationStatus().completed} of{' '}
+              {controller.preparationStatus().total} pages
+              {controller.preparationStatus().failed > 0 &&
+                ` · ${String(controller.preparationStatus().failed)} failed`}
+              {controller.preparationStatus().paused
+                ? ' · Paused'
+                : controller.preparationStatus().running
+                  ? ' · Preparing'
+                  : ''}
+            </span>
+            <Show
+              when={
+                controller.preparationStatus().completed +
+                  controller.preparationStatus().failed <
+                  controller.preparationStatus().total ||
+                controller.preparationStatus().running
+              }
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  controller.setPreparationPaused(
+                    !controller.preparationStatus().paused,
+                  );
+                }}
+              >
+                {controller.preparationStatus().paused
+                  ? 'Resume preparation'
+                  : 'Pause preparation'}
+              </button>
+            </Show>
+          </span>
+        </Show>
         <span>
           {draft()
             ? 'Enter to finish · Escape to cancel'

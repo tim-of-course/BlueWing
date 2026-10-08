@@ -48,7 +48,9 @@ test('closing detaches the project while PDF cleanup is pending and permits reop
   }
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await expect(canvas).toHaveAttribute('data-sheet-id', sheetId ?? '');
-  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toHaveAttribute('aria-busy', 'false');
 });
 
 test('a large sheet list retains only visible thumbnails and prioritizes its open preview', async ({
@@ -85,6 +87,16 @@ test('a large sheet list retains only visible thumbnails and prioritizes its ope
       },
     });
     const rendered: number[] = [];
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 16;
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('Fixture PNG unavailable'));
+      }, 'image/png');
+    });
+    const png = new Uint8Array(await blob.arrayBuffer());
+    canvas.width = canvas.height = 0;
     let pendingSignal: AbortSignal | undefined;
     let changed = () => {};
     const thumbnails = new SheetThumbnails(
@@ -92,7 +104,7 @@ test('a large sheet list retains only visible thumbnails and prioritizes its ope
         rendered.push(sheet.pageIndex);
         if (sheet.pageIndex === 71) {
           pendingSignal = signal;
-          return new Promise<HTMLCanvasElement>((_resolve, reject) => {
+          return new Promise<Uint8Array>((_resolve, reject) => {
             signal.addEventListener(
               'abort',
               () => {
@@ -102,9 +114,7 @@ test('a large sheet list retains only visible thumbnails and prioritizes its ope
             );
           });
         }
-        const canvas = document.createElement('canvas');
-        canvas.width = canvas.height = 16;
-        return Promise.resolve(canvas);
+        return Promise.resolve(png);
       },
       () => {
         changed();

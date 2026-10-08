@@ -1,155 +1,48 @@
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { getDocument, GlobalWorkerOptions, version } from 'pdfjs-dist';
 import { PdfDocuments } from '../../src/pdf/documents';
 import type { Sheet } from '../../src/core/types';
 import type { AssetRange } from '../../src/platform/storage-model';
+import {
+  embeddedFontPdf,
+  rotatedCropPdf,
+  sparsePdf,
+  thinPdf,
+  transferPdf,
+  transparencyPdf,
+  viewAnnotationPdf,
+  vectorPdf,
+} from './pdf-fixtures';
 
-function vectorPdf(): Uint8Array {
-  const shapes = Array.from(
-    { length: 256 },
-    (_, index) =>
-      `q ${String(index % 2)} 0 ${String(1 - (index % 2))} rg ${String(index % 64)} ${String(Math.floor(index / 64))} 1 1 re f Q`,
-  );
-  const stream = `${shapes.join('\n')}\n1 0 0 rg 0 0 32 64 re f\n0 0 1 rg 32 0 32 64 re f\n`;
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] /Resources << >> /Contents 4 0 R >>',
-    `<< /Length ${String(stream.length)} >>\nstream\n${stream}endstream`,
-  ];
-  let pdf = '%PDF-1.7\n';
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(pdf.length);
-    pdf += `${String(index + 1)} 0 obj\n${object}\nendobj\n`;
-  });
-  const xref = pdf.length;
-  pdf += `xref\n0 5\n0000000000 65535 f \n${offsets
-    .slice(1)
-    .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
-    .join(
-      '',
-    )}trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${String(xref)}\n%%EOF\n`;
-  return new TextEncoder().encode(pdf);
-}
-
-/** Unused streams occupy the gaps; allocate only ranges PDF.js asks for. */
-function sparsePdf() {
-  const compact = new TextDecoder().decode(vectorPdf());
-  const contentStart = compact.indexOf('4 0 obj\n');
-  const encoder = new TextEncoder();
-  const segments: { offset: number; bytes: Uint8Array }[] = [];
-  const offsets = [
-    0,
-    ...[1, 2, 3].map((id) => compact.indexOf(`${String(id)} 0 obj\n`)),
-  ];
-  let cursor = 0;
-  const append = (text: string) => {
-    const bytes = encoder.encode(text);
-    segments.push({ offset: cursor, bytes });
-    cursor += bytes.length;
-  };
-  const padding = (id: number) => {
-    const length = 4 * 1024 * 1024;
-    offsets[id] = cursor;
-    append(`${String(id)} 0 obj\n<< /Length ${String(length)} >>\nstream\n`);
-    cursor += length;
-    append('\nendstream\nendobj\n');
-  };
-  append(compact.slice(0, contentStart));
-  padding(5);
-  const contentOffset = cursor;
-  offsets[4] = cursor;
-  append(compact.slice(contentStart, compact.indexOf('xref\n')));
-  padding(6);
-  const xrefOffset = cursor;
-  append(
-    `xref\n0 7\n0000000000 65535 f \n${offsets
-      .slice(1)
-      .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
-      .join(
-        '',
-      )}trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${String(xrefOffset)}\n%%EOF\n`,
-  );
-  const reads: { offset: number; length: number }[] = [];
-  const range: AssetRange = {
-    length: cursor,
-    read(offset, length) {
-      reads.push({ offset, length });
-      const bytes = new Uint8Array(length).fill(32);
-      for (const segment of segments) {
-        const start = Math.max(offset, segment.offset);
-        const end = Math.min(
-          offset + length,
-          segment.offset + segment.bytes.length,
-        );
-        if (end > start)
-          bytes.set(
-            segment.bytes.subarray(
-              start - segment.offset,
-              end - segment.offset,
-            ),
-            start - offset,
-          );
-      }
-      return Promise.resolve(bytes);
-    },
-  };
-  return { range, reads, contentOffset };
-}
-
-interface ChannelRecord {
-  posts: number;
-  deliveries: number;
-  closed: number;
-}
-function trackChannels(
-  onPost?: () => void,
-  onDelivery?: (record: ChannelRecord) => void,
-) {
-  const Original = window.MessageChannel;
-  const records: ChannelRecord[] = [];
-  window.MessageChannel = class extends Original {
-    constructor() {
-      super();
-      const record = { posts: 0, deliveries: 0, closed: 0 };
-      records.push(record);
-      const post = this.port2.postMessage.bind(this.port2);
-      this.port2.postMessage = (value: unknown) => {
-        if (value === null) {
-          record.posts++;
-          onPost?.();
-        }
-        post(value);
-      };
-      this.port1.addEventListener('message', () => {
-        record.deliveries++;
-        onDelivery?.(record);
-      });
-      for (const port of [this.port1, this.port2]) {
-        const close = port.close.bind(port);
-        port.close = () => {
-          record.closed++;
-          close();
-        };
-      }
-    }
-  };
-  return {
-    records,
-    restore: () => {
-      window.MessageChannel = Original;
-    },
-  };
-}
-function pixels(canvas: HTMLCanvasElement) {
-  const context = canvas.getContext('2d');
+function pixels(source: HTMLCanvasElement | ImageBitmap) {
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
   if (!context) throw new Error('PDF pixel context unavailable');
+  context.drawImage(source, 0, 0);
   return {
     width: canvas.width,
     height: canvas.height,
-    left: [...context.getImageData(16, 32, 1, 1).data],
-    right: [...context.getImageData(48, 32, 1, 1).data],
+    left: [
+      ...context.getImageData(canvas.width / 4, canvas.height / 2, 1, 1).data,
+    ],
+    right: [
+      ...context.getImageData((canvas.width * 3) / 4, canvas.height / 2, 1, 1)
+        .data,
+    ],
   };
+}
+
+async function rasterPixels(pdf: PdfDocuments, sheet: Sheet, dimension = 64) {
+  const result = await pdf.raster(sheet, dimension);
+  try {
+    const image = pixels(result.bitmap);
+    await result.encoded;
+    return image;
+  } finally {
+    result.bitmap.close();
+    result.previewBitmap?.close();
+  }
 }
 
 async function yielding() {
@@ -157,66 +50,123 @@ async function yielding() {
   const pdf = new PdfDocuments(() => Promise.resolve(bytes.slice()));
   const [sheet] = await pdf.import('plan', 'Vector plan.pdf', bytes);
   if (!sheet) throw new Error('PDF fixture has no page');
-  const input = document.querySelector('input');
-  if (!input) throw new Error('PDF input fixture missing');
-  const originalDate = Date.now;
-  const originalFrame = window.requestAnimationFrame.bind(window);
-  // Retain the native method for proxy forwarding and exact restoration.
-  // eslint-disable-next-line @typescript-eslint/unbound-method
-  const originalFill = CanvasRenderingContext2D.prototype.fill;
-  let clock = originalDate(),
-    frameRequests = 0,
-    draws = 0,
-    settled = false;
-  let inputDuringRender = false,
-    drawsBeforeInput = 0;
-  const probe = new MessageChannel();
-  probe.port1.onmessage = () => {
-    input.value = 'Input remained responsive';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+  const calls = {
+    fill: 0,
+    text: 0,
+    image: 0,
+    read: 0,
+    write: 0,
+    encode: 0,
+    offscreenContext: 0,
+    offscreenEncode: 0,
   };
-  const onInput = () => {
-    inputDuringRender = !settled;
-    drawsBeforeInput = draws;
+  const capture = <K extends keyof CanvasRenderingContext2D>(key: K) =>
+    Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, key)
+      ?.value as CanvasRenderingContext2D[K];
+  const original = {
+    fill: capture('fill'),
+    text: capture('fillText'),
+    image: capture('drawImage'),
+    read: capture('getImageData'),
+    write: capture('putImageData'),
+    encode: Object.getOwnPropertyDescriptor(
+      HTMLCanvasElement.prototype,
+      'toBlob',
+    )?.value as HTMLCanvasElement['toBlob'],
+    offscreenContext: Object.getOwnPropertyDescriptor(
+      OffscreenCanvas.prototype,
+      'getContext',
+    )?.value as OffscreenCanvas['getContext'],
+    offscreenEncode: Object.getOwnPropertyDescriptor(
+      OffscreenCanvas.prototype,
+      'convertToBlob',
+    )?.value as OffscreenCanvas['convertToBlob'],
   };
-  input.addEventListener('input', onInput);
-  const channels = trackChannels(undefined, (record) => {
-    // Queue another task between real PDF continuation tasks, after drawing began.
-    if (record.deliveries === 2) probe.port2.postMessage(null);
-  });
-  // Force PDF.js's elapsed-time chunk boundary independently of machine speed.
-  Date.now = () => (clock += 20);
-  window.requestAnimationFrame = () => {
-    frameRequests++;
-    throw new Error('Background PDF rendering must not need animation frames');
-  };
-  CanvasRenderingContext2D.prototype.fill = new Proxy(originalFill, {
-    apply(target, context, args) {
-      draws++;
-      Reflect.apply(target, context, args);
+  // Observe the UI realm only. Worker, fonts, and filters are native and untouched.
+  CanvasRenderingContext2D.prototype.fill = new Proxy(original.fill, {
+    apply(target, receiver, args) {
+      calls.fill++;
+      Reflect.apply(target, receiver, args);
     },
   });
-  const started = performance.now();
+  CanvasRenderingContext2D.prototype.fillText = function (...args) {
+    calls.text++;
+    original.text.apply(this, args);
+  };
+  CanvasRenderingContext2D.prototype.drawImage = new Proxy(original.image, {
+    apply(target, receiver, args) {
+      calls.image++;
+      Reflect.apply(target, receiver, args);
+    },
+  });
+  CanvasRenderingContext2D.prototype.getImageData = function (...args) {
+    calls.read++;
+    return original.read.apply(this, args);
+  };
+  CanvasRenderingContext2D.prototype.putImageData = new Proxy(original.write, {
+    apply(target, receiver, args) {
+      calls.write++;
+      Reflect.apply(target, receiver, args);
+    },
+  });
+  HTMLCanvasElement.prototype.toBlob = function (...args) {
+    calls.encode++;
+    original.encode.apply(this, args);
+  };
+  OffscreenCanvas.prototype.getContext = new Proxy(original.offscreenContext, {
+    apply(target, receiver, args) {
+      calls.offscreenContext++;
+      return Reflect.apply(target, receiver, args) as ReturnType<typeof target>;
+    },
+  });
+  OffscreenCanvas.prototype.convertToBlob = function (...args) {
+    calls.offscreenEncode++;
+    return original.offscreenEncode.apply(this, args);
+  };
+  const restore = () => {
+    CanvasRenderingContext2D.prototype.fill = original.fill;
+    CanvasRenderingContext2D.prototype.fillText = original.text;
+    CanvasRenderingContext2D.prototype.drawImage = original.image;
+    CanvasRenderingContext2D.prototype.getImageData = original.read;
+    CanvasRenderingContext2D.prototype.putImageData = original.write;
+    HTMLCanvasElement.prototype.toBlob = original.encode;
+    OffscreenCanvas.prototype.getContext = original.offscreenContext;
+    OffscreenCanvas.prototype.convertToBlob = original.offscreenEncode;
+  };
+  const input = document.createElement('input');
+  let settled = false;
+  let inputDuringRender = false;
+  input.addEventListener('input', () => {
+    inputDuringRender = !settled;
+  });
+  const timer = setTimeout(() => input.dispatchEvent(new Event('input')), 0);
   try {
-    const canvas = await pdf.render(sheet, 64);
+    const result = await pdf.raster(sheet, 128);
+    let encoded = false;
+    void result.encoded.then(() => {
+      encoded = true;
+    });
+    await Promise.resolve();
+    const displayBeforeEncoding = !encoded;
+    await result.encoded;
     settled = true;
-    return {
-      ...pixels(canvas),
-      inputDuringRender,
-      drawsBeforeInput,
-      frameRequests,
-      channels: channels.records,
-      durationMs: performance.now() - started,
-    };
+    const uiCalls = { ...calls };
+    restore();
+    try {
+      return {
+        ...pixels(result.bitmap),
+        inputDuringRender,
+        displayBeforeEncoding,
+        uiCalls,
+      };
+    } finally {
+      result.bitmap.close();
+      result.previewBitmap?.close();
+    }
   } finally {
     settled = true;
-    Date.now = originalDate;
-    window.requestAnimationFrame = originalFrame;
-    CanvasRenderingContext2D.prototype.fill = originalFill;
-    channels.restore();
-    probe.port1.close();
-    probe.port2.close();
-    input.removeEventListener('input', onInput);
+    clearTimeout(timer);
+    restore();
     await pdf.clear();
   }
 }
@@ -230,22 +180,108 @@ async function cancellation(action: 'release' | 'clear') {
   });
   const [sheet] = await pdf.import('plan', 'Vector plan.pdf', bytes);
   if (!sheet) throw new Error('PDF fixture has no page');
-  let cleanup: Promise<void> | undefined;
-  const channels = trackChannels(() => {
-    cleanup ??= action === 'release' ? pdf.release('plan') : pdf.clear();
-  });
   try {
-    const outcome = await pdf.render(sheet, 64).then(
+    let requested!: () => void;
+    const started = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    const outcomes = [64, 128].map((dimension) =>
+      pdf
+        .raster(sheet, dimension, undefined, () => {
+          requested();
+          return true;
+        })
+        .then(
+          (result) => {
+            result.bitmap.close();
+            result.previewBitmap?.close();
+            return 'completed';
+          },
+          () => 'cancelled',
+        ),
+    );
+    await started;
+    if (action === 'release') await pdf.release('plan');
+    else await pdf.clear();
+    const settled = await Promise.all(outcomes);
+    const reloaded = await rasterPixels(pdf, sheet);
+    return { settled, reads, reloaded };
+  } finally {
+    await pdf.clear();
+  }
+}
+
+async function cancelEncoding(action: 'release' | 'clear') {
+  const bytes = thinPdf();
+  const pdf = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  const [sheet] = await pdf.import('encoded', 'Vector plan.pdf', bytes);
+  if (!sheet) throw new Error('PDF fixture has no page');
+  try {
+    const result = await pdf.raster(sheet, 3300);
+    const outcome = result.encoded.then(
       () => 'completed',
       () => 'cancelled',
     );
-    await cleanup;
-    const closed = channels.records.map((record) => ({ ...record }));
-    channels.restore();
-    const reloaded = await pdf.render(sheet, 64);
-    return { outcome, channels: closed, reads, reloaded: pixels(reloaded) };
+    if (action === 'release') await pdf.release(sheet.assetId);
+    else await pdf.clear();
+    try {
+      return {
+        outcome: await outcome,
+        retained: pixels(result.bitmap),
+        preview: result.previewBitmap ? pixels(result.previewBitmap) : null,
+        reopened: await rasterPixels(pdf, sheet),
+      };
+    } finally {
+      result.bitmap.close();
+      result.previewBitmap?.close();
+    }
   } finally {
-    channels.restore();
+    await pdf.clear();
+  }
+}
+
+async function fullPreview() {
+  const bytes = thinPdf();
+  const pdf = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  try {
+    const [sheet] = await pdf.import('preview', 'Thin page.pdf', bytes);
+    if (!sheet) throw new Error('Missing preview fixture sheet');
+    const result = await pdf.raster(sheet, 3300);
+    try {
+      if (!result.previewBitmap)
+        throw new Error('Full PDF raster omitted its preview');
+      const encoded = await result.encoded;
+      if (!encoded.previewBytes)
+        throw new Error('Full PDF raster omitted its preview PNG');
+      const [full, preview] = await Promise.all([
+        createImageBitmap(
+          new Blob([encoded.bytes.slice().buffer], { type: 'image/png' }),
+        ),
+        createImageBitmap(
+          new Blob([encoded.previewBytes.slice().buffer], {
+            type: 'image/png',
+          }),
+        ),
+      ]);
+      try {
+        return {
+          full: pixels(result.bitmap),
+          preview: pixels(result.previewBitmap),
+          decodedFull: pixels(full),
+          decodedPreview: pixels(preview),
+          headers: [encoded.bytes, encoded.previewBytes].map((png) => [
+            ...png.slice(0, 8),
+          ]),
+        };
+      } finally {
+        full.close();
+        preview.close();
+      }
+    } finally {
+      result.bitmap.close();
+      result.previewBitmap?.close();
+    }
+  } finally {
     await pdf.clear();
   }
 }
@@ -310,8 +346,15 @@ async function rangeFailure() {
         error instanceof Error ? error.message : String(error),
     );
     failing = false;
+    const opensBeforeRetry = opens;
     const recovered = pixels(await pdf.render(sheet, 64));
-    return { failure, failures, opens, recovered };
+    return {
+      failure,
+      failures,
+      opens,
+      reopenedSources: opens - opensBeforeRetry,
+      recovered,
+    };
   } finally {
     await pdf.clear();
   }
@@ -477,15 +520,15 @@ async function idleCache() {
     return bytes.slice();
   });
   try {
-    const pinned = pdf.render(fixtureSheet('pinned'), 64);
+    const pinned = rasterPixels(pdf, fixtureSheet('pinned'));
     await started;
     for (const id of ['a', 'b', 'c', 'b', 'c']) {
-      await pdf.render(fixtureSheet(id), 64);
+      await rasterPixels(pdf, fixtureSheet(id));
     }
     const cached = { ...opens };
-    await pdf.render(fixtureSheet('a'), 64);
+    await rasterPixels(pdf, fixtureSheet('a'));
     unblock();
-    return { cached, opens, pinned: pixels(await pinned) };
+    return { cached, opens, pinned: await pinned };
   } finally {
     unblock();
     await pdf.clear();
@@ -497,26 +540,34 @@ async function backgroundPause(cancel: boolean) {
   const pdf = new PdfDocuments(() => Promise.resolve(bytes.slice()));
   const [sheet] = await pdf.import('pause', 'Vector plan.pdf', bytes);
   if (!sheet) throw new Error('PDF fixture has no page');
-  const originalDate = Date.now;
-  let clock = originalDate();
-  Date.now = () => (clock += 20);
   let paused = true;
   let settled = false;
-  let notify = () => {};
-  const blocked = new Promise<void>((resolve) => {
+  let notify!: () => void;
+  const requested = new Promise<void>((resolve) => {
     notify = resolve;
   });
   const abort = new AbortController();
-  const channels = trackChannels();
   const background = pdf
-    .render(sheet, 64, abort.signal, () => {
-      notify();
-      return paused;
-    })
+    .raster(
+      sheet,
+      64,
+      abort.signal,
+      () => {
+        notify();
+        return paused;
+      },
+      10,
+    )
     .then(
-      (canvas) => {
+      async (result) => {
         settled = true;
-        return pixels(canvas);
+        try {
+          await result.encoded;
+          return pixels(result.bitmap);
+        } finally {
+          result.bitmap.close();
+          result.previewBitmap?.close();
+        }
       },
       () => {
         settled = true;
@@ -524,22 +575,14 @@ async function backgroundPause(cancel: boolean) {
       },
     );
   try {
-    await blocked;
-    const foreground = pixels(await pdf.render(sheet, 64));
+    await requested;
+    const foreground = await rasterPixels(pdf, sheet);
     const backgroundStillPaused = !settled;
     if (cancel) abort.abort();
     else paused = false;
-    const result = await background;
-    return {
-      foreground,
-      backgroundStillPaused,
-      result,
-      channels: channels.records,
-    };
+    return { foreground, backgroundStillPaused, result: await background };
   } finally {
     abort.abort();
-    Date.now = originalDate;
-    channels.restore();
     await pdf.clear();
   }
 }
@@ -555,23 +598,6 @@ async function nameCache() {
   });
   const [sheet] = await documents.import('names', 'names.pdf', bytes);
   if (!sheet) throw new Error('Missing name fixture sheet');
-  const entries = (
-    documents as unknown as {
-      documents: Map<string, { promise: Promise<PDFDocumentProxy> }>;
-    }
-  ).documents;
-  const entry = entries.get('names');
-  if (!entry) throw new Error('Missing loaded PDF');
-  const pdf = await entry.promise;
-  const page = await pdf.getPage(1);
-  const original = page.getTextContent.bind(page);
-  let extractions = 0;
-  let fail = false;
-  page.getTextContent = (...args) => {
-    extractions++;
-    if (fail) return Promise.reject(new Error('Text read failed'));
-    return original(...args);
-  };
   try {
     const [first, duplicate] = await Promise.all([
       documents.suggestName(sheet),
@@ -581,22 +607,21 @@ async function nameCache() {
         name: 'Renamed copy',
       }),
     ]);
-    const sharedExtractions = extractions;
     if (first.status === 'suggested') first.name = 'Caller edit';
     const unchanged = await documents.suggestName({
       ...sheet,
       name: 'New label',
     });
-    await documents.suggestName({ ...sheet, rotation: 90 });
-    fail = true;
-    const failure = await documents
-      .suggestName({ ...sheet, rotation: 180 })
-      .then(
-        () => '',
-        (error: unknown) => String(error),
+    const sharedOpens = opens;
+    const failures = [];
+    for (let attempt = 0; attempt < 2; attempt++)
+      failures.push(
+        await documents.suggestName({ ...sheet, pageIndex: 999 }).then(
+          () => '',
+          (error: unknown) => String(error),
+        ),
       );
-    fail = false;
-    await documents.suggestName({ ...sheet, rotation: 180 });
+    const recovered = await documents.suggestName(sheet);
     await documents.release('names');
     const released = await documents.suggestName(sheet);
     await documents.clear();
@@ -604,15 +629,252 @@ async function nameCache() {
     return {
       duplicate,
       unchanged,
+      recovered,
       released,
       cleared,
-      sharedExtractions,
-      extractions,
-      failure,
+      sharedOpens,
       opens,
+      failures,
     };
   } finally {
     await documents.clear();
+  }
+}
+
+async function preemption(cancel: boolean) {
+  const source = sparsePdf(true);
+  let unblock!: () => void;
+  const held = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  let contentRequested!: () => void;
+  const requested = new Promise<void>((resolve) => {
+    contentRequested = resolve;
+  });
+  let pauseObserved!: () => void;
+  const pauseRead = new Promise<void>((resolve) => {
+    pauseObserved = resolve;
+  });
+  const range: AssetRange = {
+    length: source.range.length,
+    read(offset, length) {
+      if (
+        offset <= source.contentOffset &&
+        offset + length > source.contentOffset
+      ) {
+        contentRequested();
+        return held.then(() => source.range.read(offset, length));
+      }
+      return source.range.read(offset, length);
+    },
+  };
+  let opens = 0;
+  const pdf = new PdfDocuments(() => {
+    opens++;
+    return Promise.resolve(source.range);
+  });
+  const abort = new AbortController();
+  let paused = false;
+  const state = { settled: false };
+  try {
+    const [backgroundSheet, foregroundSheet] = await pdf.import(
+      'preempt',
+      'Two pages.pdf',
+      range,
+    );
+    if (!backgroundSheet || !foregroundSheet)
+      throw new Error('Missing preemption fixture page');
+    const background = pdf
+      .raster(
+        backgroundSheet,
+        64,
+        abort.signal,
+        () => {
+          if (paused) pauseObserved();
+          return paused;
+        },
+        10,
+      )
+      .then(
+        async (result) => {
+          state.settled = true;
+          try {
+            await result.encoded;
+            return pixels(result.bitmap);
+          } finally {
+            result.bitmap.close();
+            result.previewBitmap?.close();
+          }
+        },
+        () => {
+          state.settled = true;
+          return 'cancelled' as const;
+        },
+      );
+    await requested;
+    paused = true;
+    await pauseRead;
+    const foreground = await rasterPixels(pdf, foregroundSheet);
+    const pausedWhileContentHeld = !state.settled;
+    if (cancel) {
+      abort.abort();
+      // Cancellation must settle while the source range is still held.
+      await background;
+    }
+    unblock();
+    if (!cancel) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      if (state.settled)
+        throw new Error('Paused PDF resumed before permission to continue');
+      paused = false;
+    }
+    const result = await background;
+    const reused = await rasterPixels(pdf, backgroundSheet);
+    return { foreground, pausedWhileContentHeld, result, reused, opens };
+  } finally {
+    unblock();
+    abort.abort();
+    await pdf.clear();
+  }
+}
+
+function buffer(source: HTMLCanvasElement | ImageBitmap) {
+  const canvas = document.createElement('canvas');
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('Fidelity fixture context unavailable');
+  context.drawImage(source, 0, 0);
+  return context.getImageData(0, 0, canvas.width, canvas.height).data;
+}
+
+function difference(actual: Uint8ClampedArray, expected: Uint8ClampedArray) {
+  let total = 0,
+    different = 0,
+    nonWhite = 0,
+    dark = 0;
+  for (let offset = 0; offset < expected.length; offset += 4) {
+    let largest = 0;
+    for (let channel = 0; channel < 4; channel++) {
+      const delta = Math.abs(
+        (actual[offset + channel] ?? 0) - (expected[offset + channel] ?? 0),
+      );
+      total += delta;
+      largest = Math.max(largest, delta);
+    }
+    if (largest > 8) different++;
+    if (Math.min(...expected.subarray(offset, offset + 3)) < 240) nonWhite++;
+    if (Math.max(...expected.subarray(offset, offset + 3)) < 80) dark++;
+  }
+  return {
+    mean: total / expected.length,
+    differentFraction: different / (expected.length / 4),
+    nonWhite,
+    dark,
+  };
+}
+
+type FidelityFixture =
+  'transfer' | 'transparency' | 'font' | 'rotation-crop' | 'view-annotation';
+async function fidelity(fixture: FidelityFixture) {
+  const fixtures = {
+    transfer: transferPdf,
+    transparency: transparencyPdf,
+    font: embeddedFontPdf,
+    'rotation-crop': rotatedCropPdf,
+    'view-annotation': viewAnnotationPdf,
+  };
+  const bytes = await fixtures[fixture]();
+  const documents = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  // The independent reference uses unmodified PDF.js DOM canvas/filter/font seams.
+  GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
+  const referenceTask = getDocument({
+    data: bytes.slice(),
+    standardFontDataUrl: new URL('/pdfjs/standard_fonts/', location.href).href,
+    cMapUrl: new URL('/pdfjs/cmaps/', location.href).href,
+    cMapPacked: true,
+    wasmUrl: new URL('/pdfjs/wasm/', location.href).href,
+  });
+  try {
+    const [sheet] = await documents.import(fixture, `${fixture}.pdf`, bytes);
+    if (!sheet) throw new Error('Missing fidelity fixture sheet');
+    const reference = await referenceTask.promise;
+    const page = await reference.getPage(1);
+    const results = [];
+    const bounds = [
+      { x: 0, y: 0, width: sheet.width, height: sheet.height },
+      {
+        x: sheet.width / 4,
+        y: sheet.height / 4,
+        width: sheet.width / 2,
+        height: sheet.height / 2,
+      },
+    ];
+    for (const region of bounds) {
+      const dimension = 192;
+      const scale = dimension / Math.max(region.width, region.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(region.width * scale);
+      canvas.height = Math.ceil(region.height * scale);
+      await page.render({
+        canvas,
+        viewport: page.getViewport({
+          scale,
+          rotation: sheet.rotation ?? 0,
+          offsetX: -region.x * scale,
+          offsetY: -region.y * scale,
+        }),
+        intent: 'display',
+      }).promise;
+      const result = await documents.rasterRegion(sheet, region, dimension);
+      try {
+        const encoded = await result.encoded;
+        const decoded = await createImageBitmap(
+          new Blob([encoded.bytes.slice().buffer], { type: 'image/png' }),
+        );
+        try {
+          results.push({
+            width: result.bitmap.width,
+            height: result.bitmap.height,
+            expectedWidth: canvas.width,
+            expectedHeight: canvas.height,
+            samples: pixels(result.bitmap),
+            ...difference(buffer(result.bitmap), buffer(canvas)),
+            png: difference(buffer(decoded), buffer(result.bitmap)),
+          });
+        } finally {
+          decoded.close();
+        }
+      } finally {
+        result.bitmap.close();
+        result.previewBitmap?.close();
+      }
+    }
+    let printSamples: ReturnType<typeof pixels> | null = null;
+    if (fixture === 'view-annotation') {
+      const canvas = document.createElement('canvas');
+      const viewport = page.getViewport({
+        scale: 192 / Math.max(sheet.width, sheet.height),
+      });
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvas, viewport, intent: 'print' }).promise;
+      printSamples = pixels(canvas);
+    }
+    return {
+      version,
+      printSamples,
+      sheet: {
+        width: sheet.width,
+        height: sheet.height,
+        rotation: sheet.rotation,
+        pdfToPage: sheet.pdfToPage,
+      },
+      results,
+    };
+  } finally {
+    await documents.clear();
+    await referenceTask.destroy();
   }
 }
 
@@ -621,6 +883,10 @@ const harness = {
   backgroundPause,
   yielding,
   cancellation,
+  cancelEncoding,
+  fullPreview,
+  fidelity,
+  preemption,
   rangedRendering,
   rangeFailure,
   cancelRange,

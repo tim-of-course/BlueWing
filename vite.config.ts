@@ -1,6 +1,6 @@
 import solid from '@solidjs/vite-plugin';
-import { defineConfig, minifySync } from 'vite';
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { defineConfig } from 'vite';
+import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
 
 // PDF fonts, CMaps, and codecs ship in each complete offline web release.
 for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
@@ -10,24 +10,27 @@ for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
   });
 }
 
-// The readable worker carries our range-cancellation patch (pdf.js#22051).
-// Minify it with Vite's existing toolchain, retaining licenses and avoiding HMR.
-const worker = minifySync(
-  'pdf.worker.mjs',
-  readFileSync('node_modules/pdfjs-dist/build/pdf.worker.mjs', 'utf8').replace(
-    '@licstart',
-    '@license @licstart',
-  ),
-  { module: true, codegen: { legalComments: 'inline' } },
+cpSync(
+  'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
+  'public/pdfjs/pdf.worker.min.mjs',
 );
-if (worker.errors.length) {
-  throw new Error(
-    `PDF worker minification failed: ${JSON.stringify(worker.errors)}`,
-  );
-}
-writeFileSync('public/pdfjs/pdf.worker.min.mjs', worker.code);
+// The parser and renderer communicate directly, without forwarding operator
+// lists or font/image data through the UI thread. Both workers are host-owned.
+writeFileSync(
+  'public/pdfjs/parser-bridge.mjs',
+  `
+import { WorkerMessageHandler } from './pdf.worker.min.mjs';
+self.addEventListener('message', ({data}) => {
+  if (data.type !== 'connect') return;
+  data.port.start();
+  WorkerMessageHandler.initializeFromPort(data.port);
+  self.postMessage({type:'connected'});
+});
+`,
+);
 
 export default defineConfig({
   plugins: [solid({ diagnostics: true })],
+  worker: { format: 'es' },
   resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },
 });

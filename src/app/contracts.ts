@@ -12,6 +12,8 @@ import type { Messaging } from './messaging';
 import type { CliConnection } from './cli-guide';
 import type { ViewBounds, WingmanPresentation } from './wingman-types';
 import type { DrawingVisibility } from './visibility';
+import type { PreparationStatus } from '../pdf/page-images';
+import type { RasterLease } from '../pdf/raster';
 import type {
   AssemblyLibrary,
   Assignment,
@@ -32,6 +34,12 @@ export interface WorkspaceContext {
   visibility: DrawingVisibility;
 }
 export interface WorkspaceController {
+  preparationStatus: Accessor<PreparationStatus>;
+  setPreparationPaused(paused: boolean): void;
+  recordSheetPaint(pageId: string): void;
+  performanceRecording: Accessor<boolean>;
+  startPerformanceRecording(): Promise<void>;
+  savePerformanceRecording(): Promise<void>;
   messaging: Messaging;
   cliConnection: Accessor<CliConnection | null>;
   setPresentation(presentation: WingmanPresentation | undefined): void;
@@ -146,6 +154,13 @@ export interface WorkspaceController {
   deleteAssignment(id: string): Promise<void>;
   saveRecipe(recipe: Recipe, expected?: Observation): Promise<void>;
   deleteRecipe(id: string): Promise<void>;
+  acquireSheet(
+    sheet: Sheet,
+    maxDimension?: number,
+    signal?: AbortSignal,
+  ): Promise<RasterLease>;
+  previewSheet(sheet: Sheet, signal?: AbortSignal): Promise<Uint8Array>;
+  cachedSheetPreview(sheet: Sheet): RasterLease | null;
   renderSheet(
     sheet: Sheet,
     maxDimension?: number,

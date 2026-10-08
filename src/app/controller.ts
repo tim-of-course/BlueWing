@@ -5,7 +5,11 @@ import {
   onCleanup,
   onSettled,
 } from 'solid-js';
-import { pageImageKey, PAGE_IMAGE_DIMENSION } from '../pdf/page-images';
+import {
+  pageImageKey,
+  PAGE_IMAGE_DIMENSION,
+  PAGE_PREVIEW_DIMENSION,
+} from '../pdf/page-images';
 import { isTauri } from '@tauri-apps/api/core';
 import { exportQuantities, exportPieces } from '../core';
 import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
@@ -26,10 +30,31 @@ export function createWorkspace(
   app = new Application(isTauri()),
 ): WorkspaceController {
   onCleanup(() => {
+    app.performance.stop();
+    app.performance.detachBrowser();
     app.disposeConstructionRenderer();
     app.pageImages.clear();
+    void app.pdf.clear();
   });
   const [cliConnection, setCliConnection] = createSignal(app.cliConnection);
+  const [performanceRecording, setPerformanceRecording] = createSignal(
+    app.performance.status().active,
+    { name: 'workspace.performanceRecording' },
+  );
+  onCleanup(
+    app.performance.subscribe((status) =>
+      setPerformanceRecording(status.active),
+    ),
+  );
+  const [preparationStatus, setPreparationStatus] = createSignal(
+    app.pageImages.status(),
+    { name: 'workspace.pagePreparation' },
+  );
+  onCleanup(
+    app.pageImages.subscribe(() =>
+      setPreparationStatus(app.pageImages.status()),
+    ),
+  );
   const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
   const [project, setProject] = createSignal<Project | null>(null, {
     name: 'workspace.acceptedProject',
@@ -258,6 +283,21 @@ export function createWorkspace(
     return command('batch', { commands }, expected);
   }
   return {
+    preparationStatus,
+    setPreparationPaused(paused) {
+      app.pageImages.setPreparationPaused(paused);
+    },
+    recordSheetPaint(pageId) {
+      app.performance.event('page.paint', { pageId });
+    },
+    performanceRecording,
+    async startPerformanceRecording() {
+      await app.dispatch({ name: 'performance.start', origin: 'ui' });
+    },
+    async savePerformanceRecording() {
+      await app.dispatch({ name: 'performance.stop', origin: 'ui' });
+      await app.dispatch({ name: 'performance.export', origin: 'ui' });
+    },
     messaging: app.messaging,
     cliConnection,
     setPresentation(presentation) {
@@ -618,6 +658,11 @@ export function createWorkspace(
     deleteAssignment: (id) => command('assignment.delete', { id }),
     saveRecipe: (recipe, expected) => command('assembly.put', recipe, expected),
     deleteRecipe: (id) => command('assembly.delete', { id }),
+    acquireSheet: (sheet, maxDimension, signal) =>
+      app.pageImages.acquire(sheet, maxDimension, signal),
+    previewSheet: (sheet, signal) => app.pageImages.preview(sheet, signal),
+    cachedSheetPreview: (sheet) =>
+      app.pageImages.peek(sheet, PAGE_PREVIEW_DIMENSION),
     renderSheet: (sheet, maxDimension, signal) =>
       app.pageImages.render(sheet, maxDimension, signal),
     renderRegion: (sheet, bounds, maxDimension, signal) =>

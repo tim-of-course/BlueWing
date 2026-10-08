@@ -35,7 +35,8 @@ test('the real sidebar requests only visible previews and cancels work on scroll
     };
     const descriptors = [
       [PdfDocuments.prototype, 'import'],
-      [PageImages.prototype, 'render'],
+      [PageImages.prototype, 'acquire'],
+      [PageImages.prototype, 'preview'],
       [PageImages.prototype, 'prepare'],
     ].map(
       ([target, key]) =>
@@ -79,10 +80,21 @@ test('the real sidebar requests only visible previews and cancels work on scroll
       visible: boolean;
       signal: AbortSignal;
     }[] = [];
-    PageImages.prototype.render = (sheet, size, signal) => {
+    PageImages.prototype.acquire = async () => {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 16;
-      if (size !== 640) return Promise.resolve(canvas);
+      const source = await createImageBitmap(canvas);
+      canvas.width = canvas.height = 0;
+      return {
+        source,
+        width: 16,
+        height: 16,
+        release: () => {
+          source.close();
+        },
+      };
+    };
+    PageImages.prototype.preview = (sheet, signal) => {
       if (!signal)
         throw new Error('Thumbnail render has no cancellation signal');
       const list = document.querySelector('.sheet-list');
@@ -101,7 +113,7 @@ test('the real sidebar requests only visible previews and cancels work on scroll
         signal,
       });
       // Hold the raster so scrolling and collapse must cancel actual UI work.
-      return new Promise<HTMLCanvasElement>((_resolve, reject) => {
+      return new Promise<Uint8Array>((_resolve, reject) => {
         signal.addEventListener(
           'abort',
           () => {

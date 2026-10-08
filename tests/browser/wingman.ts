@@ -102,7 +102,9 @@ export async function startWingmanProject(page: Page, harness = false) {
   await expect(
     page.getByLabel('Drawing canvas', { exact: true }),
   ).toHaveAttribute('data-sheet-id', /.+/);
-  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toHaveAttribute('aria-busy', 'false');
 }
 export async function sendText(page: Page, text: string) {
   const chat = page.getByRole('button', { name: 'Wingman chat', exact: true });
@@ -466,6 +468,10 @@ export async function messagingWorkflow(page: Page) {
     'project.inspect',
     'wingman.inspect',
     'undo',
+    'performance.start',
+    'performance.status',
+    'performance.stop',
+    'performance.export',
   ]) {
     const paused = await cli(page, name);
     expect(paused.exitCode, name).not.toBe(0);

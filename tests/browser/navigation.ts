@@ -210,7 +210,9 @@ export async function navigatorWorkflow(page: Page) {
   ).toBeVisible();
   // This reload checks saved panel sizing, after the reopened images are ready.
   // PDF load cancellation is covered separately.
-  await expect(page.getByText('Rendering PDF…', { exact: true })).toBeHidden();
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toHaveAttribute('aria-busy', 'false');
   await firstRow.hover();
   await expect(preview).toHaveAttribute('data-sheet-id', firstId);
   await expect(preview.getByRole('img')).toBeVisible();
