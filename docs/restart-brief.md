@@ -1,8 +1,10 @@
 # Bluewing restart brief
 
-Restart direction and MVP decisions, September 16, 2026, updated for calculated materials on October 3, 2026. Implementation recommendations are identified separately from confirmed product choices.
+Restart direction and MVP decisions, September 16, 2026, updated through October 8, 2026. Implementation recommendations are identified separately from confirmed product choices.
 
 Build a small, dependable takeoff application whose ordinary features can be developed and delivered as a web application. The first users are a small group working in the desktop app with AI assistance through its CLI. Progress means completing real estimating workflows and being able to change them without breaking unrelated behavior.
+
+Prioritize work the first user can validate on real jobs: drywall, light-gauge steel framing, acoustical ceilings, FRP and other sheathing, blocking/rough carpentry, acoustical wall panels and backing. Detailed framing takeoffs need exact stud cut lengths and grouped material schedules. This initial trade scope guides validation while the assembly model remains general enough for other trades.
 
 The previous PlanVyper application is a reference. **Its code, documentation, tests, and architecture are not authoritative, necessarily correct, or necessarily the best approach.** Use it to recover useful behavior and visual decisions. Resolve disagreements using the new product decisions and independently checked examples.
 
@@ -160,6 +162,10 @@ Treat the runtime, renderer, JSX compiler, diagnostics, and integrations as one 
 The repository includes substantial linting: strict type-aware TypeScript rules, Solid 2 rules, JSX accessibility checks, and formatting. Use Solid 2-aware rules rather than presets that recommend removed Solid 1 APIs. The [repo skill](../.agents/skills/solidjs-2/SKILL.md) records likely agent mistakes and the workflow for diagnosing them. Package versions and enabled rules are owned by the package manifest, lockfile, and configuration files.
 
 Use `@solidjs/diagnostics` in development and CI. Give important UI stores, signals, memos, and effects meaningful names so artifacts identify the source of a rerun or wait. Browser scenarios should assert visible behavior and inspect diagnostics, silent holds, and justified rerun budgets. Preserve artifacts for failures. A silent hold needs visible pending feedback; increasing a budget alone does not repair it. Introduce scenario budgets for actual interactions, without imposing arbitrary timing thresholds across the application.
+
+**Performance is a core product requirement.** Large plan sets must support responsive typing, menus, tracing and navigation while pages are being prepared. Move expensive background computation off the UI thread and keep foreground work bounded. Use the 8 GiB development Mac as a constrained reference while allowing stronger machines to use their available resources. Investigate responsiveness on both macOS and Windows; dedicated-GPU selection and its effect remain unverified.
+
+Keep a small workflow performance suite in standard verification, covering tracing/snapping, page navigation, search/lookup and CLI views. Validate diagnostics against reproduced bottlenecks and comparable before/after workloads. Report frame gaps above 17 and 33 ms alongside larger spikes; browser Long Tasks retain their separate 50 ms API threshold. Save timing evidence and verify visible results and calculation/cache reuse. Measurement boundaries, scenario budgets and pending calibration belong in [workflow performance checks](workflow-performance.md); real-plan measurements and their limits belong in [the diagnostics comparison](performance-diagnostics-comparison.md).
 
 Run development checks before the production build and browser smoke checks. RC.8 also supports an observe build, but it omits some development checks, so it does not replace development verification. Bluewing starts as a client-rendered application; SSR and SSR tests are not required for this desktop workflow. Chromium and WebKit checks supplement the later native app checks.
 
