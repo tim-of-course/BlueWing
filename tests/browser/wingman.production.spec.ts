@@ -10,7 +10,7 @@ import {
 test('built Wingman keyboard and desktop connection guidance', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page);
   await browserPromptWorkflow(page);
   await page
@@ -23,7 +23,7 @@ test('built Wingman keyboard and desktop connection guidance', async ({
 test('built Wingman captures pixels and preserves messages across reopen', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page);
   await captureWorkflow(page);
   expect(errors).toEqual([]);

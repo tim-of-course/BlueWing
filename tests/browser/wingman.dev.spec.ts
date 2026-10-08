@@ -22,7 +22,7 @@ for (const [name, workflow] of [
   ['screenshot pixels, editing and conversation persistence', captureWorkflow],
 ] as const) {
   test(name, async ({ page }, testInfo) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await startWingmanProject(page, true);
     const { artifact } = await captureBrowserArtifact(
       page,

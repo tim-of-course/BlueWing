@@ -4,6 +4,7 @@ export async function pagePoint(
   page: Page,
   x: number,
   y: number,
+  exact = false,
 ): Promise<void> {
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
   const position = await canvas.evaluate(
@@ -22,7 +23,21 @@ export async function pagePoint(
     },
     { x, y },
   );
-  await page.mouse.click(position.x, position.y);
+  if (exact) {
+    // Exact grid fixtures use fractional PointerEvents rather than OS-rounded
+    // mouse positions. Ordinary drawing workflows retain native mouse input.
+    const pointer = {
+      clientX: position.x,
+      clientY: position.y,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: 0,
+      shiftKey: true,
+    };
+    await canvas.dispatchEvent('pointerdown', { ...pointer, buttons: 1 });
+    await canvas.dispatchEvent('pointerup', { ...pointer, buttons: 0 });
+  } else await page.mouse.click(position.x, position.y);
 }
 
 export async function startProject(page: Page): Promise<void> {
@@ -110,7 +125,10 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   ).toContainText('448 ft2');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
-  expect((await download).suggestedFilename()).toBe('Workflow fixture.csv');
+  // WebKit replaces spaces with underscores in suggested download names.
+  expect((await download).suggestedFilename()).toMatch(
+    /^Workflow[ _]fixture\.csv$/,
+  );
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'No project open', exact: true }),

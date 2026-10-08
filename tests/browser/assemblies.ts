@@ -189,8 +189,9 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Export piece CSV', exact: true })
     .click();
-  expect((await download).suggestedFilename()).toBe(
-    'Workflow fixture-pieces.csv',
+  // WebKit replaces spaces with underscores in suggested download names.
+  expect((await download).suggestedFilename()).toMatch(
+    /^Workflow[ _]fixture-pieces\.csv$/,
   );
 }
 
@@ -314,13 +315,13 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
   await drawWall(page);
   await page.getByRole('button', { name: 'Area (F)', exact: true }).click();
   // A 12 × 8 ft room, aligned to the starter's 2 ft grid module.
-  for (const [x, y] of [
-    [72, 144],
-    [216, 144],
-    [216, 240],
-    [72, 240],
-  ] as const)
-    await pagePoint(page, x, y);
+  const points = [
+    { x: 72, y: 144 },
+    { x: 216, y: 144 },
+    { x: 216, y: 240 },
+    { x: 72, y: 240 },
+  ];
+  for (const { x, y } of points) await pagePoint(page, x, y, true);
   await page.getByRole('button', { name: 'Finish', exact: true }).click();
   await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
   const editor = page.getByRole('dialog', { name: 'Assembly editor' });

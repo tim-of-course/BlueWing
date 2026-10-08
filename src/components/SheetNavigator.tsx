@@ -196,7 +196,8 @@ export default function SheetNavigator(props: Props) {
       return result;
     },
     {},
-    { name: 'navigator.groupsBySheet' },
+    // Accepted groups are immutable records; only each sheet's list is reactive.
+    { name: 'navigator.groupsBySheet', shallow: true },
   );
   const sheetGroups = (sheetId: string) => groupsBySheet[sheetId] ?? [];
   const term = () => filter().trim().toLowerCase();
@@ -460,7 +461,12 @@ export default function SheetNavigator(props: Props) {
       },
       { name: 'navigator.groupTotals' },
     );
-    const kinds = createMemo(() => groupKinds(row.group, row.sheetId));
+    const kinds = createMemo(() => groupKinds(row.group, row.sheetId), {
+      name: 'navigator.groupKinds',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((kind, index) => kind === next[index]),
+    });
     const visible = () =>
       !row.sheetId ||
       props.controller.isGroupVisible(row.group.id, row.sheetId);

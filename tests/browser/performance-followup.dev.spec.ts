@@ -33,7 +33,7 @@ async function mutate(page: Page, name: string, payload: unknown) {
 test('navigator retains sheet and group elements while their live labels update', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page, true);
   await drawWall(page);
   const project = (await cli<Project>(page, 'project.inspect')).response.data;
@@ -105,7 +105,7 @@ test('navigator retains sheet and group elements while their live labels update'
 test('assembly preview is lazy while closed and current when reopened', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page, true);
   await drawWall(page);
   await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
@@ -153,7 +153,7 @@ test('assembly preview is lazy while closed and current when reopened', async ({
 test('warm Wingman plan updates once without clearing, resizing or rerasterizing', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page, true);
   const sheetId = await page
     .getByLabel('Drawing canvas', { exact: true })

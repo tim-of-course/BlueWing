@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
 test('revisiting A after B reuses pixels and each caller owns its canvas', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() => window.pageImages.ownership());
   expect(result.original).toEqual({
     width: 64,
@@ -43,7 +43,7 @@ test('revisiting A after B reuses pixels and each caller owns its canvas', async
 test('new PageImages instances decode saved full images and previews without PDF rendering', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() => window.pageImages.diskReuse());
   expect(result.full).toEqual(result.expected);
   expect(result.full).toEqual({
@@ -75,7 +75,7 @@ for (const failure of [
   test(`${failure} disk cache still returns successful PDF pixels`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     const result = await page.evaluate(
       (mode) => window.pageImages.diskFailure(mode),
       failure,
@@ -99,7 +99,7 @@ for (const failure of ['missing', 'corrupt'] as const) {
   test(`${failure} preview cache recovers from the saved full PNG alongside a full disk hit`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     const result = await page.evaluate(
       (mode) => window.pageImages.previewRecovery(mode),
       failure,
@@ -126,7 +126,7 @@ for (const failure of ['missing', 'corrupt'] as const) {
 test('memory eviction reloads disk; metadata reuses pixels while source, rotation, size and resolution changes refresh them', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() =>
     window.pageImages.evictionAndChanges(),
   );
@@ -155,7 +155,7 @@ test('memory eviction reloads disk; metadata reuses pixels while source, rotatio
 test('one consumer aborts a shared pending request while another receives its image', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() =>
     window.pageImages.sharedCancellation(),
   );
@@ -176,7 +176,7 @@ for (const action of ['abort', 'clear'] as const) {
   test(`${action} cancels all consumers and a late result cannot replace the fresh memory or disk image`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     const result = await page.evaluate(
       (method) => window.pageImages.cancellation(method),
       action,
@@ -200,7 +200,7 @@ for (const action of ['abort', 'clear'] as const) {
 test('project clear aborts background preparation and discards its queue and late pixels', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() =>
     window.pageImages.clearPreparation(),
   );
@@ -220,7 +220,7 @@ test('project clear aborts background preparation and discards its queue and lat
 test('preparation visits every page nearby first and saves previews derived from full images', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() => window.pageImages.preparation());
   expect(result.calls).toHaveLength(5);
   expect(result.calls[0]?.pageIndex).toBe(2);
@@ -252,7 +252,7 @@ test('preparation visits every page nearby first and saves previews derived from
 test('display leases retain their pixels through eviction, clear and another lease release', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() => window.pageImages.leaseLifetime());
   expect(result.original).toEqual({
     width: 3300,
@@ -276,7 +276,7 @@ test('display leases retain their pixels through eviction, clear and another lea
 test('full and preview display arrive while encoding is held and share one PDF render', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() =>
     window.pageImages.displayBeforeEncoding(),
   );
@@ -304,7 +304,7 @@ test('full and preview display arrive while encoding is held and share one PDF r
 test('preparation pause preserves its queue and progress counts saved pages after encoding', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() =>
     window.pageImages.preparationProgress(),
   );
@@ -349,7 +349,7 @@ test('preparation pause preserves its queue and progress counts saved pages afte
 test('selecting the page being prepared reuses its work and promotes its priority', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const result = await page.evaluate(() =>
     window.pageImages.reusePreparation(),
   );
@@ -372,7 +372,7 @@ for (const failure of ['write', 'encode'] as const) {
   test(`${failure} failure counts preparation as failed while held display pixels remain usable`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     const result = await page.evaluate(
       (mode) => window.pageImages.preparationFailure(mode),
       failure,
@@ -404,7 +404,7 @@ for (const userPause of [false, true]) {
   test(`${userPause ? 'user pause stops active preparation, then resuming' : 'input and foreground requests'} lets active background preparation make progress`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     const result = await page.evaluate(
       (pause) => window.pageImages.backgroundProgress(pause),
       userPause,

@@ -407,10 +407,12 @@ async function raster(job: RenderJob): Promise<void> {
       offsetX: -bounds.x * scale,
       offsetY: -bounds.y * scale,
     });
-    canvas = factory.create(
+    // Let PDF.js create its opaque page context, as in its DOM renderer.
+    // Scratch canvases retain alpha for masks and transparency groups.
+    canvas = new OffscreenCanvas(
       Math.ceil(bounds.width * scale),
       Math.ceil(bounds.height * scale),
-    ).canvas;
+    );
     job.task = page.render({
       canvas: canvas as unknown as HTMLCanvasElement,
       viewport,

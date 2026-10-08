@@ -6,7 +6,7 @@ import type { PerformanceRecorder } from '../performance/recorder';
 
 export const PAGE_IMAGE_DIMENSION = 3300;
 export const PAGE_PREVIEW_DIMENSION = 640;
-export const PAGE_RENDERER_VERSION = 'pdfjs-6.4.299-display-worker-v1';
+export const PAGE_RENDERER_VERSION = 'pdfjs-6.4.299-display-worker-v2';
 export interface PageImageStore {
   read(key: string): Promise<Uint8Array | null>;
   write(key: string, bytes: Uint8Array): Promise<void>;

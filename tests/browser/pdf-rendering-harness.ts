@@ -229,7 +229,8 @@ async function cancelEncoding(action: 'release' | 'clear') {
         outcome: await outcome,
         retained: pixels(result.bitmap),
         preview: result.previewBitmap ? pixels(result.previewBitmap) : null,
-        reopened: await rasterPixels(pdf, sheet),
+        // At 100 pixels this one-point-high page fills one whole pixel row.
+        reopened: await rasterPixels(pdf, sheet, 100),
       };
     } finally {
       result.bitmap.close();

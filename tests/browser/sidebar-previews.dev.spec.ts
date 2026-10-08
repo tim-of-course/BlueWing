@@ -22,7 +22,7 @@ declare global {
 test('the real sidebar requests only visible previews and cancels work on scroll and collapse', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/');
   await page.evaluate(async () => {
     const modulePath = '/src/pdf/documents.ts';

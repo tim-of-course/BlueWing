@@ -1,6 +1,6 @@
 # Workflow performance checks
 
-`bun run verify` includes two performance scenarios in the ordinary development browser suite. Run just these scenarios with `bun run test:performance`. Both commands use the resource guard and one browser worker, testing Chromium and WebKit in sequence. No extra browser server or duplicate performance pass is added to `verify`.
+`bun run verify` includes two performance scenarios in the ordinary development browser suite. Run just these scenarios with `bun run test:performance`. Both commands use the resource guard and one browser worker, testing Chromium and Firefox in sequence, plus WebKit on macOS and Linux. No extra browser server or duplicate performance pass is added to `verify`.
 
 The workload uses the committed two-page PDF, 300 path traces, 15 groups and quantity assignments, and a modeled wall. It is a small repeatable regression check, not a replacement for testing Bingham or recording a native desktop slowdown.
 
@@ -37,7 +37,15 @@ Budgets apply to this fixture and development build. They are regression limits,
 
 The suite saves `tracing.json`, `cold-import.json`, `navigation-and-cli.json`, and Solid diagnostics under the scenario's `test-results/dev/` directory. Reports are written before budget assertions and also on action failures when the browser is still available. Missing samples and timeline eviction fail the checks rather than silently passing a partial measurement. Solid diagnostics, silent holds, visible results and calculation/cache reuse are checked alongside timing.
 
-## Verification record
+## October 8 Windows and Linux verification
+
+On Windows, the complete Chromium and Firefox development suite passed all 162 tests, including both performance scenarios with the original budgets. All 32 production tests passed. Subsequent shared-fixture corrections were rechecked in 14 development and 16 production tests across those browsers. TypeScript, ESLint, formatting and the 13 platform checks passed. Windows core checks passed 235 tests with one POSIX-only skip; Ubuntu WSL passed all 236 core tests. Resource-guard tooling passed nine tests with two Windows skips and all 11 tests on Linux.
+
+Ubuntu 26.04 WSL, using pinned Bun 1.3.14, Node 22.22.3 and Playwright 1.63.0 WebKit, passed 79 of 81 development tests and all 16 production tests. The tracing scenario still failed its frame-gap budget: p95 was 35 ms against 33 ms, while pointer and paint p95 remained around 1 ms. The Wingman screenshot scenario completed its pixel and persistence checks but recorded `HOT_SCOPE_TIME` in DrawingCanvas's mounted setup at approximately 8 ms against an 8 ms budget. Earlier attempts measured 8–10 ms; one focused attempt passed. These remain timing failures. Running with Linux-local output and a focused tracing attempt with Playwright tracing disabled did not remove the frame-gap failure. Its cause has not been established.
+
+WebKit reports Long Tasks and Long Animation Frames as unsupported here. Zero samples therefore do not prove absence of long work. All runs kept the resource guard enabled and one browser worker; no resource refusal or stop occurred during this verification. Reports and logs are retained under ignored `tmp/stabilization-2026-10-08/`. Native macOS/Linux behavior and the private large-plan benchmarks were not verified on this machine.
+
+## Earlier verification record
 
 All 236 core tests passed, including 16 recorder tests and seven focused CLI timing tests. Coverage includes exact threshold equality, cumulative frame buckets, bounded retention, restart/reset, inactive recording, privacy, success/failure, queue wait and exclusion of recording controls. The full TypeScript, ESLint and formatting checks passed.
 

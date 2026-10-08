@@ -1,6 +1,9 @@
 import { defineConfig } from '@playwright/test';
 import development from './playwright.config';
 
+const port = process.env['BLUEWING_TEST_PRODUCTION_PORT'] ?? '4174';
+const url = `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   ...development,
   testMatch: '**/*.production.spec.ts',
@@ -9,10 +12,10 @@ export default defineConfig({
     ['list'],
     ['html', { outputFolder: 'playwright-report/production', open: 'never' }],
   ],
-  use: { ...development.use, baseURL: 'http://127.0.0.1:4174' },
+  use: { ...development.use, baseURL: url },
   webServer: {
-    command: 'bun run preview --port 4174 --strictPort',
-    url: 'http://127.0.0.1:4174',
+    command: `bun run preview --port ${port} --strictPort`,
+    url,
     reuseExistingServer: false,
   },
 });

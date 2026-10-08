@@ -30,7 +30,7 @@ async function mutate(page: Page, name: string, payload: unknown) {
 test('UI, CLI reports and camera renders share one calculation and metadata retains 3D models', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page, true);
   await drawWall(page);
   let project = (await cli<Project>(page, 'project.inspect')).response.data;

@@ -12,7 +12,7 @@ for (const cancel of [false, true]) {
   test(`background PDF pauses for a foreground render and ${cancel ? 'cancels' : 'resumes'}`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await page.goto('/tests/browser/pdf-rendering-harness.html');
     const result = await page.evaluate(
       (stop) => window.pdfRendering.backgroundPause(stop),
@@ -29,7 +29,7 @@ for (const cancel of [false, true]) {
 test('native PDF workers return display pixels before PNG encoding without UI canvas work', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   const workers: string[] = [];
   page.on('worker', (worker) => workers.push(worker.url()));
   await page.goto('/tests/browser/pdf-rendering-harness.html');
@@ -63,7 +63,7 @@ for (const cancel of [false, true]) {
   test(`a foreground page preempts a held background page, which ${cancel ? 'cancels' : 'restarts'} and remains reusable`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await page.goto('/tests/browser/pdf-rendering-harness.html');
     const result = await page.evaluate(
       (stop) => window.pdfRendering.preemption(stop),
@@ -87,7 +87,7 @@ for (const action of ['release', 'clear'] as const) {
   test(`PDF ${action} settles every paused render RPC and allows the asset to reload`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await page.goto('/tests/browser/pdf-rendering-harness.html');
     const result = await page.evaluate(
       (method) => window.pdfRendering.cancellation(method),
@@ -103,7 +103,7 @@ for (const action of ['release', 'clear'] as const) {
   test(`PDF ${action} rejects outstanding encoding while transferred display bitmaps remain usable`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await page.goto('/tests/browser/pdf-rendering-harness.html');
     const result = await page.evaluate(
       (method) => window.pdfRendering.cancelEncoding(method),
@@ -131,7 +131,7 @@ for (const action of ['release', 'clear'] as const) {
 test('aborting PDF loading settles before the source responds and allows reopening', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() => window.pdfRendering.abortLoading());
   expect(result.outcome).toBe('Superseded sheet');
@@ -144,7 +144,7 @@ test('aborting PDF loading settles before the source responds and allows reopeni
 test('one full PDF raster delivers the display bitmap, a 640-pixel preview and both encoded PNGs', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() => window.pdfRendering.fullPreview());
   expect(result.full).toEqual({
@@ -169,7 +169,7 @@ test('one full PDF raster delivers the display bitmap, a 640-pixel preview and b
 test('PDF cache keeps two recent idle documents and pins active operations', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() => window.pdfRendering.idleCache());
   expect(result.cached).toEqual({ pinned: 1, a: 1, b: 1, c: 1 });
@@ -182,7 +182,7 @@ test('PDF cache keeps two recent idle documents and pins active operations', asy
 test('range-backed PDFs read needed objects and reopen from the persistent source', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() =>
     window.pdfRendering.rangedRendering(),
@@ -208,7 +208,7 @@ test('range-backed PDFs read needed objects and reopen from the persistent sourc
 test('a page range read failure rejects rendering and permits retry', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() => window.pdfRendering.rangeFailure());
   expect(result.failures).toBeGreaterThan(0);
@@ -222,7 +222,7 @@ test('a page range read failure rejects rendering and permits retry', async ({
 test('PDF clear finishes while rendering waits for page content and ignores late delivery', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() =>
     window.pdfRendering.cancelRenderRange(),
@@ -237,7 +237,7 @@ for (const action of ['release', 'clear'] as const) {
   test(`PDF ${action} cancels a pending range read and ignores its late delivery`, async ({
     page,
   }) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await page.goto('/tests/browser/pdf-rendering-harness.html');
     const result = await page.evaluate(
       (method) => window.pdfRendering.cancelRange(method),
@@ -253,7 +253,7 @@ for (const action of ['release', 'clear'] as const) {
 test('sheet naming returns independent suggestions and remains usable after errors, release and clear', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() => window.pdfRendering.nameCache());
   expect(result.duplicate.status).toBe('suggested');
@@ -278,7 +278,7 @@ for (const fixture of [
   test(`${fixture} worker pixels and crops match the official PDF.js 6.4.299 DOM renderer`, async ({
     page,
   }, info) => {
-    const errors = captureErrors(page);
+    const errors = await captureErrors(page);
     await page.goto('/tests/browser/pdf-rendering-harness.html');
     const result = await page.evaluate(
       (kind) => window.pdfRendering.fidelity(kind),

@@ -11,7 +11,7 @@ declare global {
 test('crossing members occlude and pick at pixel depth from both sides, including exports', async ({
   page,
 }, testInfo) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/construction-rendering-harness.html');
   const results = await page.evaluate(() =>
     window.constructionRendering.crossing(),
@@ -37,7 +37,7 @@ test('crossing members occlude and pick at pixel depth from both sides, includin
 test('concave finishes preserve openings and solid, framing, and X-ray selection match visibility', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/construction-rendering-harness.html');
   const { concave, modes } = await page.evaluate(() =>
     window.constructionRendering.finishes(),
@@ -60,7 +60,7 @@ test('concave finishes preserve openings and solid, framing, and X-ray selection
 test('large models keep every member with bounded draw calls and release replaced GPU resources', async ({
   page,
 }, testInfo) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/construction-rendering-harness.html');
   const result = await page.evaluate(() =>
     window.constructionRendering.batching(),
@@ -90,7 +90,7 @@ test('large models keep every member with bounded draw calls and release replace
 test('app screenshot capture includes an idle WebGL construction view', async ({
   page,
 }, testInfo) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await page.goto('/tests/browser/construction-rendering-harness.html');
   const result = await page.evaluate(() =>
     window.constructionRendering.screenshotCapture(),

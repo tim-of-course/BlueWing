@@ -8,6 +8,8 @@ Projects save locally as `.bluewing` SQLite files. UI and CLI edits share one Ty
 
 Use Bun (the project pins 1.3.14), Node from `.node-version`, Rust, and Python 3 for verification. Windows development requires Visual Studio Build Tools with Desktop development with C++ and the Windows SDK, the MSVC Rust toolchain, and Microsoft Edge WebView2. macOS requires 15.4 or newer and Xcode command-line tools.
 
+Web development and verification use the same commands on Windows, macOS, and Linux. Linux desktop development also requires the [Tauri Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux), including WebKitGTK 4.1 development libraries. Use a recent WebKitGTK release with worker OffscreenCanvas support; older distribution packages may lack the PDF worker's required graphics APIs. Native Linux verification is separate from browser verification.
+
 ```sh
 bun install --frozen-lockfile
 bun run desktop
@@ -22,6 +24,8 @@ bun run desktop:build
 ```
 
 On Windows, the installer is in `src-tauri/target/release/bundle/nsis/`. You can also run `src-tauri/target/release/bluewing-desktop.exe` directly; `bluewing.exe` is its CLI. On macOS, the output is `src-tauri/target/release/bundle/macos/Bluewing.app`, with the CLI beside its desktop executable in `Contents/MacOS`. Local builds are unsigned; distribution signing is separate.
+
+For Linux development binaries, use `bun run desktop:build --no-bundle`; the desktop app and CLI are in `src-tauri/target/release/`. Linux installer packaging is not configured.
 
 From PowerShell, with the desktop app running, call the CLI with:
 
@@ -72,9 +76,25 @@ See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs
 Install the browsers once, then run the web checks:
 
 ```sh
-bunx --no-install playwright install chromium webkit
+bun scripts/heavy.ts -- bun x --no-install playwright install chromium firefox webkit
 bun run verify
 ```
+
+Chromium and Firefox run the complete development and production suites on every OS. WebKit also runs those suites on macOS and Linux. The pinned Windows WebKit build lacks worker OffscreenCanvas, so it cannot exercise the PDF renderer; Windows still runs its PDF-independent IndexedDB platform test. This limitation is not a skipped PDF pass. PDF fidelity tests compare worker output with the official PDF.js DOM renderer in the same browser, including fonts, transparency, transfer maps, crops, and PNG round trips.
+
+For WebKit PDF verification from Windows, run the checkout inside a supported Ubuntu WSL environment. Install Bun, the Node version in `.node-version`, and dependencies there, then run:
+
+```sh
+bun install --frozen-lockfile
+bun scripts/heavy.ts -- bun x --no-install playwright install --with-deps chromium firefox webkit
+bun run test:dev --project=webkit
+bun run build
+bun run test:production --project=webkit
+```
+
+Keep the Linux checkout, its `node_modules`, and test output in the Linux filesystem; copy reports to Windows after the run. Playwright also provides [version-pinned Linux Docker images](https://playwright.dev/docs/docker); match the image to `@playwright/test` in `package.json`. Linux WebKit is useful additional coverage. [Playwright recommends macOS for the closest Safari behavior](https://playwright.dev/docs/browsers#webkit), and the actual Tauri WKWebView still needs the native checks below on a Mac.
+
+If another app uses the default test ports, set `BLUEWING_TEST_DEV_PORT` and `BLUEWING_TEST_PRODUCTION_PORT` to available ports before running the same commands. For example, in PowerShell: `$env:BLUEWING_TEST_DEV_PORT = '4175'` and `$env:BLUEWING_TEST_PRODUCTION_PORT = '4176'`. Tests start their own server and refuse to reuse an existing one. Run heavy work serially across Windows and WSL/container environments; their loopback resource locks are separate.
 
 Heavy commands use a shared resource guard across Bluewing checkouts on the same computer. Browser tests run with one worker; native builds default to one Cargo job. A second heavy command exits immediately with the active command and PID. Nested build steps share the parent's guard, so `desktop:build` can build its web assets without blocking itself.
 
@@ -88,7 +108,7 @@ The slot uses loopback port 47631. The OS releases it when the guard exits, so t
 
 `bun run test:tooling` checks mutual exclusion across checkouts, nested commands, startup refusal, cancellation of detached descendants, exit codes, worker enforcement, and release after a killed guard. These tests use tiny dummy jobs and injected readings, without exhausting real memory. No desktop rebuild is needed for changes confined to this guard or test configuration.
 
-On Linux, add `--with-deps` to the browser install. Verification runs type checking, lint, formatting, core/storage tests, development diagnostics, the production build, and production browser workflows. The platform test command uses Bun to bundle its tests and Node's SQLite implementation to execute SQL; Chromium and WebKit exercise actual IndexedDB transactions.
+On Linux, add `--with-deps` to the browser install. Verification runs type checking, lint, formatting, core/storage tests, development diagnostics, the production build, and production browser workflows. The platform test command uses Bun to bundle its tests and Node's SQLite implementation to execute SQL; Chromium, Firefox, and WebKit exercise actual IndexedDB transactions.
 
 Native checks:
 
@@ -111,7 +131,7 @@ On Windows, use `python` in place of `python3`. Set test environment variables w
 
 To verify full web delivery, build a release with `bun run web:release <version>` and set `BLUEWING_TEST_RELEASE_DIRECTORY` to that output directory when running `tests/desktop/workflow.py`. The test starts a local release server, stages and activates the release, stops the server, then restarts and uses the cached app. Set `BLUEWING_NATIVE_BIN_DIR` to an app bundle's `Contents/MacOS` directory to test its included binaries.
 
-Browser traces and Solid diagnostic JSON are retained in `test-results/`. Native product evidence is written to `tmp/desktop-workflow/`. The GitHub workflow checks web behavior and builds a macOS app; a local pass does not imply a hosted CI run.
+Browser traces and Solid diagnostic JSON are retained in `test-results/`. Native product evidence is written to `tmp/desktop-workflow/`. A local pass does not establish results on other operating systems or a hosted CI run.
 
 See the [MVP validation record](docs/validation.md) for the completed checks, real-plan evidence, and remaining verification limits.
 
@@ -126,6 +146,8 @@ Edit the vector master at [`assets/brand/bluewing.svg`](assets/brand/bluewing.sv
 The [Solid 2 repo skill](.agents/skills/solidjs-2/SKILL.md) covers RC-specific APIs and diagnostics. Solid is pinned to `2.0.0-rc.8` with its compatible compiler, renderer, diagnostics, and Vite integration. Keep `bun.lock` and `src-tauri/Cargo.lock` committed. Upgrade the Solid package set deliberately.
 
 `@solidjs/diagnostics` is installed and enabled by `diagnostics: true` in Vite. Development browser tests save its artifacts in `test-results/dev/`. For a manual desktop recording, POST `{"method":"begin"}` to `http://127.0.0.1:1420/__solid/diagnostics`, reproduce the interaction, then POST `{"method":"costs"}` and `{"method":"end"}`. Keep one development window connected while recording. These reports explain reactive updates; browser performance recordings are also needed for PDF parsing, canvas work, and long input delays. Production bundles omit the diagnostics bridge.
+
+Use these Solid artifacts and **Record performance** as the common diagnostics on all three operating systems. Compare product-stage timings and frame gaps across browsers; input-delay, long-task, and long-animation-frame measurements depend on the browser's APIs, with availability recorded in each report. Missing measurements do not mean zero work or delay. Browser-specific profilers can supplement these recordings when investigating an engine-specific problem.
 
 Desktop PDFs use random-access reads from their import snapshot or saved SQLite asset, with automatic whole-file prefetch disabled. Pages render on demand and through background preparation. Obsolete foreground renders are cancelled; shared requests retain work still needed by another viewer. Two idle PDF workers are retained for reuse; active operations stay pinned. PDF.js still reserves a source-length worker buffer and retains fetched bytes until that worker is destroyed, so this is not a constant-memory PDF engine. Browser development currently loads imported asset bytes in full.
 

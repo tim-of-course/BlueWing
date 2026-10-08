@@ -52,8 +52,9 @@ test('rejected PDF imports release their workers and preserve the open project',
       buffer: Buffer.from('This is not a PDF'),
     });
     await expect(page.getByRole('alert')).toContainText('Invalid PDF');
-    await expect.poll(() => closed).toBe(attempt);
-    expect(created).toBe(attempt);
+    // Each document owns a renderer worker and a sibling parser worker.
+    await expect.poll(() => closed).toBe(attempt * 2);
+    expect(created).toBe(attempt * 2);
     await expect(
       page.getByLabel('Drawing canvas', { exact: true }),
     ).toHaveAttribute('data-sheet-id', sheetId ?? '');

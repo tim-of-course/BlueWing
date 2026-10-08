@@ -8,7 +8,7 @@ import { captureErrors, cli, startWingmanProject } from './wingman';
 test('performance recording stops during queued PDF work and exports the same report', async ({
   page,
 }) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await startWingmanProject(page, true);
   const project = (await cli<Project>(page, 'project.inspect')).response.data;
   const sheetId = Object.keys(project.sheets)[0];
@@ -48,15 +48,23 @@ test('performance recording stops during queued PDF work and exports the same re
   });
   const rendering = cli(page, 'sheet.render', {
     sheetId,
+    path: 'performance-sheet.png',
     maxDimension: 128,
     mode: 'plan',
   });
   try {
-    await page.waitForFunction(
-      () =>
-        (window as unknown as { performanceRenderStarted: boolean })
-          .performanceRenderStarted,
-    );
+    await Promise.race([
+      page.waitForFunction(
+        () =>
+          (window as unknown as { performanceRenderStarted: boolean })
+            .performanceRenderStarted,
+      ),
+      rendering.then((result) => {
+        throw new Error(
+          `sheet.render completed before the PDF barrier: ${JSON.stringify(result.response)}`,
+        );
+      }),
+    ]);
     const status = await cli<{
       active: boolean;
       preparation: { total: number };
@@ -67,7 +75,7 @@ test('performance recording stops during queued PDF work and exports the same re
     expect(stopped.response.ok).toBe(true);
     expect(stopped.response.data.active).toBe(false);
     expect(stopped.response.data.metadata.rendererVersion).toBe(
-      'pdfjs-6.4.299-display-worker-v1',
+      'pdfjs-6.4.299-display-worker-v2',
     );
     await expect(
       page.getByRole('button', { name: 'Record performance', exact: true }),
@@ -87,6 +95,7 @@ test('performance recording stops during queued PDF work and exports the same re
       ).releasePerformanceRender();
     });
   }
-  expect((await rendering).response.ok).toBe(true);
+  const rendered = await rendering;
+  expect(rendered.response.ok, JSON.stringify(rendered.response)).toBe(true);
   expect(errors).toEqual([]);
 });

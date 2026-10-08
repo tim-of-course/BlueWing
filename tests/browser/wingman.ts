@@ -66,12 +66,66 @@ async function inspect(page: Page) {
   expect(result.exitCode).toBe(0);
   return result.response;
 }
-export function captureErrors(page: Page) {
+export async function captureErrors(page: Page) {
   const errors: string[] = [];
-  const chromium =
-    page.context().browser()?.browserType().name() === 'chromium';
+  const browser = page.context().browser()?.browserType().name();
+  const chromium = browser === 'chromium';
+  const disposalMarker = 'bluewing-test:explicit-webgl-context-loss';
+  const explicitLosses = new Map<string, number>();
+  if (browser === 'firefox')
+    await page.addInitScript((marker) => {
+      const wrapped = new WeakSet<WEBGL_lose_context>();
+      WebGL2RenderingContext.prototype.getExtension = new Proxy(
+        // The proxy forwards the native receiver below.
+        // eslint-disable-next-line @typescript-eslint/unbound-method
+        WebGL2RenderingContext.prototype.getExtension,
+        {
+          apply(method, receiver: unknown, args: unknown[]) {
+            const extension: unknown = Reflect.apply(method, receiver, args);
+            if (args[0] === 'WEBGL_lose_context' && extension) {
+              const context = extension as WEBGL_lose_context;
+              if (!wrapped.has(context)) {
+                wrapped.add(context);
+                const lose = context.loseContext.bind(context);
+                context.loseContext = () => {
+                  console.debug(marker);
+                  lose();
+                };
+              }
+            }
+            return extension;
+          },
+        },
+      );
+    }, disposalMarker);
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
+    const location = message.location();
+    if (
+      browser === 'firefox' &&
+      message.type() === 'debug' &&
+      message.text() === disposalMarker
+    ) {
+      // Native warnings number lines from one; ordinary console locations start
+      // at zero. Attribute each warning to the native call on the following line.
+      const key = JSON.stringify([location.url, location.lineNumber + 2]);
+      explicitLosses.set(key, (explicitLosses.get(key) ?? 0) + 1);
+      return;
+    }
+    const lossKey = JSON.stringify([location.url, location.lineNumber]);
+    const expectedLosses = explicitLosses.get(lossKey) ?? 0;
+    // Keep unprompted context loss and every other warning/error as failures.
+    if (
+      browser === 'firefox' &&
+      message.type() === 'warning' &&
+      expectedLosses > 0 &&
+      /^\[JavaScript Warning: "WebGL context was lost\." \{file: ".*" line: \d+\}\]$/.test(
+        message.text(),
+      )
+    ) {
+      explicitLosses.set(lossKey, expectedLosses - 1);
+      return;
+    }
     // CLI renders and screenshot tests intentionally read the GPU buffer.
     // Pixel assertions still verify the result; keep all other warnings/errors.
     if (
@@ -119,7 +173,9 @@ export async function keyboardWorkflow(page: Page) {
   const log = page.getByRole('log', { name: 'Messages' });
   await input.fill('First line');
   await input.press('Shift+Enter');
-  await input.press('End');
+  await input.evaluate((element: HTMLTextAreaElement) => {
+    element.setSelectionRange(element.value.length, element.value.length);
+  });
   await input.press('a');
   await expect(input).toHaveValue('First line\na');
   await expect(log).not.toContainText('First line');

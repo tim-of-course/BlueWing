@@ -206,6 +206,19 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await display.selectOption('framing');
   await expect(viewer).toContainText('Framing only; finishes hidden.');
   // The middle of this symmetric, 19-stud wall lies on its middle stud.
+  // Zoom until the thin stud exceeds a CSS pixel, allowing native pointer
+  // rounding in every browser without changing the modeled construction.
+  for (let step = 0; step < 8; step++) await viewer.getByRole('img').press('+');
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve();
+          });
+        });
+      }),
+  );
   await viewer.getByRole('img').click();
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
@@ -279,7 +292,10 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .click();
   const downloaded = page.waitForEvent('download');
   await review.getByRole('button', { name: 'Export PNG', exact: true }).click();
-  expect((await downloaded).suggestedFilename()).toBe('Wall W1 plan.png');
+  // WebKit replaces spaces with underscores in suggested download names.
+  expect((await downloaded).suggestedFilename()).toMatch(
+    /^Wall[ _]W1[ _]plan\.png$/,
+  );
   await review.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();

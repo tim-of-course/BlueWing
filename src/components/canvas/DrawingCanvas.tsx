@@ -192,21 +192,16 @@ export default function DrawingCanvas(props: {
     { width: 1, height: 1, dpr: 1 },
     { name: 'canvas.viewport' },
   );
-  const [renderedImage, setRenderedImage] = createSignal<SheetImage | null>(
-    null,
-    { name: 'canvas.renderedPdf' },
-  );
+  // Leases belong to the imperative painter, which reads them at draw time.
   let heldImage: SheetImage | null = null;
   let paintedImage: RasterLease | undefined;
+  let paintFrame = 0;
   function replaceImage(next: SheetImage | null) {
     const previous = heldImage;
     heldImage = next;
-    setRenderedImage(next);
     previous?.lease.release();
+    schedulePaint();
   }
-  const [fadeImage, setFadeImage] = createSignal(false);
-  const [loading, setLoading] = createSignal(false);
-  const [renderError, setRenderError] = createSignal('');
   const [draft, setDraft] = createSignal<Draft | null>(null, {
     name: 'canvas.draft',
   });
@@ -289,13 +284,25 @@ export default function DrawingCanvas(props: {
       previous?.height === next?.height &&
       previous?.rotation === next?.rotation,
   });
-  const image = createMemo(
+  const pdfRequest = createMemo(
     () => {
-      const rendered = renderedImage();
-      return rendered?.sheet === renderSheet() ? rendered : undefined;
+      const current = props.active === false ? undefined : renderSheet();
+      return current ? { current, controller: props.controller } : null;
     },
-    { name: 'canvas.pdfImage' },
+    { name: 'canvas.pdfRequest' },
   );
+  const [pdfResult, setPdfResult] = createSignal<{
+    request: NonNullable<ReturnType<typeof pdfRequest>>;
+    error: string;
+    fade: boolean;
+  } | null>(null, { name: 'canvas.pdfResult' });
+  const renderResult = createMemo(() => {
+    const result = pdfResult();
+    return result?.request === pdfRequest() ? result : undefined;
+  });
+  const loading = createMemo(() => !!pdfRequest() && !renderResult());
+  const renderError = () => renderResult()?.error ?? '';
+  const fadeImage = () => renderResult()?.fade ?? false;
   const crosshair = createMemo(
     () => {
       const current = cursor();
@@ -383,34 +390,16 @@ export default function DrawingCanvas(props: {
     { name: 'canvas.reportDraft' },
   );
   createEffect(
-    () =>
-      props.active === false
-        ? null
-        : {
-            current: renderSheet(),
-            controller: props.controller,
-            report: props.onError,
-          },
-    (state) => {
-      if (!state) {
+    pdfRequest,
+    (request) => {
+      if (!request) {
         replaceImage(null);
-        setFadeImage(false);
-        setLoading(false);
+        stopBrush();
         return;
       }
-      const { current, controller, report } = state;
+      const { current, controller } = request;
+      const report = props.onError;
       stopBrush();
-      setRenderError('');
-      if (!current) {
-        replaceImage(null);
-        setFadeImage(false);
-        setLoading(false);
-        return;
-      }
-      if (heldImage?.sheet === current && heldImage.full) {
-        setLoading(false);
-        return;
-      }
       let cancelled = false;
       const renderAbort = new AbortController();
       const startedAt = performance.now();
@@ -423,8 +412,6 @@ export default function DrawingCanvas(props: {
       replaceImage(
         cached ? { sheet: current, lease: cached, full: false } : null,
       );
-      setFadeImage(false);
-      setLoading(true);
       void controller
         .acquireSheet(current, PAGE_IMAGE_DIMENSION, renderAbort.signal)
         .then((rendered) => {
@@ -435,8 +422,11 @@ export default function DrawingCanvas(props: {
               full: true,
               finishDisplay,
             });
-            setFadeImage(performance.now() - startedAt > 120);
-            setLoading(false);
+            setPdfResult({
+              request,
+              error: '',
+              fade: performance.now() - startedAt > 120,
+            });
           } else rendered.release();
         })
         .catch((reason: unknown) => {
@@ -444,8 +434,7 @@ export default function DrawingCanvas(props: {
           finishDisplay({ success: false });
           const message =
             reason instanceof Error ? reason.message : String(reason);
-          setRenderError(message);
-          setLoading(false);
+          setPdfResult({ request, error: message, fade: false });
           report(message);
         });
       return () => {
@@ -477,7 +466,6 @@ export default function DrawingCanvas(props: {
         size: viewport(),
         camera: camera(),
         sheet: sheet(),
-        image: image(),
         geometries: geometries(),
         selected: props.controller.selection(),
         colors: geometryColors(),
@@ -491,7 +479,10 @@ export default function DrawingCanvas(props: {
     },
     { name: 'canvas.paintState' },
   );
-  function paintScene(state: NonNullable<ReturnType<typeof paintState>>) {
+  function paintScene(
+    state: NonNullable<ReturnType<typeof paintState>>,
+    image: SheetImage | null,
+  ) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -508,16 +499,16 @@ export default function DrawingCanvas(props: {
     ctx.scale(state.camera.zoom, state.camera.zoom);
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, state.sheet.width, state.sheet.height);
-    if (state.image && state.presentation?.mode !== 'takeoff') {
+    if (image && state.presentation?.mode !== 'takeoff') {
       ctx.drawImage(
-        state.image.lease.source,
+        image.lease.source,
         0,
         0,
         state.sheet.width,
         state.sheet.height,
       );
-      if (state.image.full && paintedImage !== state.image.lease) {
-        paintedImage = state.image.lease;
+      if (image.full && paintedImage !== image.lease) {
+        paintedImage = image.lease;
         props.controller.recordSheetPaint(state.sheet.id);
       }
     }
@@ -613,7 +604,9 @@ export default function DrawingCanvas(props: {
       ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
     }
   }
-  let paintFrame = 0;
+  function schedulePaint() {
+    if (!paintFrame) paintFrame = requestAnimationFrame(flushPaint);
+  }
   function flushPaint() {
     if (paintFrame) cancelAnimationFrame(paintFrame);
     paintFrame = 0;
@@ -623,14 +616,16 @@ export default function DrawingCanvas(props: {
         purpose: state.edit?.kind ?? state.draft?.kind ?? 'plan',
         geometryCount: state.geometries.length,
       });
+      const image =
+        heldImage?.sheet === untrack(renderSheet) ? heldImage : null;
       try {
-        paintScene(state);
+        paintScene(state, image);
         if (
-          state.image?.full &&
-          paintedImage === state.image.lease &&
+          image?.full &&
+          paintedImage === image.lease &&
           state.presentation?.mode !== 'takeoff'
         )
-          state.image.finishDisplay?.({ success: true });
+          image.finishDisplay?.({ success: true });
       } finally {
         finish();
       }
@@ -642,7 +637,7 @@ export default function DrawingCanvas(props: {
       if (!state) {
         if (paintFrame) cancelAnimationFrame(paintFrame);
         paintFrame = 0;
-      } else if (!paintFrame) paintFrame = requestAnimationFrame(flushPaint);
+      } else schedulePaint();
     },
     { name: 'canvas.paintScene' },
   );
@@ -1427,11 +1422,7 @@ export default function DrawingCanvas(props: {
       </Show>
       <Show when={loading() || renderError()}>
         <p role="status" class="pdf-load-status">
-          {loading()
-            ? image()
-              ? 'Loading full-resolution PDF…'
-              : 'Loading PDF…'
-            : renderError()}
+          {loading() ? 'Loading PDF…' : renderError()}
         </p>
       </Show>
       <Show when={dirty()}>

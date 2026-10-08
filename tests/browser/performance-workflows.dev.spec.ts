@@ -273,7 +273,7 @@ async function solidScenario(
 test('performance: trace, snap and pan on 300 existing traces', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await createProject(page);
   await importPlans(page);
   await populate(page);
@@ -359,7 +359,7 @@ test('performance: trace, snap and pan on 300 existing traces', async ({
 test('performance: cold import, warm page swaps, navigator search and CLI lookups/views', async ({
   page,
 }, info) => {
-  const errors = captureErrors(page);
+  const errors = await captureErrors(page);
   await createProject(page);
   const cold = await record(page, info, 'cold-import', () => importPlans(page));
   expect(cold.events.some((event) => event.name === 'pdf.raster.request')).toBe(
@@ -401,15 +401,13 @@ test('performance: cold import, warm page swaps, navigator search and CLI lookup
         ])
           expect((await cli(page, name)).exitCode).toBe(0);
       const download = page.waitForEvent('download');
-      expect(
-        (
-          await cli(page, 'sheet.render', {
-            sheetId,
-            maxDimension: 320,
-            mode: 'combined',
-          })
-        ).exitCode,
-      ).toBe(0);
+      const rendered = await cli(page, 'sheet.render', {
+        sheetId,
+        path: 'performance-sheet.png',
+        maxDimension: 320,
+        mode: 'combined',
+      });
+      expect(rendered.exitCode, JSON.stringify(rendered.response)).toBe(0);
       expect(await (await download).failure()).toBeNull();
       expect((await cli(page, 'wingman.flash')).exitCode).toBe(0);
       await expect(page.locator('.wingman-preview canvas')).toBeVisible();
