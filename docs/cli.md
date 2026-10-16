@@ -10,6 +10,18 @@ In Wingman, choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**,
 
 Start with `bluewing help` for a short introduction, or `bluewing help messages.send` for one command's schema and examples. `bluewing connect '{"payload":{"mode":"wingman"}}'` returns the current project and Wingman conversation instructions; mode `chat` keeps answers in the external chat. These modes communicate intent through instructions, without changing other callers' behavior or storing a global conversation mode. `commands.list` still returns the full registry.
 
+## Connection troubleshooting
+
+`bluewing.exe` is a client for an already-running desktop app. Running it without arguments asks that app for help; it does not start a connection service. Start Bluewing or `bluewing-desktop.exe` to open the desktop, then keep the executable and `BLUEWING_DATA_DIR` from the copied prompt together on every call.
+
+On Windows, an agent installed as an MSIX package can see a private copy of AppData. [Windows reads a package's redirected file before the ordinary AppData file](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes). A stale `cli-session.json` there can make a copied command report connection refused while the current desktop is available outside that agent.
+
+This occurred with ChatGPT on October 16, 2026: its redirected file under `%LOCALAPPDATA%\Packages\OpenAI.Codex_2p2nqsd0c76g0\LocalCache\Roaming\bluewing\Bluewing\data` still pointed to a September desktop session. A read-only probe using Microsoft's `Invoke-CommandInDesktopPackage` confirmed the stale endpoint. Backing up and renaming only that confirmed stale `cli-session.json` made the same package-context probe read the current endpoint from the ordinary AppData directory. After restarting the desktop, the exact copied `connect --stdin` command also succeeded in that package context and returned the expected project identity and Chat-only mode. Do not remove the rest of the app data or print the session token when comparing files. A live desktop listener is still required; a correct connection file cannot connect after the app exits.
+
+For an unexpected exit during `bun run desktop`, inspect its terminal output. The resource guard reports `[resource guard] Stopping heavy work: ...` and exits with code 75 on a resource stop. An app crash or a terminated parent process is a separate cause; a stale connection file alone does not establish why the desktop exited.
+
+## Requests
+
 Each request is a JSON object with a `payload`. Mutations of the active project also require the project identity and revision returned by `project.inspect`:
 
 ```sh
