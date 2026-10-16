@@ -290,6 +290,12 @@ for (const fixture of [
     });
     expect(result.version).toBe('6.4.299');
     expect(result.results).toHaveLength(2);
+    expect(
+      result.workerEvents.filter((name) => name === 'pdf.worker.raster'),
+    ).toHaveLength(4);
+    expect(
+      result.workerEvents.filter((name) => name === 'pdf.worker.encoded'),
+    ).toHaveLength(2);
     for (const image of result.results) {
       expect(image.width).toBe(image.expectedWidth);
       expect(image.height).toBe(image.expectedHeight);
@@ -300,6 +306,8 @@ for (const fixture of [
       expect(image.nonWhite).toBeGreaterThan(100);
       expect(image.png.mean).toBe(0);
       expect(image.png.differentFraction).toBe(0);
+      expect(image.transient.mean).toBe(0);
+      expect(image.transient.differentFraction).toBe(0);
     }
     if (fixture === 'font')
       expect(result.results[0]?.dark).toBeGreaterThan(100);

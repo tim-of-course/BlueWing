@@ -34,10 +34,13 @@ export interface EncodedRaster {
   previewBytes?: Uint8Array;
 }
 
-/** Pixels become available before the worker finishes encoding cache bytes. */
-export interface RasterImage {
+export interface RasterPixels {
   bitmap: ImageBitmap;
   previewBitmap?: ImageBitmap;
+}
+
+/** Pixels become available before the worker finishes encoding cache bytes. */
+export interface RasterImage extends RasterPixels {
   encoded: Promise<EncodedRaster>;
 }
 
@@ -57,6 +60,7 @@ export type PdfWorkerRequest =
       sheet: Sheet;
       bounds: PdfRenderBounds;
       dimension: number;
+      encode: boolean;
       paused: boolean;
       priority: number;
     }

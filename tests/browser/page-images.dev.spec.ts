@@ -20,6 +20,30 @@ test.beforeEach(async ({ page }) => {
   await page.waitForFunction(() => Boolean(window.pageImages));
 });
 
+test('prepared regions reuse memory and disk pixels while close-ups, changed sources and corrupt images fall back', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  const result = await page.evaluate(() => window.pageImages.cachedRegions());
+  expect(result.memory).toEqual({
+    width: 640,
+    height: 640,
+    left: blue,
+    right: blue,
+  });
+  expect(result.disk).toEqual(result.memory);
+  expect([
+    result.missing,
+    result.detail,
+    result.changed,
+    result.corrupt,
+  ]).toEqual([null, null, null, null]);
+  expect(result.full.left).toEqual(red);
+  expect(result.full.right).toEqual(blue);
+  expect(result.calls).toBe(1);
+  expect(errors).toEqual([]);
+});
+
 test('revisiting A after B reuses pixels and each caller owns its canvas', async ({
   page,
 }) => {

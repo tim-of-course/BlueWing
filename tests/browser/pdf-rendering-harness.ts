@@ -1,5 +1,6 @@
 import { getDocument, GlobalWorkerOptions, version } from 'pdfjs-dist';
 import { PdfDocuments } from '../../src/pdf/documents';
+import { PerformanceRecorder } from '../../src/performance/recorder';
 import type { Sheet } from '../../src/core/types';
 import type { AssetRange } from '../../src/platform/storage-model';
 import {
@@ -786,7 +787,12 @@ async function fidelity(fixture: FidelityFixture) {
     'view-annotation': viewAnnotationPdf,
   };
   const bytes = await fixtures[fixture]();
-  const documents = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  const recorder = new PerformanceRecorder();
+  recorder.start();
+  const documents = new PdfDocuments(
+    () => Promise.resolve(bytes.slice()),
+    recorder,
+  );
   // The independent reference uses unmodified PDF.js DOM canvas/filter/font seams.
   GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
   const referenceTask = getDocument({
@@ -830,6 +836,11 @@ async function fidelity(fixture: FidelityFixture) {
       const result = await documents.rasterRegion(sheet, region, dimension);
       try {
         const encoded = await result.encoded;
+        const transient = await documents.renderRegion(
+          sheet,
+          region,
+          dimension,
+        );
         const decoded = await createImageBitmap(
           new Blob([encoded.bytes.slice().buffer], { type: 'image/png' }),
         );
@@ -842,6 +853,7 @@ async function fidelity(fixture: FidelityFixture) {
             samples: pixels(result.bitmap),
             ...difference(buffer(result.bitmap), buffer(canvas)),
             png: difference(buffer(decoded), buffer(result.bitmap)),
+            transient: difference(buffer(transient), buffer(result.bitmap)),
           });
         } finally {
           decoded.close();
@@ -865,6 +877,10 @@ async function fidelity(fixture: FidelityFixture) {
     return {
       version,
       printSamples,
+      workerEvents: recorder
+        .report()
+        .events.filter((event) => event.name.startsWith('pdf.worker.'))
+        .map((event) => event.name),
       sheet: {
         width: sheet.width,
         height: sheet.height,

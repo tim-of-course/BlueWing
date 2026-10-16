@@ -20,6 +20,7 @@ import type {
 } from '../app/wingman-types';
 import ScreenshotCapture from './ScreenshotCapture';
 import WingmanPreview from './WingmanPreview';
+import { RegionImages } from '../pdf/region-images';
 import './wingman.css';
 
 interface Props {
@@ -30,6 +31,13 @@ interface Props {
 }
 
 export default function Wingman(props: Props) {
+  const controller = untrack(() => props.controller);
+  const planImages = new RegionImages((sheet, bounds, dimension, signal) =>
+    controller.renderRegion(sheet, bounds, dimension, signal),
+  );
+  onCleanup(() => {
+    planImages.clear();
+  });
   const messaging = untrack(() => props.controller.messaging);
   const initialConversation = messaging.snapshot();
   const [conversation, setConversation] = createSignal(messaging.status(), {
@@ -211,6 +219,7 @@ export default function Wingman(props: Props) {
   createEffect(
     () => projectId(),
     () => {
+      planImages.clear();
       setVisual(null);
       setReturnView(null);
       setSwapped(false);
@@ -562,6 +571,7 @@ export default function Wingman(props: Props) {
                   <WingmanPreview
                     controller={props.controller}
                     view={current()}
+                    planImages={planImages}
                   />
                 )}
               </Show>

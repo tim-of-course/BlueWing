@@ -1,5 +1,5 @@
 import type { Sheet } from '../core/types';
-import type { RasterImage } from './worker-protocol';
+import type { PdfRenderBounds, RasterImage } from './worker-protocol';
 import { RasterResource, type RasterLease } from './raster';
 import { ImageDecoder } from './image-decoder';
 import type { PerformanceRecorder } from '../performance/recorder';
@@ -148,6 +148,68 @@ export class PageImages {
     return (
       this.images.get(pageImageKey(sheet, dimension))?.resource.lease() ?? null
     );
+  }
+  /** Reuse prepared pixels only when they meet the crop's requested resolution. */
+  async renderCachedRegion(
+    sheet: Sheet,
+    bounds: PdfRenderBounds,
+    dimension: number,
+    signal?: AbortSignal,
+  ): Promise<HTMLCanvasElement | null> {
+    signal?.throwIfAborted();
+    const scale =
+      Math.min(4096, Math.max(64, dimension)) /
+      Math.max(bounds.width, bounds.height);
+    if (PAGE_IMAGE_DIMENSION / Math.max(sheet.width, sheet.height) < scale)
+      return null;
+    const lease = this.peek(sheet, PAGE_IMAGE_DIMENSION);
+    let bitmap: ImageBitmap | undefined;
+    try {
+      if (!lease) {
+        const bytes = await this.store?.read(
+          pageImageKey(sheet, PAGE_IMAGE_DIMENSION),
+        );
+        signal?.throwIfAborted();
+        if (!bytes) return null;
+        bitmap = (
+          await this.decoder.decode(
+            bytes,
+            size(sheet, PAGE_IMAGE_DIMENSION),
+            signal ?? new AbortController().signal,
+          )
+        ).bitmap;
+      }
+      signal?.throwIfAborted();
+      const source = lease?.source ?? bitmap;
+      if (!source) return null;
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(bounds.width * scale);
+      canvas.height = Math.ceil(bounds.height * scale);
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas is unavailable');
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(
+        source,
+        -bounds.x * scale,
+        -bounds.y * scale,
+        sheet.width * scale,
+        sheet.height * scale,
+      );
+      this.recorder?.event('page.cache.hit', {
+        pageId: sheet.id,
+        cacheSource: lease ? 'memory' : 'disk',
+        dimension: PAGE_IMAGE_DIMENSION,
+        purpose: 'region',
+      });
+      return canvas;
+    } catch {
+      signal?.throwIfAborted();
+      return null;
+    } finally {
+      lease?.release();
+      bitmap?.close();
+    }
   }
   /** Explicit callers needing editable pixels receive an owned canvas. Viewers use leases. */
   async render(

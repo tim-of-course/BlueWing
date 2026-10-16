@@ -2,6 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { drawWall, pagePoint } from './takeoff';
 import type { Project } from '../../src/core/types';
 import type { Message, MessageWait } from '../../src/app/messaging';
+import type { PerformanceReport } from '../../src/performance/recorder';
 import type {
   ModelView,
   WingmanVisual,
@@ -404,6 +405,117 @@ export async function viewWorkflow(page: Page) {
   ).toEqual(camera);
   expect((await inspect(page)).revision).toBe(before.revision);
 }
+export async function warmSwapWorkflow(page: Page) {
+  const canvas = page.getByLabel('Drawing canvas', { exact: true });
+  const originalZoom = await canvas.getAttribute('data-camera-zoom');
+  await canvas.hover({ position: { x: 184, y: 230 } });
+  await page.mouse.wheel(0, -83);
+  await expect(canvas).not.toHaveAttribute(
+    'data-camera-zoom',
+    originalZoom ?? '',
+  );
+  const before = await inspect(page);
+  const sheetId = before.data.main.plan?.sheetId;
+  expect(
+    (
+      await cli(page, 'sheet.render', {
+        sheetId,
+        path: 'warm-swap.png',
+        bounds: { x: 72, y: 144, width: 240, height: 180 },
+        maxDimension: 640,
+      })
+    ).exitCode,
+  ).toBe(0);
+  expect((await cli(page, 'performance.start')).exitCode).toBe(0);
+  await cli(page, 'wingman.flash');
+  const preview = page.getByRole('img', { name: 'Live workspace preview' });
+  const ready = async () => {
+    await expect(preview).toBeVisible();
+    await expect(page.getByText('Loading plan…', { exact: true })).toBeHidden();
+  };
+  const work = () =>
+    page.evaluate(() => {
+      const { events } = (
+        window as unknown as {
+          wingmanPerformance(): PerformanceReport;
+        }
+      ).wingmanPerformance();
+      return {
+        regions: events.filter(
+          (event) =>
+            event.name === 'page.cache.hit' &&
+            event.data['purpose'] === 'region',
+        ).length,
+        pdf: events.filter(
+          (event) =>
+            event.name === 'pdf.raster.request' &&
+            event.data['dimension'] === 640,
+        ).length,
+      };
+    });
+  await ready();
+  expect(await work()).toEqual({ regions: 1, pdf: 0 });
+  await page
+    .getByRole('button', { name: 'Swap to agent view', exact: true })
+    .click();
+  await ready();
+  expect(await work()).toEqual({ regions: 2, pdf: 0 });
+  await page
+    .getByRole('button', { name: 'Return to your view', exact: true })
+    .click();
+  await ready();
+  const pixels = await preview.evaluate((element) =>
+    (element as HTMLCanvasElement).toDataURL(),
+  );
+  for (let repeat = 0; repeat < 2; repeat++) {
+    await page
+      .getByRole('button', { name: 'Swap to agent view', exact: true })
+      .click();
+    await ready();
+    await page
+      .getByRole('button', { name: 'Return to your view', exact: true })
+      .click();
+    await ready();
+  }
+  await page
+    .getByRole('button', { name: 'Collapse Wingman view', exact: true })
+    .click();
+  await expect(preview).toBeHidden();
+  await page
+    .getByRole('button', { name: 'Expand Wingman view', exact: true })
+    .click();
+  await ready();
+  expect(
+    await preview.evaluate((element) =>
+      (element as HTMLCanvasElement).toDataURL(),
+    ),
+  ).toBe(pixels);
+  await cli(page, 'wingman.annotate', {
+    annotations: [
+      {
+        points: [{ x: 100, y: 170 }],
+        color: '#ff0000',
+        label: 'Live annotation',
+      },
+    ],
+  });
+  await expect
+    .poll(() =>
+      preview.evaluate((element) => (element as HTMLCanvasElement).toDataURL()),
+    )
+    .not.toBe(pixels);
+  expect(await work()).toEqual({ regions: 2, pdf: 0 });
+  const after = (await inspect(page)).data.main;
+  expect(after.context).toEqual(before.data.main.context);
+  expect(after.plan?.sheetId).toBe(before.data.main.plan?.sheetId);
+  for (const coordinate of ['x', 'y', 'width', 'height'] as const)
+    expect(after.plan?.bounds[coordinate]).toBeCloseTo(
+      before.data.main.plan?.bounds[coordinate] ?? NaN,
+      8,
+    );
+  expect((await inspect(page)).revision).toBe(before.revision);
+}
+
 export async function messagingWorkflow(page: Page) {
   await expect(
     page.getByText('Waiting for your message', { exact: true }),

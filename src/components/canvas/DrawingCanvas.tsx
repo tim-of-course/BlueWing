@@ -408,10 +408,15 @@ export default function DrawingCanvas(props: {
       const finishDisplay = controller.performanceSpan('page.display', {
         pageId: current.id,
       });
-      const cached = controller.cachedSheetPreview(current);
+      const cached = controller.cachedSheetImage(current);
       replaceImage(
-        cached ? { sheet: current, lease: cached, full: false } : null,
+        cached
+          ? { sheet: current, lease: cached, full: true, finishDisplay }
+          : null,
       );
+      const preview = cached ? null : controller.cachedSheetPreview(current);
+      if (preview)
+        replaceImage({ sheet: current, lease: preview, full: false });
       void controller
         .acquireSheet(current, PAGE_IMAGE_DIMENSION, renderAbort.signal)
         .then((rendered) => {

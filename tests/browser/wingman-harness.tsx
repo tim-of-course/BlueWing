@@ -14,6 +14,7 @@ Object.assign(window, {
   wingmanCli: (name: string, request = {}) =>
     dispatchCli(application, [name, JSON.stringify(request)]),
   wingmanCalculation: () => application.calculate(),
+  wingmanPerformance: () => application.performance.report(),
   wingmanWatchModelBuilds: async () => {
     const { ConstructionRenderer } = await import('../../src/three/renderer');
     // eslint-disable-next-line @typescript-eslint/unbound-method

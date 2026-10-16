@@ -429,7 +429,7 @@ async function raster(job: RenderJob): Promise<void> {
     job.task = undefined;
     checkJob(job);
     const drawMs = performance.now() - started;
-    if (job.dimension === 3300) {
+    if (job.encode && job.dimension === 3300) {
       // Match the cache's dimensions without compounding full-raster rounding.
       const previewScale = 640 / Math.max(bounds.width, bounds.height);
       const entry = factory.create(
@@ -466,10 +466,12 @@ async function raster(job: RenderJob): Promise<void> {
       transfer,
     );
     bitmap = previewBitmap = undefined;
-    job.stage = 'encoding';
-    encodingOwnsCanvases = true;
-    // PNG conversion runs off the UI thread and does not occupy the raster slot.
-    void encode(job, canvas, preview, timings, started);
+    if (job.encode) {
+      job.stage = 'encoding';
+      encodingOwnsCanvases = true;
+      // PNG conversion runs off the UI thread and does not occupy the raster slot.
+      void encode(job, canvas, preview, timings, started);
+    } else jobs.delete(job.id);
   } finally {
     page?.cleanup();
     continuation.port1.close();

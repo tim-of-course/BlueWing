@@ -177,6 +177,48 @@ function renderer() {
   return { calls, render };
 }
 
+async function cachedRegions() {
+  const fake = renderer();
+  const store = new MemoryStore();
+  const images = new PageImages(fake.render, store);
+  const source = { ...sheet('a'), height: 100 };
+  const bounds = { x: 50, y: 25, width: 50, height: 50 };
+  const missing = await images.renderCachedRegion(source, bounds, 640);
+  const full = await images.render(source, PAGE_IMAGE_DIMENSION);
+  await store.written(source, PAGE_IMAGE_DIMENSION);
+  const memory = await images.renderCachedRegion(source, bounds, 640);
+  const detail = await images.renderCachedRegion(
+    source,
+    { ...bounds, width: 1, height: 1 },
+    640,
+  );
+  images.clear();
+  const disk = await images.renderCachedRegion(source, bounds, 640);
+  const changed = await images.renderCachedRegion(
+    { ...source, rotation: 90 },
+    bounds,
+    640,
+  );
+  store.readFailure = 'corrupt';
+  const corrupt = await images.renderCachedRegion(source, bounds, 640);
+  try {
+    if (!memory || !disk) throw new Error('Prepared region was unavailable');
+    return {
+      missing,
+      memory: pixels(memory),
+      disk: pixels(disk),
+      detail,
+      changed,
+      corrupt,
+      full: pixels(full),
+      calls: fake.calls.length,
+    };
+  } finally {
+    full.width = full.height = 0;
+    images.clear();
+  }
+}
+
 async function ownership() {
   const fake = renderer();
   const images = new PageImages(fake.render);
@@ -914,6 +956,7 @@ async function backgroundProgress(userPause: boolean) {
 }
 
 const harness = {
+  cachedRegions,
   ownership,
   leaseLifetime,
   displayBeforeEncoding,

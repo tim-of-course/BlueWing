@@ -664,10 +664,17 @@ export function createWorkspace(
     previewSheet: (sheet, signal) => app.pageImages.preview(sheet, signal),
     cachedSheetPreview: (sheet) =>
       app.pageImages.peek(sheet, PAGE_PREVIEW_DIMENSION),
+    cachedSheetImage: (sheet) =>
+      app.pageImages.peek(sheet, PAGE_IMAGE_DIMENSION),
     renderSheet: (sheet, maxDimension, signal) =>
       app.pageImages.render(sheet, maxDimension, signal),
-    renderRegion: (sheet, bounds, maxDimension, signal) =>
-      app.pdf.renderRegion(sheet, bounds, maxDimension, signal),
+    renderRegion: async (sheet, bounds, maxDimension, signal) =>
+      (await app.pageImages.renderCachedRegion(
+        sheet,
+        bounds,
+        maxDimension,
+        signal,
+      )) ?? app.pdf.renderRegion(sheet, bounds, maxDimension, signal),
     async exportQuantities(format) {
       const current = requireProject();
       const content = exportQuantities(current, format, app.calculate());

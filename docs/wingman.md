@@ -12,6 +12,8 @@ Wingman sits in the drawing workspace's lower-right corner, keeping inspector an
 
 Click the preview to swap with the main workspace. Clicking again restores the user's sheet, camera, selection, group context, visibility, workspace mode, and 3D filters. Subsequent agent renders while swapped update the agent view without replacing the saved return view. Draft edits disable swapping; updates that arrive during an edit remain available through **Show latest agent view**. Preview content follows accepted project edits. It is not the original exported PNG. A deleted source is shown as unavailable, and capped 3D previews report omissions.
 
+Wingman retains the two most recent plan backgrounds across swaps and collapse/reopen. These contain source pixels only; geometry, highlights, and annotations redraw from current state. Prepared page images supply crops when their resolution meets the preview's sampling needs, including images read from the disposable disk cache. Close-up details render directly from the PDF. Switching or closing projects releases retained backgrounds. The main workspace displays a full image already in memory immediately, and transient PDF snapshots skip cache PNG encoding.
+
 **Attach screenshot** or **Cmd/Ctrl+Shift+X** captures a rectangle anywhere inside the app, including headers, sidebars, plans, and 3D. Captures remain in the message draft until sent and can be removed or supplemented. Escape cancels capture. Sent images stay fixed. The application content is captured, not operating-system chrome or other apps.
 
 CLI messages are delivered as text with image paths, including on application errors. Message reads do not remove history. Callers report their last received message so concurrent calls or a lost response cannot consume another caller's messages. Chat saves separately from estimate revision and Undo.
@@ -21,6 +23,14 @@ Conversations and screenshot files are local application data keyed by project i
 Pause blocks new non-messaging CLI actions and rejects queued actions that have not started. A running atomic action can finish. Resuming never replays rejected actions. Desktop editing and messaging remain available.
 
 **Waiting for your message** appears while a CLI message wait is pending. **End conversation** wakes that wait and prevents it renewing. Neither asks an external host to stop a running task. An agent that cannot remain available should explain that in Wingman. If its process disconnects, the waiting indicator clears when the outstanding application wait expires, within 25 seconds. Bluewing communicates your intent; the external host controls agent availability.
+
+## Plan preview verification, October 16, 2026
+
+TypeScript, lint, formatting, core tests, resource-guard tooling, and all 13 platform tests passed on Windows. All 166 development scenarios passed across Chromium and Firefox using the full run plus a focused rerun after updating an obsolete expectation of a separate preview PDF render. The zoomed swap scenario passed again after normalizing floating-point camera bounds in cache keys. All 32 production scenarios passed.
+
+The Windows release app and NSIS installer were rebuilt with the final changes. The isolated native Wingman CLI workflow passed discovery, wait renewal, render publication, flash, annotations, attachments, concurrent reads, and reopening. Pointer-driven view swapping was checked in the browser scenarios.
+
+Warm swaps and collapse/reopen add zero PDF renders while annotations remain live and the saved view restores. Prepared crops reuse memory and disk pixels; insufficient resolution, changed sources, and corrupt cache images use the PDF fallback. Fonts, transparency, transfer maps, rotated crops, and display annotations retain identical pixels on the new transient worker path, without cache PNG encoding. These are fixture checks; wall-clock improvements on the 165-page Bingham project have not been measured.
 
 ## Discovery and conversation verification, October 1, 2026
 

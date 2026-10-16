@@ -443,13 +443,13 @@ test('performance: cold import, warm page swaps, navigator search and CLI lookup
       event.data.dimension === PAGE_IMAGE_DIMENSION,
   );
   expect(hits.length).toBeGreaterThanOrEqual(6);
-  // The explicit export and Wingman's cropped preview need pixels. The six
-  // full-page swaps must reuse their cache rather than rasterizing again.
+  // Only the explicit export needs new PDF pixels. Wingman's preview and the
+  // six full-page swaps reuse prepared images without another PDF raster.
   expect(
     report.events
       .filter((event) => event.name === 'pdf.raster.request')
       .map((event) => event.data.dimension)
       .sort((a, b) => Number(a) - Number(b)),
-  ).toEqual([320, 640]);
+  ).toEqual([320]);
   expect(errors).toEqual([]);
 });

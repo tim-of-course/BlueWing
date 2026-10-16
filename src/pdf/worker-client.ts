@@ -7,6 +7,7 @@ import type {
   PdfWorkerRequest,
   PdfWorkerResponse,
   RasterImage,
+  RasterPixels,
 } from './worker-protocol';
 
 type Operation = Extract<
@@ -112,6 +113,7 @@ export class PdfWorkerClient {
         sheet,
         bounds,
         dimension,
+        encode: true,
         paused: paused?.() ?? false,
         priority: typeof priority === 'function' ? priority() : priority,
       },
@@ -119,6 +121,28 @@ export class PdfWorkerClient {
       paused,
       [],
       typeof priority === 'function' ? priority : undefined,
+    );
+  }
+
+  renderPixels(
+    sheet: Sheet,
+    bounds: { x: number; y: number; width: number; height: number },
+    dimension: number,
+    signal?: AbortSignal,
+    paused?: () => boolean,
+  ) {
+    return this.request<RasterPixels>(
+      {
+        type: 'render',
+        sheet,
+        bounds,
+        dimension,
+        encode: false,
+        paused: paused?.() ?? false,
+        priority: 100,
+      },
+      signal,
+      paused,
     );
   }
 
@@ -156,7 +180,7 @@ export class PdfWorkerClient {
           signal?.removeEventListener('abort', cancel);
         },
       };
-      if (body.type === 'render') {
+      if (body.type === 'render' && body.encode) {
         pending.encoded = new Promise((encode, fail) => {
           pending.encode = encode;
           pending.rejectEncoding = fail;
@@ -260,12 +284,6 @@ export class PdfWorkerClient {
     }
     switch (data.type) {
       case 'raster':
-        if (!pending.encoded) {
-          data.bitmap.close();
-          data.previewBitmap?.close();
-          this.fail(data.id, new Error('Unexpected PDF raster response'));
-          break;
-        }
         this.recorder?.event('pdf.worker.raster', {
           ...data.timings,
           purpose: 'worker',
@@ -273,8 +291,13 @@ export class PdfWorkerClient {
         pending.resolve({
           bitmap: data.bitmap,
           ...(data.previewBitmap ? { previewBitmap: data.previewBitmap } : {}),
-          encoded: pending.encoded,
-        } satisfies RasterImage);
+          ...(pending.encoded ? { encoded: pending.encoded } : {}),
+        } satisfies RasterPixels | RasterImage);
+        if (!pending.encoded) {
+          this.pending.delete(data.id);
+          pending.cleanup();
+          if (!this.busy) this.onIdle?.();
+        }
         break;
       case 'encoded':
         this.recorder?.event('pdf.worker.encoded', {

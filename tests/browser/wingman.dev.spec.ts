@@ -11,12 +11,17 @@ import {
   modelWorkflow,
   startWingmanProject,
   viewWorkflow,
+  warmSwapWorkflow,
 } from './wingman';
 
 for (const [name, workflow] of [
   ['connection prompts and clipboard fallback', promptWorkflow],
   ['Enter sends, Shift+Enter and composition do not', keyboardWorkflow],
   ['CLI renders and exact view restoration', viewWorkflow],
+  [
+    'warm swaps and collapse reuse source pixels with live annotations',
+    warmSwapWorkflow,
+  ],
   ['message cursors, long polling and pause', messagingWorkflow],
   ['live 3D preview, split restoration and draft protection', modelWorkflow],
   ['screenshot pixels, editing and conversation persistence', captureWorkflow],

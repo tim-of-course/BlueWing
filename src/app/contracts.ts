@@ -166,6 +166,7 @@ export interface WorkspaceController {
   ): Promise<RasterLease>;
   previewSheet(sheet: Sheet, signal?: AbortSignal): Promise<Uint8Array>;
   cachedSheetPreview(sheet: Sheet): RasterLease | null;
+  cachedSheetImage(sheet: Sheet): RasterLease | null;
   renderSheet(
     sheet: Sheet,
     maxDimension?: number,

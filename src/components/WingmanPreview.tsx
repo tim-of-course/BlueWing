@@ -12,6 +12,7 @@ import { resolveConstruction } from '../core/applied-assemblies';
 import { paintTakeoff } from './canvas/paint';
 import { buildConstructionScene, constructionSceneInput } from '../three/scene';
 import type { acquireConstructionSnapshot } from '../three/renderer';
+import type { RegionImages } from '../pdf/region-images';
 
 /** Presentation marks never become editing selections. Coordinates are page units. */
 export function paintPlanPresentation(
@@ -69,16 +70,9 @@ export function paintPlanPresentation(
 export default function WingmanPreview(props: {
   controller: WorkspaceController;
   view: WingmanView;
+  planImages: RegionImages;
 }) {
   let canvas: HTMLCanvasElement | undefined;
-  let raster:
-    | {
-        key: string;
-        image: Promise<HTMLCanvasElement>;
-        value?: HTMLCanvasElement;
-        abort: AbortController;
-      }
-    | undefined;
   let snapshot: ReturnType<typeof acquireConstructionSnapshot> | undefined;
   const [status, setStatus] = createSignal('');
   const model = createMemo(() =>
@@ -121,23 +115,17 @@ export default function WingmanPreview(props: {
     const filter = modelFilter();
     return input && filter ? buildConstructionScene(input, filter) : null;
   });
-  const clearRaster = () => {
-    raster?.abort.abort();
-    if (raster?.value) raster.value.width = raster.value.height = 0;
-    raster = undefined;
-  };
   onCleanup(() => {
     snapshot?.dispose();
-    clearRaster();
   });
   createEffect(
     () => ({
       project: props.controller.project(),
       scene: modelScene(),
       view: props.view,
-      controller: props.controller,
+      planImages: props.planImages,
     }),
-    ({ project, scene, view, controller }) => {
+    ({ project, scene, view, planImages }) => {
       const element = canvas;
       if (!element) return;
       let cancelled = false;
@@ -158,11 +146,7 @@ export default function WingmanPreview(props: {
       const context = element.getContext('2d');
       if (!context) return;
       setStatus('');
-      if (view.kind === '3d' || view.mode === 'takeoff') {
-        clearRaster();
-      }
       if (!project || (view.kind === 'plan' && !project.sheets[view.sheetId])) {
-        clearRaster();
         context.clearRect(0, 0, element.width, element.height);
         setStatus('Source sheet is no longer available.');
         return;
@@ -256,40 +240,13 @@ export default function WingmanPreview(props: {
       };
       if (view.mode === 'takeoff') draw();
       else {
-        const key = JSON.stringify([
-          sheet.assetId,
-          sheet.pageIndex,
-          sheet.rotation,
-          sheet.width,
-          sheet.height,
-          view.bounds,
-        ]);
-        if (raster?.key !== key) {
-          clearRaster();
-          const abort = new AbortController();
-          raster = {
-            key,
-            image: controller.renderRegion(
-              sheet,
-              view.bounds,
-              640,
-              abort.signal,
-            ),
-            abort,
-          };
-        }
-        const currentRaster = raster;
+        const currentRaster = planImages.get(sheet, view.bounds, 640);
         if (currentRaster.value) draw(currentRaster.value);
         else {
           draw();
           setStatus('Loading plan…');
           void currentRaster.image
             .then((image) => {
-              if (currentRaster.abort.signal.aborted) {
-                image.width = image.height = 0;
-                return;
-              }
-              currentRaster.value = image;
               if (cancelled) return;
               draw(image);
               setStatus('');

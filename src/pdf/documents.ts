@@ -194,13 +194,18 @@ export class PdfDocuments {
     signal?: AbortSignal,
     paused?: () => boolean,
   ): Promise<HTMLCanvasElement> {
-    const result = await this.rasterRegion(
-      sheet,
-      bounds,
-      maxDimension,
+    const finish = this.recorder?.span('pdf.raster.request', {
+      pageId: sheet.id,
+      dimension: maxDimension,
+      priority: 100,
+    });
+    const result = await this.useDocument(
+      sheet.assetId,
+      (worker) =>
+        worker.renderPixels(sheet, bounds, maxDimension, signal, paused),
+      undefined,
       signal,
-      paused,
-    );
+    ).finally(() => finish?.());
     try {
       signal?.throwIfAborted();
       const canvas = document.createElement('canvas');

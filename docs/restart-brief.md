@@ -1,6 +1,6 @@
 # Bluewing restart brief
 
-Restart direction and MVP decisions, September 16, 2026, updated through October 8, 2026. Implementation recommendations are identified separately from confirmed product choices.
+Restart direction and MVP decisions, September 16, 2026, updated through October 16, 2026. Implementation recommendations are identified separately from confirmed product choices.
 
 Build a small, dependable takeoff application whose ordinary features can be developed and delivered as a web application. The first users are a small group working in the desktop app with AI assistance through its CLI. Progress means completing real estimating workflows and being able to change them without breaking unrelated behavior.
 
@@ -219,6 +219,8 @@ Generation shares a 50,000-piece/surface budget and reports incomplete results a
 ## Wingman collaboration
 
 Wingman is a collapsible live preview in the drawing workspace with a project conversation. Successful CLI sheet, snippet, and 3D renders publish their location and optional caption. Clicking swaps the main and corner views; later CLI renders preserve the user's saved return view. Preview content follows accepted project changes, while sent screenshot attachments remain fixed. Temporary annotations do not change the estimate or selection.
+
+Retain two source crop backgrounds across plan swaps and collapse/reopen, releasing them when switching or closing projects. Use prepared page pixels for a preview only when they meet its requested sampling resolution; render closer details directly from the PDF. Keep geometry and annotations live over these backgrounds. Transient PDF snapshots need pixels without an unused cache PNG encoding.
 
 The conversation is provider-agnostic. Bluewing does not start a model or agent. User messages and local screenshot paths accompany the next CLI result, with nondestructive per-project cursors. The CLI can reply, flash the preview, or wait for a message outside the project command queue. Chat is stored in local application data separately from the project file and Undo.
 
