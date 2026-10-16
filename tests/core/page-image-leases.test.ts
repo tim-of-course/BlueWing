@@ -3,10 +3,12 @@ import { test } from 'node:test';
 import type { Sheet } from '../../src/core/types';
 import {
   PageImages,
-  PAGE_IMAGE_DIMENSION,
+  pageImageDimension,
   PAGE_PREVIEW_DIMENSION,
 } from '../../src/pdf/page-images';
 import type { EncodedRaster, RasterImage } from '../../src/pdf/worker-protocol';
+
+const PAGE_IMAGE_DIMENSION = 3300;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -34,10 +36,16 @@ function sheet(id: string): Sheet {
     name: id,
     assetId: 'plan',
     pageIndex: Number(id),
-    width: 100,
-    height: 50,
+    width: 1188,
+    height: 594,
   };
 }
+
+void test('sheet rasters follow paper dimensions at 200 DPI', () => {
+  assert.equal(pageImageDimension({ width: 24 * 72, height: 36 * 72 }), 7200);
+  assert.equal(pageImageDimension({ width: 48 * 72, height: 36 * 72 }), 9600);
+  assert.equal(pageImageDimension({ width: 8.5 * 72, height: 11 * 72 }), 2200);
+});
 
 void test('display leases survive eviction and cache clear, with one final pixel release', async () => {
   const sources: ReturnType<typeof bitmap>[] = [];

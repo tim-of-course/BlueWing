@@ -4,7 +4,7 @@ import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import type { Project, CommandCall } from '../../src/core/types';
 import type { PerformanceReport } from '../../src/performance/recorder';
-import { PAGE_IMAGE_DIMENSION } from '../../src/pdf/page-images';
+import { PAGE_PREVIEW_DIMENSION } from '../../src/pdf/page-images';
 import { captureErrors, cli } from './wingman';
 import { pagePoint } from './takeoff';
 
@@ -440,7 +440,7 @@ test('performance: cold import, warm page swaps, navigator search and CLI lookup
     (event) =>
       event.name === 'page.cache.hit' &&
       event.data.cacheSource === 'memory' &&
-      event.data.dimension === PAGE_IMAGE_DIMENSION,
+      Number(event.data.dimension) > PAGE_PREVIEW_DIMENSION,
   );
   expect(hits.length).toBeGreaterThanOrEqual(6);
   // Only the explicit export needs new PDF pixels. Wingman's preview and the

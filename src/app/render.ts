@@ -35,9 +35,8 @@ export async function renderImage(
     bounds.y + bounds.height > sheet.height
   )
     throw new Error('Image bounds must fit the sheet');
-  const scale =
-    Math.min(4096, options.maxDimension ?? 2048) /
-    Math.max(bounds.width, bounds.height);
+  const dimension = Math.min(4096, options.maxDimension ?? 2048);
+  const scale = dimension / Math.max(bounds.width, bounds.height);
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(bounds.width * scale);
   canvas.height = Math.ceil(bounds.height * scale);
@@ -46,11 +45,7 @@ export async function renderImage(
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   if (options.mode !== 'takeoff') {
-    const plan = await pdf.rasterRegion(
-      sheet,
-      bounds,
-      options.maxDimension ?? 2048,
-    );
+    const plan = await pdf.rasterRegion(sheet, bounds, dimension);
     try {
       context.drawImage(plan.bitmap, 0, 0);
     } finally {

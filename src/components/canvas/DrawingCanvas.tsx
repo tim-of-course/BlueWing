@@ -19,7 +19,7 @@ import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
 import { registerCanvasCapture } from '../../platform/canvas-capture';
-import { PAGE_IMAGE_DIMENSION } from '../../pdf/page-images';
+import { pageImageDimension } from '../../pdf/page-images';
 import type { RasterLease } from '../../pdf/raster';
 import type { FinishPerformanceSpan } from '../../performance/recorder';
 
@@ -414,11 +414,8 @@ export default function DrawingCanvas(props: {
           ? { sheet: current, lease: cached, full: true, finishDisplay }
           : null,
       );
-      const preview = cached ? null : controller.cachedSheetPreview(current);
-      if (preview)
-        replaceImage({ sheet: current, lease: preview, full: false });
       void controller
-        .acquireSheet(current, PAGE_IMAGE_DIMENSION, renderAbort.signal)
+        .acquireSheet(current, pageImageDimension(current), renderAbort.signal)
         .then((rendered) => {
           if (!cancelled) {
             replaceImage({
@@ -505,6 +502,8 @@ export default function DrawingCanvas(props: {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, state.sheet.width, state.sheet.height);
     if (image && state.presentation?.mode !== 'takeoff') {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(
         image.lease.source,
         0,

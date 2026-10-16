@@ -42,6 +42,8 @@ async function pump() {
           );
           const context = canvas.getContext('2d');
           if (!context) throw new Error('Preview canvas is unavailable');
+          context.imageSmoothingEnabled = true;
+          context.imageSmoothingQuality = 'high';
           context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
           bitmap.close();
           bitmap = await createImageBitmap(canvas);

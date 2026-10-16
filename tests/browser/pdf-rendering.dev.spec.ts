@@ -8,6 +8,41 @@ declare global {
   }
 }
 
+test('exports above the output limit keep the complete plan and aligned overlays', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  await page.goto('/tests/browser/pdf-rendering-harness.html');
+  const result = await page.evaluate(() => window.pdfRendering.cappedExport());
+  expect(result.metadata.width).toBe(4096);
+  expect(result.metadata.height).toBe(4096);
+  expect(result.metadata.pageToPixel).toEqual([64, 0, 0, 64, -0, -0]);
+  expect(result.left).toEqual([255, 0, 0, 255]);
+  expect(result.right).toEqual([0, 0, 255, 255]);
+  expect(result.overlay).toEqual([0, 255, 0, 255]);
+  expect(errors).toEqual([]);
+});
+
+test('a 24 by 36-inch plan keeps one 200 DPI image with neutral antialiased text and colored markup', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  await page.goto('/tests/browser/pdf-rendering-harness.html');
+  const result = await page.evaluate(() =>
+    window.pdfRendering.singleImageClarity(),
+  );
+  expect(result.dimensions).toEqual({ width: 4800, height: 7200 });
+  expect(result.renders).toBe(1);
+  expect(result.annotation).toEqual([255, 0, 0, 255]);
+  for (const view of [...result.views, result.reloaded]) {
+    expect(view.tinted).toBe(0);
+    expect(view.ink).toBeGreaterThan(0);
+    expect(view.gray).toBeGreaterThan(0);
+  }
+  expect(result.reloaded).toEqual(result.views[2]);
+  expect(errors).toEqual([]);
+});
+
 for (const cancel of [false, true]) {
   test(`background PDF pauses for a foreground render and ${cancel ? 'cancels' : 'resumes'}`, async ({
     page,

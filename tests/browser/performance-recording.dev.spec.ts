@@ -75,7 +75,7 @@ test('performance recording stops during queued PDF work and exports the same re
     expect(stopped.response.ok).toBe(true);
     expect(stopped.response.data.active).toBe(false);
     expect(stopped.response.data.metadata.rendererVersion).toBe(
-      'pdfjs-6.4.299-display-worker-v2',
+      'pdfjs-6.4.299-display-worker-v3-200dpi',
     );
     await expect(
       page.getByRole('button', { name: 'Record performance', exact: true }),

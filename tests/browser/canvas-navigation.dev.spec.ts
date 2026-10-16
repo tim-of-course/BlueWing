@@ -27,6 +27,33 @@ test('wheel and pinch anchor the cursor; pan and resize preserve the drawing vie
   page.on('pageerror', (error) => errors.push(error.message));
   await startProject(page);
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
+  const drawing = await page.evaluateHandle(() => {
+    const sources = new Set<CanvasImageSource>();
+    let count = 0;
+    let smoothed = true;
+    const original = Object.getOwnPropertyDescriptor(
+      CanvasRenderingContext2D.prototype,
+      'drawImage',
+    )?.value as CanvasRenderingContext2D['drawImage'];
+    CanvasRenderingContext2D.prototype.drawImage = new Proxy(original, {
+      apply(target, context: CanvasRenderingContext2D, args) {
+        if (context.canvas.getAttribute('aria-label') === 'Drawing canvas') {
+          sources.add(args[0] as CanvasImageSource);
+          count++;
+          smoothed &&=
+            context.imageSmoothingEnabled &&
+            context.imageSmoothingQuality === 'high';
+        }
+        Reflect.apply(target, context, args);
+      },
+    });
+    return {
+      inspect: () => ({ count, sources: sources.size, smoothed }),
+      restore: () => {
+        CanvasRenderingContext2D.prototype.drawImage = original;
+      },
+    };
+  });
   const { artifact } = await captureBrowserArtifact(
     page,
     async () => {
@@ -205,6 +232,13 @@ test('wheel and pinch anchor the cursor; pan and resize preserve the drawing vie
     },
     { scenario: 'canvas-navigation-and-drawing' },
   );
+  const imageUse = await drawing.evaluate((observer) => {
+    observer.restore();
+    return observer.inspect();
+  });
+  expect(imageUse.count).toBeGreaterThan(5);
+  expect(imageUse.sources).toBe(1);
+  expect(imageUse.smoothed).toBe(true);
   const path = testInfo.outputPath('solid-diagnostics.json');
   await writeFile(path, JSON.stringify(artifact, null, 2));
   await testInfo.attach('solid-diagnostics', {

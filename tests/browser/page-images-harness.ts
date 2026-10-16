@@ -1,11 +1,12 @@
 import type { Sheet } from '../../src/core/types';
 import {
-  PAGE_IMAGE_DIMENSION,
   PAGE_PREVIEW_DIMENSION,
   PageImages,
   pageImageKey,
   type PageImageStore,
 } from '../../src/pdf/page-images';
+
+const PAGE_IMAGE_DIMENSION = 3300;
 
 function gate() {
   let open!: () => void;
@@ -59,7 +60,7 @@ class MemoryStore implements PageImageStore {
 }
 
 function sheet(id: string, pageIndex = 0): Sheet {
-  return { id, name: id, assetId: id, pageIndex, width: 100, height: 1 };
+  return { id, name: id, assetId: id, pageIndex, width: 1188, height: 11.88 };
 }
 
 const palettes = [
@@ -181,8 +182,8 @@ async function cachedRegions() {
   const fake = renderer();
   const store = new MemoryStore();
   const images = new PageImages(fake.render, store);
-  const source = { ...sheet('a'), height: 100 };
-  const bounds = { x: 50, y: 25, width: 50, height: 50 };
+  const source = { ...sheet('a'), height: 1188 };
+  const bounds = { x: 594, y: 297, width: 594, height: 594 };
   const missing = await images.renderCachedRegion(source, bounds, 640);
   const full = await images.render(source, PAGE_IMAGE_DIMENSION);
   await store.written(source, PAGE_IMAGE_DIMENSION);
@@ -489,8 +490,8 @@ async function evictionAndChanges() {
       [{ ...a, assetId: 'changed' }, PAGE_IMAGE_DIMENSION],
       [{ ...a, pageIndex: 1 }, PAGE_IMAGE_DIMENSION],
       [{ ...a, rotation: 180 }, PAGE_IMAGE_DIMENSION],
-      [{ ...a, height: 2 }, PAGE_IMAGE_DIMENSION],
-      [{ ...a, width: 50 }, PAGE_IMAGE_DIMENSION],
+      [{ ...a, height: 23.76 }, PAGE_IMAGE_DIMENSION],
+      [{ ...a, width: 594 }, PAGE_IMAGE_DIMENSION],
       [a, 128],
     ] as const) {
       changed.push(pixels(await images.render(source, dimension)));

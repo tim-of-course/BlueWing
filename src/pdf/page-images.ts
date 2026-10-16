@@ -3,10 +3,14 @@ import type { PdfRenderBounds, RasterImage } from './worker-protocol';
 import { RasterResource, type RasterLease } from './raster';
 import { ImageDecoder } from './image-decoder';
 import type { PerformanceRecorder } from '../performance/recorder';
+import {
+  imageDimension,
+  pageImageDimension,
+  PAGE_PREVIEW_DIMENSION,
+} from './image-resolution';
 
-export const PAGE_IMAGE_DIMENSION = 3300;
-export const PAGE_PREVIEW_DIMENSION = 640;
-export const PAGE_RENDERER_VERSION = 'pdfjs-6.4.299-display-worker-v2';
+export { pageImageDimension, PAGE_PREVIEW_DIMENSION };
+export const PAGE_RENDERER_VERSION = 'pdfjs-6.4.299-display-worker-v3-200dpi';
 export interface PageImageStore {
   read(key: string): Promise<Uint8Array | null>;
   write(key: string, bytes: Uint8Array): Promise<void>;
@@ -40,7 +44,10 @@ export interface PreparationStatus {
   running: boolean;
   paused: boolean;
 }
-export function pageImageKey(sheet: Sheet, dimension: number): string {
+export function pageImageKey(
+  sheet: Sheet,
+  dimension = pageImageDimension(sheet),
+): string {
   return JSON.stringify([
     PAGE_RENDERER_VERSION,
     sheet.assetId,
@@ -48,7 +55,7 @@ export function pageImageKey(sheet: Sheet, dimension: number): string {
     sheet.rotation ?? 0,
     sheet.width,
     sheet.height,
-    Math.min(4096, Math.max(64, dimension)),
+    imageDimension(sheet, dimension),
   ]);
 }
 function size(sheet: Sheet, dimension: number) {
@@ -96,7 +103,7 @@ export class PageImages {
   constructor(
     private readonly renderPage: RenderPage,
     private readonly store?: PageImageStore,
-    private readonly memoryBytes = 256 * 1024 * 1024,
+    private readonly memoryBytes = 512 * 1024 * 1024,
     private readonly previewBytes = 32 * 1024 * 1024,
     private readonly recorder?: PerformanceRecorder,
   ) {}
@@ -128,7 +135,7 @@ export class PageImages {
 
   async acquire(
     sheet: Sheet,
-    dimension = PAGE_IMAGE_DIMENSION,
+    dimension = pageImageDimension(sheet),
     signal?: AbortSignal,
   ): Promise<RasterLease> {
     return this.request(sheet, dimension, signal, (entry) =>
@@ -160,21 +167,20 @@ export class PageImages {
     const scale =
       Math.min(4096, Math.max(64, dimension)) /
       Math.max(bounds.width, bounds.height);
-    if (PAGE_IMAGE_DIMENSION / Math.max(sheet.width, sheet.height) < scale)
+    const fullDimension = pageImageDimension(sheet);
+    if (fullDimension / Math.max(sheet.width, sheet.height) < scale)
       return null;
-    const lease = this.peek(sheet, PAGE_IMAGE_DIMENSION);
+    const lease = this.peek(sheet, fullDimension);
     let bitmap: ImageBitmap | undefined;
     try {
       if (!lease) {
-        const bytes = await this.store?.read(
-          pageImageKey(sheet, PAGE_IMAGE_DIMENSION),
-        );
+        const bytes = await this.store?.read(pageImageKey(sheet));
         signal?.throwIfAborted();
         if (!bytes) return null;
         bitmap = (
           await this.decoder.decode(
             bytes,
-            size(sheet, PAGE_IMAGE_DIMENSION),
+            size(sheet, fullDimension),
             signal ?? new AbortController().signal,
           )
         ).bitmap;
@@ -189,6 +195,8 @@ export class PageImages {
       if (!context) throw new Error('Canvas is unavailable');
       context.fillStyle = '#fff';
       context.fillRect(0, 0, canvas.width, canvas.height);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = 'high';
       context.drawImage(
         source,
         -bounds.x * scale,
@@ -199,7 +207,7 @@ export class PageImages {
       this.recorder?.event('page.cache.hit', {
         pageId: sheet.id,
         cacheSource: lease ? 'memory' : 'disk',
-        dimension: PAGE_IMAGE_DIMENSION,
+        dimension: fullDimension,
         purpose: 'region',
       });
       return canvas;
@@ -237,7 +245,7 @@ export class PageImages {
     use: (entry: ImageEntry) => T | Promise<T>,
   ): Promise<T> {
     signal?.throwIfAborted();
-    dimension = Math.min(4096, Math.max(64, dimension));
+    dimension = imageDimension(sheet, dimension);
     this.deferPreparation();
     const finish = this.recorder?.span('page.request', {
       pageId: sheet.id,
@@ -262,15 +270,15 @@ export class PageImages {
       // A full render already produces its preview. Attach to that job instead
       // of running the same PDF operators again at thumbnail resolution.
       const full =
-        dimension === PAGE_PREVIEW_DIMENSION
-          ? this.jobs.get(pageImageKey(sheet, PAGE_IMAGE_DIMENSION))
+        dimension === PAGE_PREVIEW_DIMENSION &&
+        pageImageDimension(sheet) > PAGE_PREVIEW_DIMENSION
+          ? this.jobs.get(pageImageKey(sheet))
           : undefined;
       let job =
         full && !full.abort.signal.aborted
           ? full
           : this.job(sheet, dimension, false);
-      let jobKey =
-        full === job ? pageImageKey(sheet, PAGE_IMAGE_DIMENSION) : key;
+      let jobKey = full === job ? pageImageKey(sheet) : key;
       try {
         job.users++;
         const result = await waitFor(job.promise, signal);
@@ -321,9 +329,7 @@ export class PageImages {
         distance: Math.abs(position - index),
       }))
       .sort((a, b) => a.distance - b.distance)
-      .forEach(({ sheet }) =>
-        unique.set(pageImageKey(sheet, PAGE_IMAGE_DIMENSION), sheet),
-      );
+      .forEach(({ sheet }) => unique.set(pageImageKey(sheet), sheet));
     this.total = unique.size;
     for (const key of this.prepared)
       if (!unique.has(key)) this.prepared.delete(key);
@@ -430,7 +436,7 @@ export class PageImages {
       }
     }
     if (dimension === PAGE_PREVIEW_DIMENSION) {
-      const fullKey = pageImageKey(sheet, PAGE_IMAGE_DIMENSION);
+      const fullKey = pageImageKey(sheet);
       const full = this.images.get(fullKey);
       const fullBytes = full ? full.resource.bytes : this.store?.read(fullKey);
       if (fullBytes) {
@@ -615,7 +621,7 @@ export class PageImages {
     const sheet = this.queue.shift();
     if (!sheet) return;
     const epoch = this.epoch,
-      key = pageImageKey(sheet, PAGE_IMAGE_DIMENSION),
+      key = pageImageKey(sheet),
       previewKey = pageImageKey(sheet, PAGE_PREVIEW_DIMENSION);
     this.backgroundRunning = true;
     this.changed();
@@ -633,7 +639,7 @@ export class PageImages {
         if (!full || !preview || !(await full.saved) || !(await preview.saved))
           throw new Error('Page image caching failed');
       } else if (!onDisk) {
-        const job = this.job(sheet, PAGE_IMAGE_DIMENSION, true);
+        const job = this.job(sheet, pageImageDimension(sheet), true);
         const result = await job.promise;
         if (!(await job.saved)) throw new Error('Page image caching failed');
         if (!result.preview) {

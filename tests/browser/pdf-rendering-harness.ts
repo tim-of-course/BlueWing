@@ -1,10 +1,14 @@
 import { getDocument, GlobalWorkerOptions, version } from 'pdfjs-dist';
 import { PdfDocuments } from '../../src/pdf/documents';
+import { PageImages } from '../../src/pdf/page-images';
+import { renderImage } from '../../src/app/render';
+import { createProject } from '../../src/core/geometry';
 import { PerformanceRecorder } from '../../src/performance/recorder';
 import type { Sheet } from '../../src/core/types';
 import type { AssetRange } from '../../src/platform/storage-model';
 import {
   embeddedFontPdf,
+  planClarityPdf,
   rotatedCropPdf,
   sparsePdf,
   thinPdf,
@@ -43,6 +47,156 @@ async function rasterPixels(pdf: PdfDocuments, sheet: Sheet, dimension = 64) {
   } finally {
     result.bitmap.close();
     result.previewBitmap?.close();
+  }
+}
+
+async function cappedExport() {
+  const bytes = vectorPdf();
+  const documents = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  try {
+    const [sheet] = await documents.import('export', 'Export.pdf', bytes);
+    if (!sheet) throw new Error('Missing export fixture sheet');
+    const project = createProject('Export');
+    project.sheets[sheet.id] = sheet;
+    project.geometries['overlay'] = {
+      id: 'overlay',
+      sheetId: sheet.id,
+      name: 'Overlay',
+      kind: 'path',
+      points: [
+        { x: 48, y: 0 },
+        { x: 48, y: 64 },
+      ],
+    };
+    project.groups['group'] = {
+      id: 'group',
+      name: 'Group',
+      geometryIds: ['overlay'],
+      color: '#00ff00',
+    };
+    const result = await renderImage(project, documents, {
+      sheetId: sheet.id,
+      maxDimension: 8192,
+      mode: 'combined',
+    });
+    const bitmap = await createImageBitmap(
+      new Blob([result.bytes.slice().buffer], { type: 'image/png' }),
+    );
+    try {
+      const probe = document.createElement('canvas');
+      probe.width = 3;
+      probe.height = 1;
+      const context = probe.getContext('2d');
+      if (!context) throw new Error('Export probe unavailable');
+      for (const [index, x] of [1024, 3500, 3072].entries())
+        context.drawImage(bitmap, x, 2048, 1, 1, index, 0, 1, 1);
+      const data = context.getImageData(0, 0, 3, 1).data;
+      return {
+        metadata: result.metadata,
+        left: [...data.slice(0, 4)],
+        right: [...data.slice(4, 8)],
+        overlay: [...data.slice(8, 12)],
+      };
+    } finally {
+      bitmap.close();
+    }
+  } finally {
+    await documents.clear();
+  }
+}
+
+async function singleImageClarity() {
+  const bytes = planClarityPdf();
+  const documents = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  const [sheet] = await documents.import('clarity', 'Clarity.pdf', bytes);
+  if (!sheet) throw new Error('Missing clarity sheet');
+  const stored = new Map<string, Uint8Array>();
+  const store = {
+    read: (key: string) => Promise.resolve(stored.get(key)?.slice() ?? null),
+    write: (key: string, data: Uint8Array) => {
+      stored.set(key, data.slice());
+      return Promise.resolve();
+    },
+    exists: (key: string) => Promise.resolve(stored.has(key)),
+  };
+  let renders = 0;
+  const images = new PageImages((source, dimension) => {
+    renders++;
+    return documents.raster(source, dimension);
+  }, store);
+  const reopened = new PageImages(() => {
+    throw new Error('Reopening the plan should reuse its saved image');
+  }, store);
+  const probe = (source: ImageBitmap, zoom: number) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 700;
+    canvas.height = 120;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('Clarity context unavailable');
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(
+      source,
+      -60 * zoom,
+      -80 * zoom,
+      sheet.width * zoom,
+      sheet.height * zoom,
+    );
+    // The text occupies y=88..100 in page coordinates. Exclude the red markup.
+    const data = context.getImageData(
+      0,
+      0,
+      canvas.width,
+      Math.min(canvas.height, Math.ceil(30 * zoom)),
+    ).data;
+    let tinted = 0;
+    let ink = 0;
+    let gray = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      const red = data[index] ?? 0;
+      const green = data[index + 1] ?? 0;
+      const blue = data[index + 2] ?? 0;
+      if (Math.max(red, green, blue) - Math.min(red, green, blue) > 1) tinted++;
+      if (red < 240) ink++;
+      if (red > 0 && red < 255) gray++;
+    }
+    return { tinted, ink, gray };
+  };
+  try {
+    const original = await images.acquire(sheet);
+    try {
+      const dimensions = { width: original.width, height: original.height };
+      const views = [0.4, 0.85, 2, 5].map((zoom) =>
+        probe(original.source, zoom),
+      );
+      await images.preview(sheet);
+      images.clear();
+      const decoded = await reopened.acquire(sheet);
+      try {
+        const color = document.createElement('canvas');
+        color.width = color.height = 1;
+        const context = color.getContext('2d');
+        if (!context) throw new Error('Color probe unavailable');
+        context.drawImage(decoded.source, 230, 470, 1, 1, 0, 0, 1, 1);
+        return {
+          dimensions,
+          views,
+          reloaded: probe(decoded.source, 2),
+          annotation: [...context.getImageData(0, 0, 1, 1).data],
+          renders,
+        };
+      } finally {
+        decoded.release();
+      }
+    } finally {
+      original.release();
+    }
+  } finally {
+    images.clear();
+    reopened.clear();
+    await documents.clear();
   }
 }
 
@@ -793,7 +947,8 @@ async function fidelity(fixture: FidelityFixture) {
     () => Promise.resolve(bytes.slice()),
     recorder,
   );
-  // The independent reference uses unmodified PDF.js DOM canvas/filter/font seams.
+  // Use the same grayscale text antialiasing policy with PDF.js's independent
+  // DOM canvas/filter/font seams.
   GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.mjs';
   const referenceTask = getDocument({
     data: bytes.slice(),
@@ -823,8 +978,14 @@ async function fidelity(fixture: FidelityFixture) {
       const canvas = document.createElement('canvas');
       canvas.width = Math.ceil(region.width * scale);
       canvas.height = Math.ceil(region.height * scale);
+      const context = canvas.getContext('2d', {
+        alpha: true,
+        willReadFrequently: true,
+      });
+      if (!context) throw new Error('Reference PDF context unavailable');
       await page.render({
         canvas,
+        canvasContext: context,
         viewport: page.getViewport({
           scale,
           rotation: sheet.rotation ?? 0,
@@ -896,6 +1057,8 @@ async function fidelity(fixture: FidelityFixture) {
 }
 
 const harness = {
+  cappedExport,
+  singleImageClarity,
   nameCache,
   backgroundPause,
   yielding,

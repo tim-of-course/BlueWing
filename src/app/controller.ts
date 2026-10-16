@@ -7,7 +7,7 @@ import {
 } from 'solid-js';
 import {
   pageImageKey,
-  PAGE_IMAGE_DIMENSION,
+  pageImageDimension,
   PAGE_PREVIEW_DIMENSION,
 } from '../pdf/page-images';
 import { isTauri } from '@tauri-apps/api/core';
@@ -165,8 +165,7 @@ export function createWorkspace(
         previous.every(
           (sheet, index) =>
             sheet.id === next[index]?.id &&
-            pageImageKey(sheet, PAGE_IMAGE_DIMENSION) ===
-              pageImageKey(next[index], PAGE_IMAGE_DIMENSION),
+            pageImageKey(sheet) === pageImageKey(next[index]),
         ),
     },
   );
@@ -665,7 +664,7 @@ export function createWorkspace(
     cachedSheetPreview: (sheet) =>
       app.pageImages.peek(sheet, PAGE_PREVIEW_DIMENSION),
     cachedSheetImage: (sheet) =>
-      app.pageImages.peek(sheet, PAGE_IMAGE_DIMENSION),
+      app.pageImages.peek(sheet, pageImageDimension(sheet)),
     renderSheet: (sheet, maxDimension, signal) =>
       app.pageImages.render(sheet, maxDimension, signal),
     renderRegion: async (sheet, bounds, maxDimension, signal) =>

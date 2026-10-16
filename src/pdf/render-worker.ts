@@ -11,6 +11,7 @@ import type {
   RenderTask,
 } from 'pdfjs-dist';
 import type { Sheet } from '../core/types';
+import { imageDimension, PAGE_PREVIEW_DIMENSION } from './image-resolution';
 import { suggestSheetName, type SheetNameSuggestion } from './sheet-names';
 import {
   WorkerCanvasFactory,
@@ -55,7 +56,7 @@ let active: RenderJob | undefined;
 let opened = false;
 let pumping = false;
 let fatalError: Error | undefined;
-const MAX_ENCODING_JOBS = 2;
+const MAX_ENCODING_JOBS = 1;
 let encodingJobs = 0;
 
 function post(message: PdfWorkerResponse, transfer: Transferable[] = []): void {
@@ -399,7 +400,9 @@ async function raster(job: RenderJob): Promise<void> {
     checkJob(job);
     const { bounds } = job;
     const scale =
-      Math.min(4096, Math.max(64, job.dimension)) /
+      (job.encode
+        ? imageDimension(bounds, job.dimension)
+        : Math.min(4096, Math.max(64, job.dimension))) /
       Math.max(bounds.width, bounds.height);
     const viewport = page.getViewport({
       scale,
@@ -407,14 +410,20 @@ async function raster(job: RenderJob): Promise<void> {
       offsetX: -bounds.x * scale,
       offsetY: -bounds.y * scale,
     });
-    // Let PDF.js create its opaque page context, as in its DOM renderer.
-    // Scratch canvases retain alpha for masks and transparency groups.
+    // Keep text antialiasing grayscale. An opaque Windows canvas bakes RGB
+    // subpixel font smoothing into the image, which becomes colored at zoom.
     canvas = new OffscreenCanvas(
       Math.ceil(bounds.width * scale),
       Math.ceil(bounds.height * scale),
     );
+    const context = canvas.getContext('2d', {
+      alpha: true,
+      willReadFrequently: true,
+    });
+    if (!context) throw new Error('PDF render context unavailable');
     job.task = page.render({
       canvas: canvas as unknown as HTMLCanvasElement,
+      canvasContext: context as unknown as CanvasRenderingContext2D,
       viewport,
       // Display intent preserves visible annotations and layer settings. PDF.js
       // uses microtasks in a real worker; our continuation yields to controls.
@@ -429,14 +438,17 @@ async function raster(job: RenderJob): Promise<void> {
     job.task = undefined;
     checkJob(job);
     const drawMs = performance.now() - started;
-    if (job.encode && job.dimension === 3300) {
+    if (job.encode && job.dimension > PAGE_PREVIEW_DIMENSION) {
       // Match the cache's dimensions without compounding full-raster rounding.
-      const previewScale = 640 / Math.max(bounds.width, bounds.height);
+      const previewScale =
+        PAGE_PREVIEW_DIMENSION / Math.max(bounds.width, bounds.height);
       const entry = factory.create(
         Math.ceil(bounds.width * previewScale),
         Math.ceil(bounds.height * previewScale),
       );
       preview = entry.canvas;
+      entry.context.imageSmoothingEnabled = true;
+      entry.context.imageSmoothingQuality = 'high';
       entry.context.drawImage(canvas, 0, 0, preview.width, preview.height);
     }
     // Snapshot without consuming the canvas: encoding still needs its pixels.

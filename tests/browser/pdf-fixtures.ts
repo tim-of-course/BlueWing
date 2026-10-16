@@ -54,6 +54,18 @@ function pdf(objects: (string | Uint8Array)[]): Uint8Array {
   return join(parts);
 }
 
+export function planClarityPdf(): Uint8Array {
+  return pdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1728 2592] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    stream(
+      '0 g BT /F1 12 Tf 72 2492 Td (FLUID-APPLIED WATER-RESISTIVE AND AIR BARRIER) Tj ET\n0 G 0.2 w 72 2470 m 650 2450 l S\n1 0 0 rg 72 2412 24 12 re f',
+    ),
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]);
+}
+
 export function vectorPdf(): Uint8Array {
   const shapes = Array.from(
     { length: 256 },
