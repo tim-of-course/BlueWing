@@ -34,11 +34,12 @@
     "test:tooling": "bun test tests/tooling"
   },
   "dependencies": {
+    "@embedpdf/engine-runtime": "3.0.0-next.15",
+    "@embedpdf/engine-runtime-wasm32": "3.0.0-next.15",
     "@solidjs/web": "2.0.0-rc.8",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.7.3",
     "modern-screenshot": "4.7.0",
-    "pdfjs-dist": "6.4.299",
     "solid-js": "2.0.0-rc.8",
     "three": "0.186.1"
   },
@@ -55,6 +56,7 @@
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-solid": "0.18.0",
     "globals": "17.12.0",
+    "pdfjs-dist": "6.4.299",
     "prettier": "3.9.7",
     "typescript": "6.0.3",
     "typescript-eslint": "8.70.0",

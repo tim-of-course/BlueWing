@@ -1,6 +1,6 @@
 # Bluewing restart brief
 
-Restart direction and MVP decisions, September 16, 2026, updated through October 16, 2026. Implementation recommendations are identified separately from confirmed product choices.
+Restart direction and MVP decisions, September 16, 2026, updated through October 20, 2026. Implementation recommendations are identified separately from confirmed product choices.
 
 Build a small, dependable takeoff application whose ordinary features can be developed and delivered as a web application. The first users are a small group working in the desktop app with AI assistance through its CLI. Progress means completing real estimating workflows and being able to change them without breaking unrelated behavior.
 
@@ -119,7 +119,7 @@ Store the current project, not an event-sourced reconstruction of every past ent
 
 SQLite is a reasonable proposed container for current records and imported source assets. Keep SQL mapping and project-format validation in TypeScript; Rust executes generic, bounded transactions on an opened project connection. Ordinary edits update affected records without copying PDFs or all history. Use one writable application session per project in the MVP. Opening the same project in another writer is outside that scope.
 
-The implementation uses a `.bluewing` SQLite container with project format 4 only. Earlier development projects are disposable and must be recreated. Do not add compatibility adapters, old-format loading, automatic upgrade backups, or migration code while this policy holds. `project.backup` creates an explicitly requested recovery copy of a current project. Generic native bridge 7 supplies backups, bounded file/BLOB transfers, and local image exports for Wingman messages. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
+The implementation uses a `.bluewing` SQLite container with project format 4 only. Earlier development projects are disposable and must be recreated. Do not add compatibility adapters, old-format loading, automatic upgrade backups, or migration code while this policy holds. `project.backup` creates an explicitly requested recovery copy of a current project. Generic native bridge 8 supplies backups, bounded file/BLOB transfers, immutable BLOB-to-tempfile snapshots for fast PDF reads, and local image exports for Wingman messages. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
 
 The device-local global library uses its own current format and namespace. This development reset starts it with the new built-in catalog rather than upgrading old definitions. Recovery during development comes from useful Git checkpoints; it does not require preserving obsolete takeoff data.
 
@@ -174,6 +174,8 @@ Development checks include sheet-panel toggling and an estimating workflow throu
 PDF page images are disposable derived data, separate from saved takeoff projects. Use memory caching and the operating system's temporary directory on desktop; cache files need not follow a moved/shared project. No reboot detection, project-format migration, permanent cache attachment, or app-owned disk cleanup policy is required. Cache misses regenerate from the embedded PDF. Background preparation starts with nearby sheets and eventually covers the whole project, while foreground rendering and interaction take priority. Sidebar previews use the same memory/disk approach and can be generated from full-page images. The main viewer uses one static 200 DPI image based on the PDF's paper dimensions, limited to 100 megapixels and 16,384 pixels per side. Grayscale text antialiasing avoids colored font fringes, and high-quality filtering scales that same image at every zoom. No alternate zoom resolutions are generated or selected.
 
 PDF drawing, thumbnail resizing, cache PNG encoding, and cached-image decoding run outside the UI thread. Viewers share immutable source images through explicit leases. Selected pages take priority over background preparation, which exposes progress and a user pause control. On-demand performance recordings combine product stage measurements with the browser's available responsiveness measurements; capture stays bounded and does not run continuously. These decisions apply to macOS and Windows alike.
+
+PDFium WebAssembly is the application PDF backend. Keep it web-delivered with the application, off the UI thread, and preserve physical page coordinates, display annotations, embedded-text naming, range reads and the single-master image contract. The pinned runtime's progressive parsing/drawing and `/UserUnit` metadata support these requirements; see [the integration record and rendering limits](pdfium.md).
 
 ## Web application updates
 

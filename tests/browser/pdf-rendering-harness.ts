@@ -8,6 +8,9 @@ import type { Sheet } from '../../src/core/types';
 import type { AssetRange } from '../../src/platform/storage-model';
 import {
   embeddedFontPdf,
+  fallbackBoxPdf,
+  hiddenLayerPdf,
+  nestedPagesPdf,
   planClarityPdf,
   rotatedCropPdf,
   sparsePdf,
@@ -15,6 +18,7 @@ import {
   transferPdf,
   transparencyPdf,
   viewAnnotationPdf,
+  widgetPdf,
   vectorPdf,
 } from './pdf-fixtures';
 
@@ -469,6 +473,62 @@ async function rangedRendering() {
   }
 }
 
+async function hiddenLayers() {
+  const bytes = hiddenLayerPdf();
+  const range: AssetRange = {
+    length: bytes.length,
+    read: (offset, length) =>
+      Promise.resolve(bytes.slice(offset, offset + length)),
+  };
+  const ranged = new PdfDocuments(() => Promise.resolve(range));
+  const complete = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  try {
+    const [sheet] = await ranged.import('layers', 'Layers.pdf', range);
+    if (!sheet) throw new Error('Missing layer fixture');
+    const actual = await rasterPixels(ranged, sheet);
+    const expected = await rasterPixels(complete, sheet);
+    await ranged.clear();
+    return { actual, expected, reopened: await rasterPixels(ranged, sheet) };
+  } finally {
+    await ranged.clear();
+    await complete.clear();
+  }
+}
+
+async function fallbackBoxes(kind: 'missing' | 'empty' | 'disjoint') {
+  const bytes = fallbackBoxPdf(kind);
+  const documents = new PdfDocuments(() => Promise.resolve(bytes.slice()));
+  try {
+    const [sheet] = await documents.import('boxes', 'Boxes.pdf', bytes);
+    if (!sheet) throw new Error('Missing fallback box fixture');
+    const actual = await rasterPixels(documents, sheet);
+    await documents.clear();
+    return { sheet, actual, reopened: await rasterPixels(documents, sheet) };
+  } finally {
+    await documents.clear();
+  }
+}
+
+async function nestedPageTree() {
+  const bytes = nestedPagesPdf();
+  const pdf = new PdfDocuments(() =>
+    Promise.resolve({
+      length: bytes.length,
+      read: (offset: number, length: number) =>
+        Promise.resolve(bytes.slice(offset, offset + length)),
+    }),
+  );
+  const last = { ...fixtureSheet('nested-pages'), pageIndex: 3 };
+  try {
+    const actual = pixels(await pdf.render(last, 64));
+    const first = pixels(await pdf.render({ ...last, pageIndex: 0 }, 64));
+    await pdf.clear();
+    return { actual, first, reopened: pixels(await pdf.render(last, 64)) };
+  } finally {
+    await pdf.clear();
+  }
+}
+
 async function rangeFailure() {
   const source = sparsePdf();
   let failing = false,
@@ -627,14 +687,23 @@ async function abortLoading() {
   });
   let opens = 0;
   const pdf = new PdfDocuments(async () => {
-    opens++;
-    if (opens === 1) {
+    const opening = ++opens;
+    if (opening === 1) {
       markStarted();
       await blocked;
     }
-    return bytes.slice();
+    return {
+      length: bytes.length,
+      read: (offset: number, length: number) =>
+        Promise.resolve(bytes.slice(offset, offset + length)),
+      close: () => {
+        closed.push(opening);
+        return Promise.resolve();
+      },
+    };
   });
   const controller = new AbortController();
+  const closed: number[] = [];
   try {
     const rendering = pdf
       .render(fixtureSheet('aborted'), 64, controller.signal)
@@ -649,7 +718,7 @@ async function abortLoading() {
     const outcome = await rendering;
     const reopened = pdf.render(fixtureSheet('aborted'), 64);
     unblock();
-    return { outcome, reopened: pixels(await reopened), opens };
+    return { outcome, reopened: pixels(await reopened), opens, closed };
   } finally {
     unblock();
     await pdf.clear();
@@ -904,6 +973,19 @@ function buffer(source: HTMLCanvasElement | ImageBitmap) {
   return context.getImageData(0, 0, canvas.width, canvas.height).data;
 }
 
+function colorProbes(source: HTMLCanvasElement | ImageBitmap) {
+  const data = buffer(source);
+  return [0.25, 0.75].flatMap((y) =>
+    [0.125, 0.375, 0.625, 0.875].map((x) => {
+      const offset =
+        (Math.floor(y * source.height) * source.width +
+          Math.floor(x * source.width)) *
+        4;
+      return [...data.slice(offset, offset + 4)];
+    }),
+  );
+}
+
 function difference(actual: Uint8ClampedArray, expected: Uint8ClampedArray) {
   let total = 0,
     different = 0,
@@ -931,14 +1013,20 @@ function difference(actual: Uint8ClampedArray, expected: Uint8ClampedArray) {
 }
 
 type FidelityFixture =
-  'transfer' | 'transparency' | 'font' | 'rotation-crop' | 'view-annotation';
-async function fidelity(fixture: FidelityFixture) {
+  | 'transfer'
+  | 'transparency'
+  | 'font'
+  | 'rotation-crop'
+  | 'view-annotation'
+  | 'widget';
+async function fidelity(fixture: FidelityFixture, rotation = 90, userUnit = 1) {
   const fixtures = {
     transfer: transferPdf,
     transparency: transparencyPdf,
     font: embeddedFontPdf,
-    'rotation-crop': rotatedCropPdf,
+    'rotation-crop': () => rotatedCropPdf(rotation, userUnit),
     'view-annotation': viewAnnotationPdf,
+    widget: widgetPdf,
   };
   const bytes = await fixtures[fixture]();
   const recorder = new PerformanceRecorder();
@@ -1012,6 +1100,8 @@ async function fidelity(fixture: FidelityFixture) {
             expectedWidth: canvas.width,
             expectedHeight: canvas.height,
             samples: pixels(result.bitmap),
+            probes: colorProbes(result.bitmap),
+            referenceProbes: colorProbes(canvas),
             ...difference(buffer(result.bitmap), buffer(canvas)),
             png: difference(buffer(decoded), buffer(result.bitmap)),
             transient: difference(buffer(transient), buffer(result.bitmap)),
@@ -1043,6 +1133,7 @@ async function fidelity(fixture: FidelityFixture) {
         .events.filter((event) => event.name.startsWith('pdf.worker.'))
         .map((event) => event.name),
       sheet: {
+        name: sheet.name,
         width: sheet.width,
         height: sheet.height,
         rotation: sheet.rotation,
@@ -1068,6 +1159,9 @@ const harness = {
   fidelity,
   preemption,
   rangedRendering,
+  nestedPageTree,
+  hiddenLayers,
+  fallbackBoxes,
   rangeFailure,
   cancelRange,
   cancelRenderRange,

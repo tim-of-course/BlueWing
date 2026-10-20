@@ -8,7 +8,7 @@ Build a version with:
 bun run web:release 0.1.1
 ```
 
-The output is `output/web/0.1.1/`, including PDF workers, fonts, CMaps, codecs, and a `manifest.json` with file hashes and bridge version 1. Publish the entire directory to a static HTTP host that permits the desktop origin to fetch it with CORS. The repository does not configure a public release host.
+The output is `output/web/0.1.1/`, including PDFium's worker and WASM binary, runtime notices, and a `manifest.json` with file hashes and bridge version 8. Rebuild the native shell for the saved-asset snapshot capability before installing this web release. Publish the entire directory to a static HTTP host that permits the desktop origin to fetch it with CORS. The repository does not configure a public release host.
 
 In the app's update dialog, enter the manifest URL and download it. Close the project before activating. The CLI exposes the same workflow through `web.stage` and `web.activate`. A failed download or hash mismatch leaves the current release active. Native activation switches the complete version; missing files do not fall back to files from a different release.
 

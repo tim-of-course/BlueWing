@@ -41,20 +41,29 @@ function fixture() {
             ),
           );
       }
-      if (command === 'database_read_blob') {
-        const { rowId, offset, length } = args as {
-          rowId: number;
+      if (command === 'database_snapshot_blob') {
+        const rowId = args?.rowId as number;
+        const row = database
+          .prepare('SELECT data FROM assets WHERE rowid=?')
+          .get(rowId);
+        if (!(row?.data instanceof Uint8Array)) throw new Error('Missing blob');
+        const token = `stored-${String(rowId)}`;
+        snapshots.set(token, row.data.slice());
+        result = { token, length: row.data.length };
+      }
+      if (command === 'file_snapshot_read') {
+        const { token, offset, length } = args as {
+          token: string;
           offset: number;
           length: number;
         };
-        reads.push({ rowId, offset, length });
-        const row = database
-          .prepare('SELECT substr(data,?,?) AS chunk FROM assets WHERE rowid=?')
-          .get(offset + 1, length, rowId);
-        if (!(row?.chunk instanceof Uint8Array))
-          throw new Error('Missing blob');
-        result = row.chunk;
+        reads.push({ rowId: Number(token.slice(7)), offset, length });
+        const bytes = snapshots.get(token);
+        if (!bytes) throw new Error('Missing snapshot');
+        result = bytes.slice(offset, offset + length);
       }
+      if (command === 'file_snapshot_release')
+        snapshots.delete(args?.token as string);
       if (command === 'database_transaction') {
         const { statements } = args as { statements: Statement[] };
         transactions.push(statements);
@@ -299,8 +308,8 @@ void test('native snapshots insert with project metadata atomically without base
   database.close();
 });
 
-void test('native asset readers retain random access without preloading the stored PDF', async () => {
-  const { storage, database, reads } = fixture();
+void test('native asset readers stream from immutable snapshots and release them', async () => {
+  const { storage, database, reads, snapshots } = fixture();
   await storage.open('ranges', true);
   const initial = project();
   await storage.initialize(initial);
@@ -313,6 +322,10 @@ void test('native asset readers retain random access without preloading the stor
   const range = await storage.openAsset('pdf');
   assert.equal(range.length, 6);
   assert.deepEqual(reads, []);
+  assert.equal(snapshots.size, 1);
+  database
+    .prepare('UPDATE assets SET data=? WHERE id=?')
+    .run(new Uint8Array([0]), 'pdf');
   assert.deepEqual(await range.read(4, 2), new Uint8Array([50, 60]));
   assert.deepEqual(await range.read(1, 3), new Uint8Array([20, 30, 40]));
   assert.deepEqual(await range.read(4, 2), new Uint8Array([50, 60]));
@@ -326,5 +339,8 @@ void test('native asset readers retain random access without preloading the stor
   );
   await assert.rejects(range.read(6, 1), /outside/);
   assert.equal(reads.length, 3);
+  await range.close?.();
+  assert.equal(snapshots.size, 0);
+  await assert.rejects(range.read(0, 1), /Missing snapshot/);
   database.close();
 });

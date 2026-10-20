@@ -1,5 +1,7 @@
 # PDF worker refactor and verification
 
+The current backend is PDFium WebAssembly; see [the October 20 integration record](pdfium.md). The PDF.js architecture and measurements below are historical evidence.
+
 October 7, 2026. Work is isolated on `perf/off-thread-pdf`, based on `ac0f5e8`. This record describes the new implementation and its verification limits. The timings in [desktop-performance.md](desktop-performance.md) describe the earlier main-thread renderer and must not be treated as measurements of this refactor.
 
 ## Changes
@@ -90,3 +92,73 @@ Seven independent Banana Split workflows completed mechanically with successful 
 Runtime diagnostics recorded two managed `banana_send:not_found` rejections in the engine workflow, zero no-disposition turns, zero formal revisions and zero acceptances. Recorder, probe, engine and test roots each resumed once after a finish-deferred context continuation. The host approved three scoped local operations: the isolated feasibility patch, in-memory engine control-flow checks, and the assigned test-harness rewrite. No managed Computer Use request was needed. A host follow-up to the already completed reviewer returned `recipient_unavailable` without side effects.
 
 The independent review found three source-level issues, all addressed before the final build: print intent changing visible plan content, failed encoding poisoning cached previews, and missing previews bypassing available full-page disk PNGs. Source/mock control-flow checks establish neither native browser fidelity nor a real-plan speedup. Mechanical agent completion and passing lightweight checks do not complete the pending runtime verification.
+
+## October 16 ingest investigation
+
+**Recommendation:** address duplicate thumbnail PDF work first, then prototype PDFium behind the existing renderer boundary. Keep application logic in TypeScript. Preserving the import worker is a separate opportunity to improve the first-page wait; retaining every page's drawing instructions is not justified.
+
+### Workload and measurement boundaries
+
+These measurements used Windows, checkout `1f20393`, and a local 347,928,354-byte, 165-page Bingham revision. This is not the historical 164-page source or the three-page excerpt behind the earlier 4.836-second result. No new PlanSwift comparison was performed. OS file caches were not purged.
+
+Isolated Chromium probes used the current PDF.js worker source, with instrumentation generated into ignored `tmp/ingest-profile-2026-10-16/`. Instrumentation recorded page acquisition, first/last operator delivery, synchronous drawing chunks, bitmap/preview creation, PNG encoding and HTTP range reads. It did not change product files. Source pages 104 and 105 are A8-0 and A8-1, rendered at 200 DPI to 8,401 x 6,001 and 8,400 x 6,000 pixels. Parser work, reads, operator delivery and drawing overlap; these times must not be added as independent stages.
+
+Three fresh-document samples per page used the same page order, with the usual page cleanup. Median PDF.js acquisition/drawing was 1.954 seconds for A8-0 and 1.016 seconds for A8-1. Median delivered-bitmap waits, including preview/bitmap creation, were 2.017 and 1.090 seconds. Worker startup/open and all-page metadata import are separate: approximately 0.23-0.47 and 1.22-1.35 seconds in these unprofiled samples.
+
+The old 3,300-pixel setting took 1.895 seconds of acquisition/drawing for A8-0, versus 1.919-1.980 seconds at 200 DPI. That single resolution comparison is preliminary, but explains why the much larger image did not multiply the wait by its pixel-area increase. This sheet's initial cost is dominated by more than output pixel count.
+
+### What can be reused
+
+`PdfDocuments` already shares one live document across page requests. Installed PDF.js 6.4.299 shares parsed document resources, fetched bytes, fonts, color spaces, and eligible global images. `page.cleanup()` clears page-local operator lists and objects, without discarding document-wide fonts or the source byte buffer. A new page still needs its own instruction stream and drawing.
+
+Keeping the A8-0 page's operator list in the isolated probe cut a forced return render to 0.399 seconds of drawing and 0.460 seconds to bitmap delivery. With normal cleanup, its forced return took 2.392 and 2.457 seconds, despite zero extra source reads. Keeping that state did not improve the first render of A8-1: 1.016 seconds versus 1.015-1.054 seconds with normal cleanup. Normal product navigation already reuses completed pixels, so these forced-render savings do not justify retaining every page's operators.
+
+CPU samples found substantial embedded-image/JPEG decoding and color conversion in the parser, plus path stroking, image scaling and drawing in the renderer. They did not identify repeated font setup as the principal cost. Image inventory found a 6,792 x 6,787 image with a separate soft mask on A8-0; A8-1 instead references 748 image objects. The two pages share no image object IDs. Distinct IDs do not prove distinct compressed or decoded image content, and content-based deduplication was not evaluated.
+
+### Native pipeline finding
+
+Two isolated native runs used the existing release binaries, current production web assets, fresh temporary profiles/projects and the real CLI. The ordinary run imported all 165 sheets in 2.380 seconds. The `project.pdf.import` span covered 2.144 seconds; the earlier source-snapshot copy and CLI overhead are outside that span. Rendering opened a second PDF worker after import; this second open took 2.231 seconds. The first selected-page display took another 6.264 seconds from its request. These are nested/adjacent stage boundaries, not independent full-import totals.
+
+**The sidebar caused substantial duplicate work.** At 31.7 seconds from recording start, the ordinary run had completed only one full prepared page while issuing 30 separate 640-pixel PDF raster requests. Those preview requests occupied about 21.7 seconds in aggregate. They would later be followed by full-image renders of the same pages. `PageImages.request()` joins a full-page job only if it already exists; otherwise thumbnail requests count as foreground work and delay preparation. `SheetThumbnails` keeps feeding the next visible row into that path.
+
+A diagnostic control hid the navigator only in the temporary copy of the web assets, preventing its thumbnail requests. It completed four full pages by 14.9 seconds, with zero separate preview PDF renders. Import took 2.241 seconds. This confirms scheduling/duplicate rendering as an optimization target; it is not a product change, a matched-duration throughput ratio, or a full-document completion benchmark. The product fix should keep the navigator and derive its images from full-page preparation, with explicit hover/selected requests handled appropriately.
+
+Native source-range timings also contain meaningful waits. The ordinary run recorded 320 completed reads totaling 11.7 seconds across the capture, including overlapping reads. This is not isolated disk service time and cannot be added to render durations. Saving native-renderer output directly to the existing image cache could avoid carrying large source/resource traffic through the webview, but requires an actual adapter benchmark.
+
+The import worker currently reads the temporary source snapshot and is destroyed before saved sheets are published. Keeping it requires a safe handoff to the identical committed SQLite asset or retaining snapshot ownership for the worker's lifetime. Simply removing the release would leave later range reads targeting a released snapshot. This could reduce first-page setup; it does not remove each later page's decoding/drawing cost.
+
+### PDFium and Rust options
+
+An isolated binary-wheel install of pypdfium2 5.14.0 supplied PDFium 156.0.8076.0 for three fresh-document samples, without changing product dependencies. Each sample loaded and rendered the same two pages in full color at 200 DPI, with annotations enabled, white background, a four-byte BGRA bitmap and no LCD text mode. Median page-load plus raster times were 0.709 seconds for A8-0 and 0.903 seconds for A8-1. Against PDF.js acquisition/drawing, that is about 2.8x and 1.1x in these samples, not a universal or end-to-end app speedup.
+
+The comparison excludes PNG encoding, cache writes, native bridge integration and display. Python/Pillow PNG saves took about 0.78-0.85 seconds, so those saves are not a proposed production pipeline. PDF.js delivered pixels before its own roughly 0.17-0.20-second encoding tail. An initial PDFium experiment loaded every page before rendering and was excluded from the representative cold samples because that prewarmed content; its approximately nine-second enumeration is not comparable to PDF.js's metadata-only import.
+
+Both engines produced identical dimensions. Sampled title-block crops looked consistent and whole-image mean absolute RGB differences were approximately 1.2-1.3 on a 0-255 scale. These checks do not establish fidelity across all drawings, transparency, fonts, layers or annotations. A backend change still needs the existing fidelity fixtures and a broader representative plan sample. No renderer was switched.
+
+- [pdfium-render](https://github.com/ajrcarey/pdfium-render) provides Rust bindings to the established C++ engine, including native and WebAssembly use. It does not bundle PDFium itself. A small native adapter could write source images into the current cache, while TypeScript continues to own the UI, project behavior, overlays and calculations. Native engine updates would require native distribution; most application updates could retain web delivery. WebAssembly is an alternative for web-delivered engine updates and needs its own speed/memory measurement.
+- [Hayro](https://github.com/LaurenzV/hayro) is a pure Rust renderer, but its maintainers describe it as experimental and state that performance has not yet been a focus. It is not the leading choice for this performance problem without contrary measurements.
+- [MuPDF](https://mupdf.readthedocs.io/en/1.28.5/license.html) is another established native renderer, offered under AGPL or a commercial license. It was not raster-benchmarked in this investigation.
+
+### Scope, evidence and review
+
+Four focused guarded Chromium probe runs and two isolated native import captures completed. The resource guard initially refused work while the user's dev desktop was active; no process was closed to bypass it. Heavy work ran serially after the slot became free, and browser probes used one worker. The final resource check reported no active heavy job or pressure problem. No product code changed and no full regression suite or whole-set preparation pass was run for this investigation.
+
+Private artifacts and reproducibility scripts live in ignored `tmp/ingest-profile-2026-10-16/`: `ceiling-{base,keep,3300,fresh105,repeat}.json`, worker CPU profiles, `pdfium-results.json`, `image-inventory.json`, `visual-qa.png`, `native{-hide-nav,}-performance.json`, matching native summaries, and `review-audit.json`. The source PDF and rendered pages are not committed.
+
+One independent read-only Banana Split root completed successfully: workflow `wf_a27ab615-243f-4f27-b1c7-3870f7de1cc3`, root `agt_992f24b8-fe7c-4456-bd70-3580928526b7`. It used the configured default tier/catalog without overrides or tier changes, observed GPT-6.1 Sol with resolved high reasoning, and spawned zero descendants. The host used GPT-6.1 Sol/xhigh. Runtime diagnostics recorded zero managed tool rejections, no-disposition turns, revisions or acceptances; no approvals or host assistance were needed. The host checked the source evidence and independently ran the measurements above. Mechanical workflow status was completed; the root result outcome was success.
+
+## October 16 duplicate thumbnail rendering fix
+
+Cold sidebar thumbnail requests now load the existing preview PNG or derive it from a cached master. On a cache miss they start or join the canonical 200 DPI master job and use its generated preview. The main viewer and preparation share that same job. The preview path no longer falls back to another PDF raster at 640 pixels.
+
+Thumbnail requests no longer reset the preparation delay or count as foreground work that prevents preparation from starting. Jobs count selected viewers separately from thumbnail consumers: selected pages have priority 100, visible thumbnails 40 and speculative preparation 10. A selected viewer can promote existing thumbnail work, and leaving that viewer allows thumbnail-only work to respect Pause. Source pixel output, cache keys, image quality and the native bridge are unchanged.
+
+Regression coverage exercises a cold thumbnail arriving before preparation, preparation advancing while a different thumbnail waits, later main-view reuse, both viewer/thumbnail arrival orders, cancellation, pause and priority promotion. Existing disk-preview recovery and pixel-ownership coverage remains in place. All 100 focused Chromium/Firefox cache, PDF and sidebar cases passed.
+
+One independent read-only Banana Split root reviewed the fix and completed with no remaining blockers: workflow `wf_530d1ddb-79d3-4b97-b326-3c22dd94006d`, root `agt_717eb714-2fe8-41e3-bc7f-547411a0a3ec`. It used the configured default tier/catalog without overrides or tier changes, observed GPT-6.1 Sol with resolved high reasoning and zero descendants. The host used GPT-6.1 Sol/xhigh. The review checked the pause-origin edge case corrected during review. One scoped in-memory read-only reproduction was approved; runtime diagnostics recorded zero managed tool rejections, no-disposition turns, revisions or acceptances. No managed Computer Use was needed. The complete audit is in ignored `tmp/ingest-profile-2026-10-16/thumbnail-review-audit.json`.
+
+The complete Windows `bun run verify` sequence passed after the fix: static checks, nine tooling tests with two platform skips, 238 core tests with one platform skip, 13 storage/platform tests, all 172 development browser tests, the production build and all 32 production browser tests. No test budgets or fidelity tolerances changed.
+
+A new isolated native capture kept the navigator visible and used the same 165-sheet Bingham source and production web assets. It imported the sheets in 2.288 seconds and completed four full prepared pages by 16.826 seconds from recording start, with zero preparation failures. All four completed PDF raster requests used the 8,401-pixel master size; there were **zero separate 640-pixel PDF raster requests**. In the earlier ordinary capture, only one full page had been prepared by 31.688 seconds while 30 separate thumbnail PDF renders ran. These are individual captures with different stop points, not a whole-document throughput ratio. The first selected-page display took 6.942 seconds from its request versus 6.264 in the earlier capture, so this does not establish an improvement in first-page latency.
+
+Native evidence is retained in ignored `tmp/ingest-profile-2026-10-16/native-fixed-{performance,summary}.json`; the full verification log is `verify-fix.log` in the same directory. The temporary native profile/project was removed after capture; the user's project was not modified.

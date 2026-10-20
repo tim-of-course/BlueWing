@@ -6,6 +6,8 @@ bun.lock
 src-tauri/target/
 src-tauri/gen/
 public/pdfjs/
+public/pdfium-notices/
+assets/pdfium/
 tmp/
 output/
 tests/platform/.compiled/

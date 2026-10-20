@@ -1,5 +1,6 @@
 node_modules/
 public/pdfjs/
+public/pdfium-notices/
 dist/
 test-results/
 playwright-report/

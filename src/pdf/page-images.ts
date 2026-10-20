@@ -10,7 +10,8 @@ import {
 } from './image-resolution';
 
 export { pageImageDimension, PAGE_PREVIEW_DIMENSION };
-export const PAGE_RENDERER_VERSION = 'pdfjs-6.4.299-display-worker-v3-200dpi';
+export const PAGE_RENDERER_VERSION =
+  'pdfium-embedpdf-3.0.0-next.15-worker-v1-200dpi';
 export interface PageImageStore {
   read(key: string): Promise<Uint8Array | null>;
   write(key: string, bytes: Uint8Array): Promise<void>;
@@ -31,6 +32,7 @@ interface ImageEntry {
 interface ImageJob {
   abort: AbortController;
   users: number;
+  foregroundUsers: number;
   background: boolean;
   done: boolean;
   promise: Promise<{ entry: ImageEntry; preview?: ImageEntry }>;
@@ -246,7 +248,8 @@ export class PageImages {
   ): Promise<T> {
     signal?.throwIfAborted();
     dimension = imageDimension(sheet, dimension);
-    this.deferPreparation();
+    const foreground = dimension !== PAGE_PREVIEW_DIMENSION;
+    if (foreground) this.deferPreparation();
     const finish = this.recorder?.span('page.request', {
       pageId: sheet.id,
       dimension,
@@ -266,46 +269,25 @@ export class PageImages {
         const value = use(cached);
         return value instanceof Promise ? await waitFor(value, signal) : value;
       }
-      this.foreground++;
-      // A full render already produces its preview. Attach to that job instead
-      // of running the same PDF operators again at thumbnail resolution.
-      const full =
-        dimension === PAGE_PREVIEW_DIMENSION &&
-        pageImageDimension(sheet) > PAGE_PREVIEW_DIMENSION
-          ? this.jobs.get(pageImageKey(sheet))
-          : undefined;
-      let job =
-        full && !full.abort.signal.aborted
-          ? full
-          : this.job(sheet, dimension, false);
-      let jobKey = full === job ? pageImageKey(sheet) : key;
+      if (foreground) this.foreground++;
+      const job = this.job(sheet, dimension, false);
       try {
         job.users++;
+        if (foreground) job.foregroundUsers++;
         const result = await waitFor(job.promise, signal);
         signal?.throwIfAborted();
         job.abort.signal.throwIfAborted();
-        let entry = full === job ? result.preview : result.entry;
-        if (!entry && full === job) {
-          // A full PNG disk hit need not load its thumbnail. Read or derive
-          // that thumbnail separately when a visible row actually asks for it.
-          job.users--;
-          this.finish(jobKey, job);
-          jobKey = key;
-          job = this.job(sheet, dimension, false);
-          job.users++;
-          entry = (await waitFor(job.promise, signal)).entry;
-          signal?.throwIfAborted();
-          job.abort.signal.throwIfAborted();
-        }
-        if (!entry) throw new Error('Rendered preview is unavailable');
-        const value = use(entry);
+        const value = use(result.entry);
         // Leases are acquired and returned without an intervening abort race.
         return value instanceof Promise ? await waitFor(value, signal) : value;
       } finally {
         job.users--;
-        this.foreground--;
+        if (foreground) {
+          job.foregroundUsers--;
+          this.foreground--;
+        }
         if (!job.users && !job.background && !job.done) job.abort.abort();
-        this.finish(jobKey, job);
+        this.finish(key, job);
         this.schedule();
       }
     } finally {
@@ -372,6 +354,7 @@ export class PageImages {
     const job: ImageJob = {
       abort: new AbortController(),
       users: 0,
+      foregroundUsers: 0,
       background,
       done: false,
       promise: undefined as unknown as ImageJob['promise'],
@@ -421,7 +404,7 @@ export class PageImages {
             preview: dimension <= PAGE_PREVIEW_DIMENSION,
             saved: Promise.resolve(true),
           };
-          this.put(key, entry, job.background && !job.users);
+          this.put(key, entry, job.background && !job.foregroundUsers);
           this.recorder?.event('page.cache.hit', {
             pageId: sheet.id,
             cacheSource: 'disk',
@@ -443,30 +426,32 @@ export class PageImages {
         try {
           const bytes = await waitFor(fullBytes, signal);
           if (!bytes) throw new Error('Full-page cache image is unavailable');
-          const result = await this.decoder.thumbnail(
-            bytes.slice(),
-            dimension,
-            signal,
-          );
-          if (signal.aborted) {
-            result.bitmap.close();
-            signal.throwIfAborted();
-          }
-          const resource = new RasterResource(
-            result.bitmap,
-            Promise.resolve(result.bytes),
-          );
-          job.resources.push(resource);
-          const entry = {
-            resource,
-            preview: true,
-            saved: this.save(key, resource),
-          };
-          this.put(key, entry, job.background && !job.users);
-          job.saved = entry.saved;
-          return { entry };
+          return await this.thumbnail(sheet, job, bytes);
         } catch {
           signal.throwIfAborted();
+        }
+      }
+      if (fullKey !== key) {
+        // Cold thumbnails use the master render too. They neither defer nor
+        // block preparation, and a selected-page viewer can promote this work.
+        const fullJob = this.job(sheet, pageImageDimension(sheet), true);
+        fullJob.users++;
+        try {
+          const result = await waitFor(fullJob.promise, signal);
+          signal.throwIfAborted();
+          if (!result.preview)
+            return await this.thumbnail(
+              sheet,
+              job,
+              await waitFor(result.entry.resource.bytes, signal),
+            );
+          result.preview.resource.retain();
+          job.resources.push(result.preview.resource);
+          job.saved = fullJob.saved;
+          return { entry: result.preview };
+        } finally {
+          fullJob.users--;
+          this.finish(fullKey, fullJob);
         }
       }
     }
@@ -477,13 +462,8 @@ export class PageImages {
       // Typing and saves defer new preparation. They do not throw away work
       // already running off the UI thread. The worker's priority queue handles
       // foreground preemption; only the user's pause stops an active background job.
-      () => job.background && !job.users && this.userPaused,
-      () =>
-        job.background && !job.users
-          ? 10
-          : dimension <= PAGE_PREVIEW_DIMENSION
-            ? 40
-            : 100,
+      () => !job.foregroundUsers && this.userPaused,
+      () => (job.foregroundUsers ? 100 : job.users ? 40 : 10),
     );
     if (signal.aborted) {
       output.bitmap.close();
@@ -500,7 +480,7 @@ export class PageImages {
       saved: this.save(key, resource),
     };
     job.resources.push(resource);
-    this.put(key, entry, job.background && !job.users);
+    this.put(key, entry, job.background && !job.foregroundUsers);
     const saves = [entry.saved];
     let preview: ImageEntry | undefined;
     if (output.previewBitmap) {
@@ -519,11 +499,37 @@ export class PageImages {
         saved: this.save(previewKey, previewResource),
       };
       job.resources.push(previewResource);
-      this.put(previewKey, preview, job.background && !job.users);
+      this.put(previewKey, preview, job.background && !job.foregroundUsers);
       saves.push(preview.saved);
     }
     job.saved = Promise.all(saves).then((results) => results.every(Boolean));
     return { entry, ...(preview ? { preview } : {}) };
+  }
+  private async thumbnail(sheet: Sheet, job: ImageJob, bytes: Uint8Array) {
+    const signal = job.abort.signal;
+    const result = await this.decoder.thumbnail(
+      bytes.slice(),
+      PAGE_PREVIEW_DIMENSION,
+      signal,
+    );
+    if (signal.aborted) {
+      result.bitmap.close();
+      signal.throwIfAborted();
+    }
+    const resource = new RasterResource(
+      result.bitmap,
+      Promise.resolve(result.bytes),
+    );
+    job.resources.push(resource);
+    const key = pageImageKey(sheet, PAGE_PREVIEW_DIMENSION);
+    const entry = {
+      resource,
+      preview: true,
+      saved: this.save(key, resource),
+    };
+    this.put(key, entry, job.background && !job.foregroundUsers);
+    job.saved = entry.saved;
+    return { entry };
   }
   private async save(key: string, resource: RasterResource) {
     let end: (() => void) | undefined;

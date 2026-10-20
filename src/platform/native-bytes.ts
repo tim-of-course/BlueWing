@@ -3,7 +3,7 @@ import type { AssetRange } from './storage-model';
 /** Bound each native IPC response, including WebView's JSON fallback. */
 export const NATIVE_CHUNK_BYTES = 1024 * 1024;
 
-/** PDF.js can request disjoint or repeated ranges, including ranges larger than IPC allows. */
+/** Renderers can request disjoint or repeated ranges larger than IPC allows. */
 export function nativeRange(
   length: number,
   read: (offset: number, length: number) => Promise<ArrayBuffer | number[]>,

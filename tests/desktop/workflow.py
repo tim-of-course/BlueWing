@@ -168,6 +168,11 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
             call("project.open", {"path": project_path})
             assert call("quantities.inspect")["complete"]
             call("sheet.render", {"sheetId": sheet_id, "path": str(EVIDENCE / "offline.png"), "maxDimension": 1224})
+            # A new asset ID forces PDF engine startup and rendering with the
+            # release server stopped, even if the previous PNG is cached.
+            offline_sheets = call("project.import", {"path": str(ROOT / "tests/fixtures/assessment-plan.pdf")}, True)
+            assert len(offline_sheets) == 1
+            call("sheet.render", {"sheetId": offline_sheets[0]["id"], "path": str(EVIDENCE / "offline-fresh.png"), "maxDimension": 1224})
             call("project.close", mutates=True)
     finally:
         (EVIDENCE / "commands.json").write_text(json.dumps(transcript, indent=2))

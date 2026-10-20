@@ -726,6 +726,51 @@ async function preparation() {
   }
 }
 
+async function thumbnailPreparation() {
+  const store = new MemoryStore();
+  const fake = renderer();
+  const thumbnailStarted = gate();
+  const releaseThumbnail = gate();
+  const a = sheet('a');
+  const b = sheet('b');
+  const images = new PageImages(async (...args) => {
+    if (args[0].id === b.id) {
+      thumbnailStarted.open();
+      await releaseThumbnail.promise;
+    }
+    return fake.render(...args);
+  }, store);
+  try {
+    // The sidebar gets here before preparation or the main viewer has a job.
+    const thumbnail = images.preview(b);
+    await thumbnailStarted.promise;
+    images.prepare([a, b], a.id);
+    await until(() => images.status().completed === 1);
+    const completedWhileThumbnailPending = images.status().completed;
+    releaseThumbnail.open();
+    const bytes = await thumbnail;
+    const bitmap = await createImageBitmap(
+      new Blob([bytes.slice().buffer], { type: 'image/png' }),
+    );
+    const preview = pixels(bitmap);
+    bitmap.close();
+    const lease = await images.acquire(b);
+    const full = pixels(lease.source);
+    lease.release();
+    await until(() => !images.status().running);
+    return {
+      completedWhileThumbnailPending,
+      preview,
+      full,
+      calls: fake.calls,
+      status: images.status(),
+    };
+  } finally {
+    releaseThumbnail.open();
+    images.clear();
+  }
+}
+
 async function preparationProgress() {
   const store = new MemoryStore();
   const started = gate();
@@ -969,6 +1014,7 @@ const harness = {
   cancellation,
   clearPreparation,
   preparation,
+  thumbnailPreparation,
   preparationProgress,
   reusePreparation,
   preparationFailure,

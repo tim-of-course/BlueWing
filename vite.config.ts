@@ -1,36 +1,37 @@
 import solid from '@solidjs/vite-plugin';
 import { defineConfig } from 'vite';
-import { cpSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync } from 'node:fs';
 
-// PDF fonts, CMaps, and codecs ship in each complete offline web release.
-for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
-  mkdirSync('public/pdfjs', { recursive: true });
-  cpSync(`node_modules/pdfjs-dist/${directory}`, `public/pdfjs/${directory}`, {
-    recursive: true,
-  });
-}
-
+// Runtime and PDFium notices travel with complete offline web releases.
+mkdirSync('public/pdfium-notices', { recursive: true });
 cpSync(
-  'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
-  'public/pdfjs/pdf.worker.min.mjs',
+  'node_modules/@embedpdf/engine-runtime/LICENSE',
+  'public/pdfium-notices/LICENSE.embedpdf',
 );
-// The parser and renderer communicate directly, without forwarding operator
-// lists or font/image data through the UI thread. Both workers are host-owned.
-writeFileSync(
-  'public/pdfjs/parser-bridge.mjs',
-  `
-import { WorkerMessageHandler } from './pdf.worker.min.mjs';
-self.addEventListener('message', ({data}) => {
-  if (data.type !== 'connect') return;
-  data.port.start();
-  WorkerMessageHandler.initializeFromPort(data.port);
-  self.postMessage({type:'connected'});
-});
-`,
-);
+cpSync('assets/pdfium', 'public/pdfium-notices', { recursive: true });
 
-export default defineConfig({
-  plugins: [solid({ diagnostics: true })],
-  worker: { format: 'es' },
-  resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },
+export default defineConfig(({ command }) => {
+  // PDF.js remains an independent development reference and sample renderer.
+  // Its fonts/codecs/parser are excluded from the deployable application.
+  if (command === 'serve') {
+    mkdirSync('public/pdfjs', { recursive: true });
+    for (const directory of ['cmaps', 'standard_fonts', 'wasm']) {
+      cpSync(
+        `node_modules/pdfjs-dist/${directory}`,
+        `public/pdfjs/${directory}`,
+        { recursive: true },
+      );
+    }
+    cpSync(
+      'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
+      'public/pdfjs/pdf.worker.min.mjs',
+    );
+  } else {
+    rmSync('public/pdfjs', { recursive: true, force: true });
+  }
+  return {
+    plugins: [solid({ diagnostics: true })],
+    worker: { format: 'es' },
+    resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },
+  };
 });

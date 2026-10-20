@@ -73,6 +73,24 @@ fn database_transaction(
         .transaction_with_snapshots(statements, snapshots)
 }
 #[tauri::command(rename_all = "camelCase")]
+fn database_snapshot_blob(
+    state: State<Shared>,
+    table: String,
+    column: String,
+    row_id: i64,
+) -> Result<storage::SnapshotInfo, String> {
+    let mut s = state.lock().unwrap();
+    let Native {
+        database,
+        snapshots,
+        ..
+    } = &mut *s;
+    database
+        .as_ref()
+        .ok_or("No open database")?
+        .snapshot_blob(snapshots, &table, &column, row_id)
+}
+#[tauri::command(rename_all = "camelCase")]
 fn database_read_blob(
     state: State<Shared>,
     table: String,
@@ -231,7 +249,7 @@ fn bridge_ready(
         window.config().build.dev_url.as_ref(),
         &state.cache.active,
     );
-    let info = json!({"bridgeVersion":7,"webVersion":version,"webSource":source,"cliPath":cli,
+    let info = json!({"bridgeVersion":8,"webVersion":version,"webSource":source,"cliPath":cli,
         "dataDir":bridge.data_dir,"shell": if cfg!(windows) { "powershell" } else { "posix" }});
     bridge.ready.store(true, Ordering::SeqCst);
     Ok(info)
@@ -260,6 +278,7 @@ pub fn run() {
             database_backup,
             database_query,
             database_transaction,
+            database_snapshot_blob,
             database_read_blob,
             file_snapshot_open,
             file_snapshot_read,

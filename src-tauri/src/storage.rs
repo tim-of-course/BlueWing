@@ -224,6 +224,30 @@ impl Database {
         self.transaction_with_snapshots(statements, &Snapshots::new())
     }
 
+    /// Stream once through SQLite's overflow chain, then serve random reads from
+    /// an immutable tempfile. Reopening a BLOB per range repeats that traversal.
+    pub fn snapshot_blob(
+        &self,
+        snapshots: &mut Snapshots,
+        table: &str,
+        column: &str,
+        row_id: i64,
+    ) -> Result<SnapshotInfo, String> {
+        let mut blob = self
+            .connection
+            .blob_open("main", table, column, row_id, true)
+            .map_err(|e| e.to_string())?;
+        let mut file = tempfile::tempfile().map_err(|e| e.to_string())?;
+        let length = std::io::copy(&mut blob, &mut file).map_err(|e| e.to_string())?;
+        let token = uuid::Uuid::new_v4().to_string();
+        snapshots.insert(token.clone(), FileSnapshot { file, length });
+        Ok(SnapshotInfo {
+            token,
+            name: format!("{table}.{column}"),
+            length,
+        })
+    }
+
     pub fn read_blob(
         &self,
         table: &str,
@@ -440,6 +464,43 @@ mod tests {
         );
         snapshots.remove(&info.token);
         assert!(snapshot_read(&snapshots, &info.token, 0, 1).is_err());
+    }
+
+    #[test]
+    fn blob_snapshot_survives_database_changes_and_releases() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut database = Database::open(&directory.path().join("project.db"), true).unwrap();
+        let bytes: Vec<u8> = (0..COPY_BUFFER_LENGTH * 3 + 7)
+            .map(|i| (i % 251) as u8)
+            .collect();
+        database
+            .transaction(vec![
+                statement("CREATE TABLE items(data BLOB)", vec![]),
+                statement(
+                    "INSERT INTO items VALUES(?)",
+                    vec![json!({"blob": STANDARD.encode(&bytes)})],
+                ),
+            ])
+            .unwrap();
+        let mut snapshots = Snapshots::new();
+        let snapshot = database
+            .snapshot_blob(&mut snapshots, "items", "data", 1)
+            .unwrap();
+        database
+            .transaction(vec![statement("DELETE FROM items", vec![])])
+            .unwrap();
+        drop(database);
+        assert_eq!(snapshot.length, bytes.len() as u64);
+        assert_eq!(
+            snapshot_read(&snapshots, &snapshot.token, 65530, 20).unwrap(),
+            bytes[65530..65550]
+        );
+        assert_eq!(
+            snapshot_read(&snapshots, &snapshot.token, 0, snapshot.length).unwrap(),
+            bytes
+        );
+        snapshots.remove(&snapshot.token);
+        assert!(snapshot_read(&snapshots, &snapshot.token, 0, 1).is_err());
     }
 
     #[test]

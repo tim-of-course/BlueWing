@@ -169,7 +169,11 @@ void test('failed PNG encoding preserves displayed pixels and lets a thumbnail r
           }
         : {
             bitmap: bitmap(dimension).source,
-            encoded: Promise.resolve({ bytes: new Uint8Array([3]) }),
+            previewBitmap: bitmap(PAGE_PREVIEW_DIMENSION).source,
+            encoded: Promise.resolve({
+              bytes: new Uint8Array([1]),
+              previewBytes: new Uint8Array([3]),
+            }),
           },
     );
   });
@@ -179,8 +183,91 @@ void test('failed PNG encoding preserves displayed pixels and lets a thumbnail r
   await assert.rejects(thumbnail, /PNG encoding failed/);
   assert.equal(full.closes(), 0);
   assert.deepEqual(await images.preview(sheet('0')), new Uint8Array([3]));
-  assert.deepEqual(calls, [PAGE_IMAGE_DIMENSION, PAGE_PREVIEW_DIMENSION]);
+  assert.deepEqual(calls, [PAGE_IMAGE_DIMENSION, PAGE_IMAGE_DIMENSION]);
   images.clear();
   display.release();
   assert.equal(full.closes(), 1);
+});
+
+void test('thumbnail-only work pauses after its selected viewer leaves', async () => {
+  const drawing = deferred<RasterImage>();
+  const began = deferred<undefined>();
+  let paused!: () => boolean;
+  let priority!: () => number;
+  const images = new PageImages((_sheet, _dimension, _signal, pause, rank) => {
+    paused = pause;
+    priority = rank;
+    began.resolve(undefined);
+    return drawing.promise;
+  });
+  const abort = new AbortController();
+  const selected = images.acquire(sheet('0'), undefined, abort.signal);
+  const cancelled = assert.rejects(selected, /Viewer left/);
+  await began.promise;
+  const thumbnail = images.preview(sheet('0'));
+  await Promise.resolve();
+  await Promise.resolve();
+  abort.abort(new Error('Viewer left'));
+  await cancelled;
+  images.setPreparationPaused(true);
+  assert.equal(paused(), true);
+  assert.equal(priority(), 40);
+  drawing.resolve({
+    bitmap: bitmap(PAGE_IMAGE_DIMENSION).source,
+    previewBitmap: bitmap(PAGE_PREVIEW_DIMENSION).source,
+    encoded: Promise.resolve({
+      bytes: new Uint8Array([1]),
+      previewBytes: new Uint8Array([2]),
+    }),
+  });
+  assert.deepEqual(await thumbnail, new Uint8Array([2]));
+  images.clear();
+});
+
+void test('a cold thumbnail shares its master, respects pause, and yields priority to the selected viewer', async () => {
+  const drawing = deferred<RasterImage>();
+  const began = deferred<undefined>();
+  const calls: number[] = [];
+  let paused!: () => boolean;
+  let priority!: () => number;
+  let workSignal!: AbortSignal;
+  const full = bitmap(PAGE_IMAGE_DIMENSION);
+  const preview = bitmap(PAGE_PREVIEW_DIMENSION);
+  const images = new PageImages((_sheet, dimension, signal, pause, rank) => {
+    calls.push(dimension);
+    workSignal = signal;
+    paused = pause;
+    priority = rank;
+    began.resolve(undefined);
+    return drawing.promise;
+  });
+  images.setPreparationPaused(true);
+  const abort = new AbortController();
+  const thumbnail = images.preview(sheet('0'), abort.signal);
+  const cancelled = assert.rejects(thumbnail, /Thumbnail left/);
+  await began.promise;
+  assert.equal(priority(), 40);
+  assert.equal(paused(), true);
+  const selected = images.acquire(sheet('0'));
+  assert.equal(priority(), 100);
+  assert.equal(paused(), false);
+  abort.abort(new Error('Thumbnail left'));
+  await cancelled;
+  assert.equal(workSignal.aborted, false);
+  drawing.resolve({
+    bitmap: full.source,
+    previewBitmap: preview.source,
+    encoded: Promise.resolve({
+      bytes: new Uint8Array([1]),
+      previewBytes: new Uint8Array([2]),
+    }),
+  });
+  const lease = await selected;
+  assert.equal(lease.source, full.source);
+  assert.deepEqual(await images.preview(sheet('0')), new Uint8Array([2]));
+  assert.deepEqual(calls, [PAGE_IMAGE_DIMENSION]);
+  images.clear();
+  lease.release();
+  assert.equal(full.closes(), 1);
+  assert.equal(preview.closes(), 1);
 });

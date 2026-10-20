@@ -5,6 +5,7 @@ import type { PersistencePort, Project } from '../core/types';
 export interface AssetRange {
   length: number;
   read(offset: number, length: number): Promise<Uint8Array>;
+  close?(): Promise<void>;
 }
 
 export interface Asset {

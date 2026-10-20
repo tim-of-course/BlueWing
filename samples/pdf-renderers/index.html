@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF renderer sample</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>PDF renderer sample</h1>
+      <fieldset id="controls">
+        <input
+          id="file"
+          type="file"
+          accept="application/pdf,.pdf"
+          aria-label="Open PDF"
+        />
+        <label
+          >Renderer
+          <select id="renderer"></select
+        ></label>
+        <label
+          >Resolution
+          <select id="resolution">
+            <option value="fit">Fit screen</option>
+            <option value="200">200 DPI</option>
+          </select>
+        </label>
+        <button id="previous" disabled>Previous</button>
+        <label
+          >Page <input id="page" type="number" min="1" value="1" disabled
+        /></label>
+        <span id="pages">/ 0</span>
+        <button id="next" disabled>Next</button>
+        <button id="render" disabled>Render again</button>
+        <button
+          id="reopen"
+          disabled
+          title="Open a fresh copy of the loaded PDF bytes in a new worker. The file is read only when selected."
+        >
+          Fresh worker + reopen
+        </button>
+        <button id="save-timings" disabled>Save timings</button>
+        <label
+          >Zoom
+          <input
+            id="zoom"
+            type="range"
+            min="50"
+            max="400"
+            step="25"
+            value="100"
+        /></label>
+        <span id="zoom-label">100%</span>
+      </fieldset>
+      <p id="status" role="status">Choose a PDF. Files stay in this browser.</p>
+      <output id="timings" aria-live="polite"></output>
+    </header>
+    <main id="viewport" aria-label="PDF page">
+      <canvas id="canvas" hidden></canvas>
+    </main>
+    <script type="module" src="./main.mjs"></script>
+  </body>
+</html>

@@ -38,8 +38,10 @@ export class PdfDocuments {
     this.documents.set(id, entry);
     entry.promise = Promise.resolve().then(async () => {
       const data = source ?? (await this.readAsset(id));
-      if (this.documents.get(id) !== entry)
+      if (this.documents.get(id) !== entry) {
+        if (!(data instanceof Uint8Array)) await data.close?.();
         throw new Error('PDF loading was cancelled');
+      }
       const worker = new PdfWorkerClient(this.recorder, () => {
         this.trim();
       });

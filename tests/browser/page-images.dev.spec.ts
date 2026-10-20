@@ -325,6 +325,33 @@ test('full and preview display arrive while encoding is held and share one PDF r
   expect(errors).toEqual([]);
 });
 
+test('a cold sidebar thumbnail shares the master without holding up preparation', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  const result = await page.evaluate(() =>
+    window.pageImages.thumbnailPreparation(),
+  );
+  expect(result.completedWhileThumbnailPending).toBe(1);
+  expect(result.calls).toHaveLength(2);
+  expect(result.calls.every((call) => call.dimension === 3300)).toBe(true);
+  expect(result.preview).toEqual({
+    width: 640,
+    height: 7,
+    left: green,
+    right: magenta,
+  });
+  expect(result.full).toEqual({
+    width: 3300,
+    height: 33,
+    left: green,
+    right: magenta,
+  });
+  expect(result.status.completed).toBe(2);
+  expect(result.status.failed).toBe(0);
+  expect(errors).toEqual([]);
+});
+
 test('preparation pause preserves its queue and progress counts saved pages after encoding', async ({
   page,
 }) => {

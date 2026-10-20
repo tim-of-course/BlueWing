@@ -208,19 +208,29 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
       typeof row.byte_length !== 'number'
     )
       throw new Error(`Missing asset: ${id}`);
-    return nativeRange(row.byte_length, (offset, length) =>
-      this.call('database_read_blob', {
-        table: 'assets',
-        column: 'data',
-        rowId: row.row_id,
-        offset,
-        length,
-      }),
+    const snapshot = await this.call<{ token: string; length: number }>(
+      'database_snapshot_blob',
+      { table: 'assets', column: 'data', rowId: row.row_id },
     );
+    return {
+      ...nativeRange(snapshot.length, (offset, length) =>
+        this.call('file_snapshot_read', {
+          token: snapshot.token,
+          offset,
+          length,
+        }),
+      ),
+      close: () =>
+        this.call('file_snapshot_release', { token: snapshot.token }),
+    };
   }
   async readAsset(id: string): Promise<Uint8Array> {
     const source = await this.openAsset(id);
-    return source.read(0, source.length);
+    try {
+      return await source.read(0, source.length);
+    } finally {
+      await source.close?.();
+    }
   }
   async close(): Promise<void> {
     await this.call('database_close');

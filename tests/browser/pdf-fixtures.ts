@@ -141,11 +141,11 @@ export function transparencyPdf(): Uint8Array {
   ]);
 }
 
-export function rotatedCropPdf(): Uint8Array {
+export function rotatedCropPdf(rotation = 90, userUnit = 1): Uint8Array {
   return pdf([
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 80] /CropBox [10 20 90 60] /Rotate 90 /Resources << >> /Contents 4 0 R >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 80] /CropBox [10 20 90 60] /Rotate ${String(rotation)} /UserUnit ${String(userUnit)} /Resources << >> /Contents 4 0 R >>`,
     stream(
       '1 0 0 rg 0 0 50 80 re f 0 0 1 rg 50 0 50 80 re f 0 1 0 rg 10 20 12 10 re f',
     ),
@@ -167,9 +167,56 @@ export function viewAnnotationPdf(): Uint8Array {
   ]);
 }
 
+export function widgetPdf(): Uint8Array {
+  return pdf([
+    '<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [5 0 R] >> /PageLabels << /Nums [0 << /P (A-) /S /D /St 3 >>] >> >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 128 96] /Resources << >> /Contents 4 0 R /Annots [5 0 R] >>',
+    stream('0 0 1 rg 0 0 128 96 re f'),
+    '<< /Type /Annot /Subtype /Widget /FT /Tx /T (Note) /V (Field value) /Rect [16 24 80 72] /F 0 /AP << /N 6 0 R >> >>',
+    stream(
+      '1 0 0 rg 0 0 64 48 re f',
+      '/Type /XObject /Subtype /Form /BBox [0 0 64 48] /Resources << >>',
+    ),
+  ]);
+}
+
+export function hiddenLayerPdf(): Uint8Array {
+  return pdf([
+    '<< /Type /Catalog /Pages 2 0 R /OCProperties 7 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 64] /Resources << /Properties << /Hidden 5 0 R >> >> /Contents 4 0 R >>',
+    stream(
+      '0 0 1 rg 0 0 64 64 re f /OC /Hidden BDC 1 0 0 rg 0 0 64 64 re f EMC',
+    ),
+    '<< /Type /OCG /Name (Hidden drawing) >>',
+    stream(' '.repeat(600_000)),
+    '<< /OCGs [5 0 R] /D << /BaseState /ON /OFF [5 0 R] >> >>',
+    stream(' '.repeat(600_000)),
+  ]);
+}
+
+export function fallbackBoxPdf(
+  kind: 'missing' | 'empty' | 'disjoint',
+): Uint8Array {
+  const box =
+    kind === 'missing'
+      ? ''
+      : kind === 'empty'
+        ? '/MediaBox [0 0 0 0]'
+        : '/MediaBox [0 0 64 64] /CropBox [70 70 80 80]';
+  return pdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R ${box} /Resources << >> /Contents 4 0 R >>`,
+    stream('0 0 1 rg 0 0 612 792 re f'),
+  ]);
+}
+
 export async function embeddedFontPdf(): Promise<Uint8Array> {
+  // This fixture's dependency is development-only; no PDF.js assets ship.
   // This 17 KiB CFF is shipped by the pinned PDF.js package. Embed its actual
-  // program so both renderers must load a native FontFace instead of falling back.
+  // program so both renderers must decode the embedded font instead of falling back.
   const response = await fetch('/pdfjs/standard_fonts/FoxitFixed.pfb');
   if (!response.ok) throw new Error('Embedded font fixture unavailable');
   const font = new Uint8Array(await response.arrayBuffer());
@@ -186,7 +233,23 @@ export async function embeddedFontPdf(): Promise<Uint8Array> {
   ]);
 }
 
-/** Unused streams occupy gaps; allocate only the ranges PDF.js requests. */
+/** Open a later leaf without first enumerating the nested page tree. */
+export function nestedPagesPdf() {
+  return pdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 4 >>',
+    '<< /Type /Pages /Parent 2 0 R /Kids [5 0 R 6 0 R] /Count 2 >>',
+    '<< /Type /Pages /Parent 2 0 R /Kids [7 0 R 8 0 R] /Count 2 >>',
+    ...[3, 3, 4, 4].map(
+      (parent, index) =>
+        `<< /Type /Page /Parent ${String(parent)} 0 R /MediaBox [0 0 64 64] /Resources << >> /Contents ${index === 3 ? '10' : '9'} 0 R >>`,
+    ),
+    stream('1 0 0 rg 0 0 64 64 re f'),
+    stream('0 0 1 rg 0 0 64 64 re f'),
+  ]);
+}
+
+/** Unused streams occupy gaps; allocate only the ranges the engine requests. */
 export function sparsePdf(twoPages = false) {
   const compact = new TextDecoder()
     .decode(vectorPdf())

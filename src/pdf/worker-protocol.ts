@@ -48,9 +48,7 @@ export type PdfWorkerRequest =
   | {
       type: 'open';
       id: number;
-      parserPort: MessagePort;
       source: { bytes: Uint8Array } | { length: number };
-      assetBaseUrl: string;
     }
   | { type: 'import'; id: number; assetId: string; name: string }
   | { type: 'name'; id: number; sheet: Sheet }

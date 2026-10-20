@@ -24,20 +24,16 @@ interface Pending {
   cleanup(): void;
 }
 
-/** Owns both threads. Parser/font/operator traffic never traverses the UI. */
+/** Owns one PDFium worker; PDF parsing and drawing never run on the UI. */
 export class PdfWorkerClient {
   private readonly renderer = new Worker(
     new URL('./render-worker.ts', import.meta.url),
     { type: 'module' },
   );
-  private readonly parser = new Worker('/pdfjs/parser-bridge.mjs', {
-    type: 'module',
-  });
   private readonly pending = new Map<number, Pending>();
   private sequence = 0;
   private closed = false;
   private source: AssetRange | undefined;
-  private rejectConnection: ((reason: Error) => void) | undefined;
 
   constructor(
     private readonly recorder?: PerformanceRecorder,
@@ -46,7 +42,7 @@ export class PdfWorkerClient {
     this.renderer.onmessage = (event: MessageEvent<PdfWorkerResponse>) => {
       void this.receive(event.data);
     };
-    this.renderer.onerror = this.parser.onerror = (event) => {
+    this.renderer.onerror = (event) => {
       this.destroy(new Error(event.message));
     };
   }
@@ -59,20 +55,6 @@ export class PdfWorkerClient {
   }
 
   async open(source: Uint8Array | AssetRange) {
-    const channel = new MessageChannel();
-    await new Promise<void>((resolve, reject) => {
-      this.rejectConnection = reject;
-      this.parser.onmessage = (event: MessageEvent<{ type?: string }>) => {
-        // PDF.js also posts its own startup message on the parent channel.
-        // Wait for the bridge to confirm the renderer's direct port is attached.
-        if (event.data.type !== 'connected') return;
-        this.rejectConnection = undefined;
-        resolve();
-      };
-      this.parser.postMessage({ type: 'connect', port: channel.port1 }, [
-        channel.port1,
-      ]);
-    });
     if (!(source instanceof Uint8Array)) this.source = source;
     const bytes = source instanceof Uint8Array ? source : undefined;
     const end = this.recorder?.span('pdf.worker.open');
@@ -80,13 +62,11 @@ export class PdfWorkerClient {
       return await this.request<{ numPages: number }>(
         {
           type: 'open',
-          parserPort: channel.port2,
           source: bytes ? { bytes } : { length: source.length },
-          assetBaseUrl: new URL('/pdfjs/', location.href).href,
         },
         undefined,
         undefined,
-        [channel.port2, ...(bytes ? [bytes.buffer as ArrayBuffer] : [])],
+        bytes ? [bytes.buffer as ArrayBuffer] : [],
       );
     } finally {
       end?.();
@@ -333,10 +313,9 @@ export class PdfWorkerClient {
   destroy(reason = new Error('PDF loading was cancelled')) {
     if (this.closed) return;
     this.closed = true;
-    this.rejectConnection?.(reason);
     for (const id of this.pending.keys()) this.fail(id, reason);
     this.renderer.terminate();
-    this.parser.terminate();
+    void this.source?.close?.().catch(() => undefined);
     this.source = undefined;
   }
 }

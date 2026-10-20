@@ -19,6 +19,7 @@ import type {
 } from '../core/types';
 import { createStorage } from '../platform/storage';
 import { NativeStorage } from '../platform/storage';
+import type { AssetRange } from '../platform/storage-model';
 import { resolveConstruction } from '../core/applied-assemblies';
 import {
   buildConstructionScene,
@@ -776,14 +777,26 @@ export class Application {
       const session = this.session;
       if (!session) throw new Error('Open a project first');
       this.storage.stageAsset({ id, ...file });
-      const sheets = await this.pdf.import(
-        id,
-        file.name,
-        file.nativeSource ? nativeFileSource(file.nativeSource) : file.data,
-      );
-      // Finish reading the temporary snapshot before publishing saved sheets.
-      // Their renders reopen the SQLite source using ranges, after the commit.
-      if (file.nativeSource) await this.pdf.release(id);
+      let source: Uint8Array | AssetRange = file.data;
+      let saved = false;
+      if (file.nativeSource && this.storage instanceof NativeStorage) {
+        const snapshot = nativeFileSource(file.nativeSource);
+        const storage = this.storage;
+        let stored: Promise<AssetRange> | undefined;
+        source = {
+          length: snapshot.length,
+          read: (offset, length) =>
+            saved
+              ? (stored ??= storage.openAsset(id)).then((asset) =>
+                  asset.read(offset, length),
+                )
+              : snapshot.read(offset, length),
+          close: async () => {
+            if (stored) await (await stored).close?.();
+          },
+        };
+      }
+      const sheets = await this.pdf.import(id, file.name, source);
       const firstOrder =
         Math.max(
           -1,
@@ -794,6 +807,10 @@ export class Application {
       sheets.forEach((sheet, index) => {
         sheet.order = firstOrder + index;
       });
+      // Import has finished all snapshot reads. Keep its parsed document; any
+      // later missing ranges come from the identical committed asset. Publish
+      // happens only after dispatch saves, so viewers cannot read it too early.
+      saved = true;
       await session.dispatch({
         name: 'batch',
         payload: {
