@@ -1,0 +1,13 @@
+Bluewing modifications to libjxl 0.12.0
+Pinned source: a7a9c787341cf703dede03c2009fa460cae5e5df
+
+codecs/jpeg-xl/libjxl-memory.patch changes encoder buffer lifetimes.
+codecs/jpeg-xl/libjxl-dc.patch appends a private bounded DC exporter to
+lib/jxl/decode.cc. It reads decoded DC without flushing the full frame,
+uses OpsinToLinear plus the default CMS for linear-sRGB to sRGB conversion,
+and packs a reduced opaque RGBA8 snapshot. Unsupported images return zero.
+Decoder continuation and the full-resolution output path are unchanged.
+
+Source patches, facade, build instructions, and validation are in
+codecs/jpeg-xl. Upstream copyright, license, and patent notices accompany
+this file. Emscripten 4.0.23 builds the single-thread SIMD WASM assets.

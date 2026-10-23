@@ -22,4 +22,4 @@ target_link_options(bluewing-jxl PRIVATE
   -sINITIAL_MEMORY=33554432 -sSTACK_SIZE=1048576
   -sMALLOC=emmalloc -sABORTING_MALLOC=0
   "-sEXPORTED_RUNTIME_METHODS=['HEAPU8']"
-  "-sEXPORTED_FUNCTIONS=['_malloc','_free','_bw_encode','_bw_encoded_data','_bw_encoded_size','_bw_encoded_free','_bw_decoder_new','_bw_decoder_delete','_bw_decoder_feed','_bw_decoder_flush','_bw_decoder_width','_bw_decoder_height','_bw_decoder_pixels','_bw_decoder_ratio']")
+  "-sEXPORTED_FUNCTIONS=['_malloc','_free','_bw_encode','_bw_encoded_data','_bw_encoded_size','_bw_encoded_free','_bw_decoder_new','_bw_decoder_delete','_bw_decoder_feed','_bw_decoder_flush','_bw_decoder_dc','_bw_decoder_width','_bw_decoder_height','_bw_decoder_pixels','_bw_decoder_ratio']")

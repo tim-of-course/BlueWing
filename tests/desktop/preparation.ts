@@ -277,45 +277,52 @@ try {
   );
   // Exercise the saved master after all decoded images and document workers close.
   await page.keyboard.press('Escape');
-  await call('project.close', {}, true);
-  await call('performance.start');
-  await call('project.open', { path: join(temporary, 'test.bluewing') });
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('[aria-label="Drawing canvas"]')
-        ?.getAttribute('aria-busy') === 'false',
-  );
-  const reopened = await call<PerformanceReport>('performance.stop');
-  await writeFile(
-    join(evidence, 'reopened.json'),
-    JSON.stringify(reopened, null, 2),
-  );
-  const displays = reopened.events.filter((event) =>
-    ['page.firstDisplay', 'page.display', 'page.progress'].includes(event.name),
-  );
-  console.log(JSON.stringify({ reopened: displays }));
-  assert(
-    reopened.events.some(
-      (event) =>
-        event.name === 'page.firstDisplay' &&
-        event.data.purpose === 'progressive',
-    ),
-    'A real JPEG XL pass must paint before the full master',
-  );
-  assert(
-    reopened.events.some(
-      (event) =>
-        event.name === 'page.cache.hit' &&
-        event.data.cacheSource === 'disk' &&
-        Number(event.data.dimension) >= 7000,
-    ),
-    'Reopen must decode the complete master from disk',
-  );
-  assert(
-    !reopened.events.some((event) => event.name === 'pdf.raster.request'),
-    'Saved master must reopen without another PDF render',
-  );
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await call('project.close', {}, true);
+    await call('performance.start');
+    await call('project.open', { path: join(temporary, 'test.bluewing') });
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector('[aria-label="Drawing canvas"]')
+          ?.getAttribute('aria-busy') === 'false',
+    );
+    const reopened = await call<PerformanceReport>('performance.stop');
+    await writeFile(
+      join(
+        evidence,
+        attempt ? `reopened-${String(attempt + 1)}.json` : 'reopened.json',
+      ),
+      JSON.stringify(reopened, null, 2),
+    );
+    const displays = reopened.events.filter((event) =>
+      ['page.firstDisplay', 'page.display', 'page.progress'].includes(
+        event.name,
+      ),
+    );
+    console.log(JSON.stringify({ attempt: attempt + 1, reopened: displays }));
+    assert(
+      reopened.events.some(
+        (event) =>
+          event.name === 'page.firstDisplay' &&
+          event.data.purpose === 'progressive',
+      ),
+      'A real JPEG XL pass must paint before the full master',
+    );
+    assert(
+      reopened.events.some(
+        (event) =>
+          event.name === 'page.cache.hit' &&
+          event.data.cacheSource === 'disk' &&
+          Number(event.data.dimension) >= 7000,
+      ),
+      'Reopen must decode the complete master from disk',
+    );
+    assert(
+      !reopened.events.some((event) => event.name === 'pdf.raster.request'),
+      'Saved master must reopen without another PDF render',
+    );
+  }
 } finally {
   await execute('taskkill', ['/PID', String(desktop.pid), '/T', '/F']).catch(
     () => undefined,

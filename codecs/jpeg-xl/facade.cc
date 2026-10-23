@@ -13,6 +13,8 @@
 #include <new>
 #include <vector>
 
+extern "C" int BluewingDecoderDC(JxlDecoder*, uint8_t*, size_t);
+
 namespace {
 struct Encoded { std::vector<uint8_t> bytes; size_t written = 0; };
 struct Source { const uint8_t* rgba; uint32_t width; };
@@ -20,6 +22,7 @@ struct Decoder {
   JxlDecoder* codec = JxlDecoderCreate(nullptr);
   std::vector<uint8_t> tail;
   std::vector<uint8_t> pixels;
+  std::vector<uint8_t> dc_pixels;
   uint32_t width = 0, height = 0;
   size_t ratio = 0;
   bool final = false;
@@ -191,6 +194,12 @@ int bw_decoder_flush(Decoder* dec) {
   return 0;
 }
 uint32_t bw_decoder_width(const Decoder* dec) { return dec ? dec->width : 0; }
+uint8_t* bw_decoder_dc(Decoder* dec) {
+  if (!dec || dec->final || dec->ratio != 8) return nullptr;
+  dec->dc_pixels.resize(size_t((dec->width + 7) / 8) * ((dec->height + 7) / 8) * 4);
+  return BluewingDecoderDC(dec->codec, dec->dc_pixels.data(), dec->dc_pixels.size())
+      ? dec->dc_pixels.data() : nullptr;
+}
 uint32_t bw_decoder_height(const Decoder* dec) { return dec ? dec->height : 0; }
 uint8_t* bw_decoder_pixels(Decoder* dec) { return dec && !dec->pixels.empty() ? dec->pixels.data() : nullptr; }
 size_t bw_decoder_ratio(const Decoder* dec) { return dec ? dec->ratio : 0; }

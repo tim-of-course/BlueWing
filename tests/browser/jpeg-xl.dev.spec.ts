@@ -6,6 +6,8 @@ import type {
 } from '../../src/pdf/page-images';
 import type { planClarityPdf as Fixture } from './pdf-fixtures';
 import type { RasterLease } from '../../src/pdf/raster';
+import type { decodeJpegXl as Decode } from '../../src/pdf/jpeg-xl-decode';
+import type { jpegXlModule as Codec } from '../../src/pdf/jpeg-xl';
 
 test('one quality-80 JPEG XL cache image yields real coarse, screen and final pixels', async ({
   page,
@@ -55,7 +57,9 @@ test('one quality-80 JPEG XL cache image yields real coarse, screen and final pi
     const cached = new PageImages(() => {
       throw new Error('Saved JXL must not rerender the PDF');
     }, store);
-    const pixels = (lease: RasterLease) => {
+    const pixels = (
+      lease: Pick<RasterLease, 'source' | 'width' | 'height'>,
+    ) => {
       const canvas = document.createElement('canvas');
       canvas.width = lease.width;
       canvas.height = lease.height;
@@ -99,10 +103,70 @@ test('one quality-80 JPEG XL cache image yields real coarse, screen and final pi
         if ((after[i] ?? 255) < 200) afterInk++;
       }
       const bytes = stored.get(key);
+      if (!bytes) throw new Error('Missing encoded JPEG XL master');
+      const decodePath = '/src/pdf/jpeg-xl-decode.ts',
+        codecPath = '/src/pdf/jpeg-xl.ts';
+      const { decodeJpegXl } = (await import(decodePath)) as {
+        decodeJpegXl: typeof Decode;
+      };
+      const { jpegXlModule } = (await import(codecPath)) as {
+        jpegXlModule: typeof Codec;
+      };
+      const codec = await jpegXlModule();
+      const flush = codec._bw_decoder_flush.bind(codec),
+        dc = codec._bw_decoder_dc.bind(codec);
+      let flushes = 0,
+        dcImages = 0;
+      codec._bw_decoder_flush = (decoder) => {
+        flushes++;
+        return flush(decoder);
+      };
+      codec._bw_decoder_dc = (decoder) => {
+        const pointer = dc(decoder);
+        if (pointer) dcImages++;
+        return pointer;
+      };
+      const fitStages: {
+        stage: string;
+        dimension: number;
+        ink: number;
+        fullFlushes: number;
+      }[] = [];
+      try {
+        const fit = await decodeJpegXl(
+          bytes,
+          () => true,
+          (bitmap, stage) => {
+            const data = pixels({
+              source: bitmap,
+              width: bitmap.width,
+              height: bitmap.height,
+            });
+            let ink = 0;
+            for (let i = 0; i < data.length; i += 4)
+              if ((data[i] ?? 255) < 240) ink++;
+            fitStages.push({
+              stage,
+              dimension: Math.max(bitmap.width, bitmap.height),
+              ink,
+              fullFlushes: flushes,
+            });
+            bitmap.close();
+          },
+          128,
+        );
+        fit.close();
+      } finally {
+        codec._bw_decoder_flush = flush;
+        codec._bw_decoder_dc = dc;
+      }
       return {
         stages,
-        header: [...(bytes?.slice(0, 2) ?? [])],
-        encodedBytes: bytes?.length,
+        fitStages,
+        dcImages,
+        fullFlushes: flushes,
+        header: [...bytes.slice(0, 2)],
+        encodedBytes: bytes.length,
         width: final.width,
         height: final.height,
         expectedWidth: original.width,
@@ -134,6 +198,15 @@ test('one quality-80 JPEG XL cache image yields real coarse, screen and final pi
     Math.max(result.stages[1]?.width ?? 0, result.stages[1]?.height ?? 0),
   ).toBe(512);
   expect(result.stages.every((stage) => stage.ink > 0)).toBe(true);
+  expect(
+    result.fitStages.map((stage) => [stage.stage, stage.dimension]),
+  ).toEqual([
+    ['coarse', 64],
+    ['screen', 128],
+  ]);
+  expect(result.fitStages.every((stage) => stage.ink > 0)).toBe(true);
+  expect(result.dcImages).toBe(1);
+  expect(result.fullFlushes).toBe(0);
   expect([result.width, result.height]).toEqual([
     result.expectedWidth,
     result.expectedHeight,

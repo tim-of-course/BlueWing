@@ -5,6 +5,7 @@ for (const name of [
   '_bw_encoded_data',
   '_bw_decoder_new',
   '_bw_decoder_pixels',
+  '_bw_decoder_dc',
 ]) {
   const native = Module[name];
   Module[name] = (...args) => native(...args) >>> 0;

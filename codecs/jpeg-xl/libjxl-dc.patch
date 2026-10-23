@@ -1,0 +1,50 @@
+diff --git a/lib/jxl/decode.cc b/lib/jxl/decode.cc
+--- a/lib/jxl/decode.cc
++++ b/lib/jxl/decode.cc
+@@ -3005,3 +3005,46 @@
+   dec->image_out_bit_depth = *bit_depth;
+   return JXL_DEC_SUCCESS;
+ }
++
++// Bluewing-only bounded DC snapshot for the pinned opaque still-image encoder.
++// This reads DC without calling FrameDecoder::Flush or changing decoder state.
++#include <jxl/cms.h>
++#include "lib/jxl/dec_external_image.h"
++#include "lib/jxl/dec_xyb.h"
++
++extern "C" int BluewingDecoderDC(JxlDecoder* dec, uint8_t* rgba, size_t size) {
++  if (!dec || !rgba || dec->downsampling_target != 8 ||
++      dec->frame_stage != FrameStage::kFull || !dec->frame_dec ||
++      !dec->frame_dec->HasDecodedDC() || !dec->passes_state ||
++      !dec->frame_header) return 0;
++  const auto& m = dec->metadata.m;
++  const auto& frame = *dec->frame_header;
++  const auto& encoding = dec->passes_state->output_encoding_info;
++  if (m.have_animation || m.orientation != 1 || !m.extra_channel_info.empty() ||
++      !m.xyb_encoded || frame.encoding != jxl::FrameEncoding::kVarDCT ||
++      frame.color_transform != jxl::ColorTransform::kXYB ||
++      frame.frame_type != jxl::FrameType::kRegularFrame || !frame.is_last ||
++      frame.custom_size_or_origin || frame.upsampling != 1 || frame.dc_level != 0 ||
++      frame.chroma_subsampling.MaxHShift() || frame.chroma_subsampling.MaxVShift() ||
++      encoding.color_encoding.GetColorSpace() != jxl::ColorSpace::kRGB ||
++      (frame.flags & (jxl::FrameHeader::kNoise | jxl::FrameHeader::kPatches |
++                      jxl::FrameHeader::kSplines)) ||
++      !encoding.all_default_opsin || !encoding.color_encoding.IsSRGB()) return 0;
++  const size_t width = (dec->metadata.xsize() + 7) / 8;
++  const size_t height = (dec->metadata.ysize() + 7) / 8;
++  const auto* dc = dec->passes_state->shared->dc;
++  if (!dc || dc->xsize() < width || dc->ysize() < height ||
++      size != width * height * 4) return 0;
++  auto created = jxl::Image3F::Create(&dec->memory_manager, width, height);
++  if (!created.ok()) return 0;
++  auto linear = std::move(created).value_();
++  if (!jxl::OpsinToLinear(*dc, jxl::Rect(0, 0, width, height), nullptr,
++                          &linear, encoding.opsin_params)) return 0;
++  jxl::ImageBundle small(&dec->memory_manager, &m);
++  if (!small.SetFromImage(std::move(linear), jxl::ColorEncoding::LinearSRGB()) ||
++      !small.TransformTo(encoding.color_encoding, *JxlGetDefaultCms())) return 0;
++  return jxl::ConvertToExternal(small, 8, false, 4, JXL_NATIVE_ENDIAN,
++                                width * 4, nullptr, rgba, size,
++                                jxl::PixelCallback(), jxl::Orientation::kIdentity)
++             ? 1 : 0;
++}

@@ -29,11 +29,12 @@ def checkout(name, url, revision):
 def main():
     SCRATCH.mkdir(parents=True, exist_ok=True)
     source = checkout("libjxl", "https://github.com/libjxl/libjxl.git", JXL_REV)
-    patch = ROOT / "codecs/jpeg-xl/libjxl-memory.patch"
-    applied = subprocess.run(["git", "-C", str(source), "apply", "--reverse", "--check", str(patch)],
-                             capture_output=True).returncode == 0
-    if not applied:
-        run("git", "-C", source, "apply", patch)
+    for name in ("libjxl-memory.patch", "libjxl-dc.patch"):
+        patch = ROOT / "codecs/jpeg-xl" / name
+        applied = subprocess.run(["git", "-C", str(source), "apply", "--reverse", "--check", str(patch)],
+                                 capture_output=True).returncode == 0
+        if not applied:
+            run("git", "-C", source, "apply", patch)
     run("git", "-C", source, "submodule", "update", "--init", "--depth", "1", "--",
         "third_party/brotli", "third_party/highway", "third_party/skcms")
     sdk = checkout("emsdk", "https://github.com/emscripten-core/emsdk.git", EMSDK_REV)
@@ -65,6 +66,7 @@ def main():
         "emscripten": sdk / "upstream/emscripten/LICENSE",
     }.items():
         shutil.copyfile(path, licenses / f"{name}.txt")
+    shutil.copyfile(ROOT / "codecs/jpeg-xl/NOTICE.txt", licenses / "bluewing-modifications.txt")
 
 
 if __name__ == "__main__":

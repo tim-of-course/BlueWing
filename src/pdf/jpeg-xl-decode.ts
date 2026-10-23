@@ -17,10 +17,11 @@ export async function decodeJpegXl(
   let status = 2;
   let coarse = false;
   let screen = false;
-  async function snapshot(dimension?: number) {
-    const width = module._bw_decoder_width(decoder);
-    const height = module._bw_decoder_height(decoder);
-    const pointer = module._bw_decoder_pixels(decoder);
+  async function snapshot(dimension?: number, dcPixels = 0) {
+    const ratio = dcPixels ? 8 : 1;
+    const width = Math.ceil(module._bw_decoder_width(decoder) / ratio);
+    const height = Math.ceil(module._bw_decoder_height(decoder) / ratio);
+    const pointer = dcPixels || module._bw_decoder_pixels(decoder);
     if (!pointer || !width || !height)
       throw new Error('JPEG XL pixels are unavailable');
     const pixels = new ImageData(
@@ -61,16 +62,30 @@ export async function decodeJpegXl(
             module._bw_decoder_width(decoder),
             module._bw_decoder_height(decoder),
           ) / Math.max(1, module._bw_decoder_ratio(decoder));
-        const stage: RasterStage = coarse ? 'screen' : 'coarse';
-        const target = screenDimension / (coarse ? 1 : 2);
-        if (!coarse || available >= target) {
-          if (module._bw_decoder_flush(decoder) !== 0)
+        if (!coarse || available >= screenDimension) {
+          // The first pass already contains a small XYB image. Convert it
+          // directly instead of expanding it to the full 200 DPI master.
+          const dcPixels =
+            module._bw_decoder_ratio(decoder) === 8
+              ? module._bw_decoder_dc(decoder)
+              : 0;
+          if (!dcPixels && module._bw_decoder_flush(decoder) !== 0)
             throw new Error('JPEG XL progressive flush failed');
-          const bitmap = await snapshot(Math.min(target, available));
-          if (active()) progress(bitmap, stage);
-          else bitmap.close();
-          if (coarse) screen = true;
-          coarse = true;
+          const publish = async (dimension: number, stage: RasterStage) => {
+            const bitmap = await snapshot(dimension, dcPixels);
+            if (active()) progress(bitmap, stage);
+            else bitmap.close();
+          };
+          if (!coarse) {
+            await publish(Math.min(screenDimension / 2, available), 'coarse');
+            coarse = true;
+          }
+          // A coarse encoded pass can already contain enough samples for the
+          // whole screen. Do not wait for or flush a needlessly finer pass.
+          if (active() && available >= screenDimension) {
+            await publish(screenDimension, 'screen');
+            screen = true;
+          }
         }
       }
       // Cancellation reaches the worker between passes, without moving codec work to the UI.
