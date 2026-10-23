@@ -81,6 +81,13 @@
   font-style: italic;
   color: #94a3b8;
 }
+.sheet-row[data-recent-rank]:not(.active) {
+  background: hsl(
+    38 92% 50% / calc(0.04 + (10 - var(--sheet-recent-rank)) * 0.02)
+  );
+  box-shadow: inset 2px 0
+    hsl(38 92% 60% / calc(0.18 + (10 - var(--sheet-recent-rank)) * 0.07));
+}
 .row-name {
   overflow: hidden;
   white-space: nowrap;

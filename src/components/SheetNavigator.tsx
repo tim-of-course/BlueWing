@@ -110,6 +110,23 @@ export default function SheetNavigator(props: Props) {
     },
   );
   const [filter, setFilter] = createSignal('');
+  const recentSheets = createMemo<{
+    session: ReturnType<typeof projectSession>;
+    ids: string[];
+  }>(
+    (previous) => {
+      const session = projectSession();
+      const activeId = props.controller.activeSheetId();
+      const ids = previous?.session === session ? previous.ids : [];
+      if (!activeId || ids[0] === activeId)
+        return previous?.session === session ? previous : { session, ids };
+      return {
+        session,
+        ids: [activeId, ...ids.filter((id) => id !== activeId)].slice(0, 10),
+      };
+    },
+    { name: 'navigator.pageHistory' },
+  );
   const [collapsed, setCollapsed] = createSignal<string[]>([], {
     name: 'navigator.collapsedSheets',
   });
@@ -213,11 +230,18 @@ export default function SheetNavigator(props: Props) {
   const rowState = createProjection<
     Record<
       string,
-      { active: boolean; expanded: boolean; drop: boolean; visible: boolean }
+      {
+        active: boolean;
+        expanded: boolean;
+        drop: boolean;
+        visible: boolean;
+        recentRank: number;
+      }
     >
   >(
     (draft) => {
       const active = props.controller.activeSheetId();
+      const recent = recentSheets().ids;
       const drop = dropTarget();
       const filtering = !!term();
       const hiddenGroups = new Set(collapsed());
@@ -229,8 +253,10 @@ export default function SheetNavigator(props: Props) {
           expanded: true,
           drop: false,
           visible: true,
+          recentRank: 0,
         });
         state.active = sheet.id === active;
+        state.recentRank = recent.indexOf(sheet.id) + 1;
         state.expanded = filtering || !hiddenGroups.has(sheet.id);
         state.drop = sheet.id === drop;
         state.visible = props.controller.isSheetVisible(sheet.id);
@@ -241,6 +267,14 @@ export default function SheetNavigator(props: Props) {
     {},
     { name: 'navigator.sheetRowState' },
   );
+  const historyTitle = (sheet: Sheet) => {
+    const state = rowState[sheet.id];
+    if (state?.active) return `${sheet.name} · Current page`;
+    const age = (state?.recentRank ?? 0) - 1;
+    return age < 0
+      ? sheet.name
+      : `${sheet.name} · Opened ${String(age)} page${age === 1 ? '' : 's'} ago`;
+  };
   const run = (action: () => Promise<unknown>) => {
     const report = props.onError;
     void action().catch((error: unknown) => {
@@ -663,7 +697,14 @@ export default function SheetNavigator(props: Props) {
                     !sheet().calibration ? 'uncalibrated' : '',
                   ]}
                   aria-label={`${sheet().name}${sheet().calibration ? '' : ', uncalibrated'}`}
-                  title={sheet().name}
+                  data-recent-rank={
+                    rowState[sheet().id]?.recentRank || undefined
+                  }
+                  style={{
+                    '--sheet-recent-rank':
+                      rowState[sheet().id]?.recentRank ?? 0,
+                  }}
+                  title={historyTitle(sheet())}
                   aria-current={
                     rowState[sheet().id]?.active ? 'page' : undefined
                   }

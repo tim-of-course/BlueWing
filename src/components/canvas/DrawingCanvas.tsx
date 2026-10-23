@@ -19,7 +19,10 @@ import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
 import { registerCanvasCapture } from '../../platform/canvas-capture';
-import { pageImageDimension } from '../../pdf/page-images';
+import {
+  pageImageDimension,
+  PAGE_PREVIEW_DIMENSION,
+} from '../../pdf/page-images';
 import type { RasterLease } from '../../pdf/raster';
 import type { FinishPerformanceSpan } from '../../performance/recorder';
 
@@ -402,6 +405,7 @@ export default function DrawingCanvas(props: {
       stopBrush();
       let cancelled = false;
       const renderAbort = new AbortController();
+      const previewAbort = new AbortController();
       const startedAt = performance.now();
       // Includes acquisition, decoding and the wait for the first full canvas
       // draw. This measures draw submission, not GPU presentation to the screen.
@@ -409,15 +413,34 @@ export default function DrawingCanvas(props: {
         pageId: current.id,
       });
       const cached = controller.cachedSheetImage(current);
+      const preview = cached ? null : controller.cachedSheetPreview(current);
+      let fullReady = !!cached;
       replaceImage(
         cached
           ? { sheet: current, lease: cached, full: true, finishDisplay }
-          : null,
+          : preview
+            ? { sheet: current, lease: preview, full: false }
+            : null,
       );
+      if (!cached && !preview) {
+        // A saved preview can arrive before the master finishes decoding. Both
+        // requests share the existing page cache and a cold master render.
+        void controller
+          .acquireSheet(current, PAGE_PREVIEW_DIMENSION, previewAbort.signal)
+          .then((rendered) => {
+            if (cancelled || fullReady) rendered.release();
+            else replaceImage({ sheet: current, lease: rendered, full: false });
+          })
+          .catch(() => {
+            /* The master request owns loading failures. */
+          });
+      }
       void controller
         .acquireSheet(current, pageImageDimension(current), renderAbort.signal)
         .then((rendered) => {
           if (!cancelled) {
+            fullReady = true;
+            previewAbort.abort();
             replaceImage({
               sheet: current,
               lease: rendered,
@@ -442,6 +465,7 @@ export default function DrawingCanvas(props: {
       return () => {
         cancelled = true;
         renderAbort.abort();
+        previewAbort.abort();
         finishDisplay({ success: false, cancelled: true });
       };
     },

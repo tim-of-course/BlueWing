@@ -434,7 +434,10 @@ export class PdfiumDocument {
       if (status !== 2)
         throw new Error('PDFium could not finish rendering this page');
       const canvas = new OffscreenCanvas(width, height);
-      const context = canvas.getContext('2d');
+      // PDFium already supplies CPU pixels. Keep cache encoding on CPU too:
+      // GPU-backed worker canvases share WebView2 graphics resources with the
+      // interactive viewer and can stall its frames during large PNG readback.
+      const context = canvas.getContext('2d', { willReadFrequently: true });
       if (!context) throw new Error('PDF render context unavailable');
       // readBytes owns a copy that survives freeing or growing the WASM heap.
       const rgba = new Uint8ClampedArray(

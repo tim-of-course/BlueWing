@@ -249,7 +249,7 @@ fn bridge_ready(
         window.config().build.dev_url.as_ref(),
         &state.cache.active,
     );
-    let info = json!({"bridgeVersion":8,"webVersion":version,"webSource":source,"cliPath":cli,
+    let info = json!({"bridgeVersion":9,"webVersion":version,"webSource":source,"cliPath":cli,
         "dataDir":bridge.data_dir,"shell": if cfg!(windows) { "powershell" } else { "posix" }});
     bridge.ready.store(true, Ordering::SeqCst);
     Ok(info)
@@ -271,6 +271,7 @@ fn cli_respond(
 }
 pub fn run() {
     tauri::Builder::default()
+        .manage(Arc::new(page_cache::Writes::default()))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             database_open,

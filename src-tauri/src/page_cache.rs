@@ -1,8 +1,12 @@
 use std::{
+    collections::HashMap,
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 use tauri::ipc::{InvokeBody, Request};
+
+pub type Writes = Mutex<HashMap<String, tempfile::NamedTempFile>>;
 
 fn cache_root() -> PathBuf {
     std::env::temp_dir().join("bluewing-page-images-v1")
@@ -59,7 +63,10 @@ pub async fn page_cache_read(key: String) -> Result<tauri::ipc::Response, String
 }
 
 #[tauri::command]
-pub async fn page_cache_write(request: Request<'_>) -> Result<(), String> {
+pub async fn page_cache_write(
+    request: Request<'_>,
+    pending: tauri::State<'_, Arc<Writes>>,
+) -> Result<(), String> {
     let key = request
         .headers()
         .get("x-bluewing-page-cache-key")
@@ -71,9 +78,78 @@ pub async fn page_cache_write(request: Request<'_>) -> Result<(), String> {
         InvokeBody::Raw(bytes) => bytes.clone(),
         InvokeBody::Json(_) => return Err("Page cache write requires raw bytes".into()),
     };
-    tauri::async_runtime::spawn_blocking(move || write(&cache_root(), &key, &data))
-        .await
-        .map_err(|error| error.to_string())?
+    let number = |name: &str| -> Result<Option<u64>, String> {
+        request
+            .headers()
+            .get(name)
+            .map(|value| {
+                value
+                    .to_str()
+                    .map_err(|e| e.to_string())?
+                    .parse::<u64>()
+                    .map_err(|e| e.to_string())
+            })
+            .transpose()
+    };
+    let offset = number("x-bluewing-page-cache-offset")?;
+    let size = number("x-bluewing-page-cache-size")?;
+    let pending = pending.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || match (offset, size) {
+        (None, None) => write(&cache_root(), &key, &data),
+        (Some(offset), Some(size)) => {
+            let mut writes = pending.lock().map_err(|e| e.to_string())?;
+            write_chunk(&cache_root(), &mut writes, &key, offset, size, &data)
+        }
+        _ => Err("Page cache chunk requires offset and size".into()),
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn write_chunk(
+    root: &Path,
+    pending: &mut HashMap<String, tempfile::NamedTempFile>,
+    key: &str,
+    offset: u64,
+    size: u64,
+    data: &[u8],
+) -> Result<(), String> {
+    let path = cache_path(root, key)?;
+    let result = (|| {
+        if data.len() > 256 * 1024
+            || offset
+                .checked_add(data.len() as u64)
+                .is_none_or(|end| end > size)
+        {
+            return Err("Invalid page cache chunk length".to_string());
+        }
+        if offset == 0 {
+            std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+            pending.insert(
+                key.to_owned(),
+                tempfile::NamedTempFile::new_in(root).map_err(|e| e.to_string())?,
+            );
+        }
+        let file = pending
+            .get_mut(key)
+            .ok_or("Page cache write has not started")?;
+        if file.as_file().metadata().map_err(|e| e.to_string())?.len() != offset {
+            return Err("Page cache chunk offset does not match".into());
+        }
+        file.write_all(data).map_err(|e| e.to_string())?;
+        if offset + data.len() as u64 == size {
+            pending
+                .remove(key)
+                .unwrap()
+                .persist(path)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        pending.remove(key);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -92,6 +168,33 @@ mod tests {
         write(&root, KEY, b"replacement").unwrap();
         assert_eq!(read(&root, KEY).unwrap(), b"replacement");
         assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn chunks_publish_only_the_complete_image() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let mut pending = HashMap::new();
+        write(root, KEY, b"old").unwrap();
+        write_chunk(root, &mut pending, KEY, 0, 6, b"abc").unwrap();
+        assert_eq!(read(root, KEY).unwrap(), b"old");
+        write_chunk(root, &mut pending, KEY, 3, 6, b"def").unwrap();
+        assert_eq!(read(root, KEY).unwrap(), b"abcdef");
+        assert!(pending.is_empty());
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn bad_chunk_discards_partial_image_and_keeps_previous_cache() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let mut pending = HashMap::new();
+        write(root, KEY, b"old").unwrap();
+        write_chunk(root, &mut pending, KEY, 0, 6, b"abc").unwrap();
+        assert!(write_chunk(root, &mut pending, KEY, 4, 6, b"ef").is_err());
+        assert!(pending.is_empty());
+        assert_eq!(read(root, KEY).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(root).unwrap().count(), 1);
     }
 
     #[test]

@@ -292,7 +292,7 @@ async function raster(job: RenderJob): Promise<void> {
         Math.ceil(bounds.width * previewScale),
         Math.ceil(bounds.height * previewScale),
       );
-      const context = preview.getContext('2d');
+      const context = preview.getContext('2d', { willReadFrequently: true });
       if (!context) throw new Error('PDF preview context unavailable');
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = 'high';

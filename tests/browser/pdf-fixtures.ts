@@ -54,6 +54,28 @@ function pdf(objects: (string | Uint8Array)[]): Uint8Array {
   return join(parts);
 }
 
+/** Several full architectural sheets exercise pixel transfer, encoding and eviction. */
+export function preparationPdf(): Uint8Array {
+  const count = 7;
+  const objects: (string | Uint8Array)[] = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${Array.from({ length: count }, (_, index) => `${String(3 + index * 2)} 0 R`).join(' ')}] /Count ${String(count)} >>`,
+  ];
+  for (let index = 0; index < count; index++) {
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 2592 3456] /Resources << >> /Contents ${String(4 + index * 2)} 0 R >>`,
+      stream(
+        Array.from(
+          { length: 400 },
+          (_, line) =>
+            `0.2 w ${String(60 + index)} ${String(60 + line * 8)} m 2500 ${String(65 + line * 8)} l S`,
+        ).join('\n'),
+      ),
+    );
+  }
+  return pdf(objects);
+}
+
 export function planClarityPdf(): Uint8Array {
   return pdf([
     '<< /Type /Catalog /Pages 2 0 R >>',

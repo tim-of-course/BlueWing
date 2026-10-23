@@ -24,9 +24,23 @@ export function pageImageStore(native: boolean): PageImageStore | undefined {
         return data.length ? data : null;
       },
       async write(key, bytes) {
-        await invoke('page_cache_write', bytes, {
-          headers: { 'x-bluewing-page-cache-key': await digest(key) },
-        });
+        const digestKey = await digest(key);
+        // WebView2 copies IPC request bodies on its UI thread. Bound each copy.
+        const chunkSize = 256 * 1024;
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          await invoke(
+            'page_cache_write',
+            bytes.subarray(offset, offset + chunkSize),
+            {
+              headers: {
+                'x-bluewing-page-cache-key': digestKey,
+                'x-bluewing-page-cache-offset': String(offset),
+                'x-bluewing-page-cache-size': String(bytes.length),
+              },
+            },
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        }
       },
       async exists(key) {
         return invoke<boolean>('page_cache_exists', { key: await digest(key) });
