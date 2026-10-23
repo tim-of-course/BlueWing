@@ -61,4 +61,14 @@ For the reduced-resolution follow-up, 14 focused Chromium/Firefox cases passed, 
 
 The follow-up production build and all 32 production browser cases passed (`tmp/jxl/dc-build-final.log`, `dc-production.log`). The actual native scenario also passed, including all three progressive reopens described above. No Rust implementation was introduced, no full-page RAM preloading was added, and no merge was performed.
 
+## Development startup regression
+
+The codec build downloaded 24,705 SDK/source files under `tmp/jxl-codec-build`. Vite's root file watcher also traversed those files and native build output. Git ignore rules do not configure Vite's watcher; its documented exclusions omit these generated trees. The fix adds `server.watch.ignored` entries for `**/tmp/**` and `**/src-tauri/target/**`, while retaining normal source watching and the bounded dependency scan. See [Vite's watcher options](https://v8.vite.dev/config/server-options#server-watch).
+
+Guarded actual-WebView2 comparisons reproduced the white home screen. With warmed dependency bundles and the original watcher, 34,860 watched entries across 3,377 directories stalled module/CSS requests for 9–16 seconds; DOM readiness took 20.03 seconds and first contentful paint 20.13 seconds. Using the actual fixed Vite configuration reduced watching to 1,726 entries across 108 directories, DOM readiness to 0.554 seconds and page load to 0.577 seconds. A normal dev-script launch then painted the home screen 0.244 seconds after navigation began (DOM ready 0.152 seconds). That launcher also spent about 14 seconds on compilation/startup before navigation; this is separate from the blank-window interval.
+
+The codec/WASM was not requested during startup in any run. Existing codec loading remains lazy. No background-color or splash-screen workaround was added. Raw local evidence and the native home screenshot are under ignored `tmp/startup/`: `original-warm-deps.log`, `fixed.json`, `desktop.json` and `desktop-home.png`.
+
+Startup-fix verification passed typecheck, lint, formatting, all four focused Chromium/Firefox workspace and real-JPEG-XL cases, and a production build. The native cold-start probes and normal dev launch ran serially through the resource guard. This two-line configuration fix did not add a new test gate; its direct cold-start comparison is recorded above.
+
 For user trials, compare **page.firstDisplay** (first submitted image, possibly progressive), **page.display** (full-resolution draw submission), **page.progress**, and **page.progress.display**. These measure application work and draw submission, not physical monitor presentation. Save recordings and inspect tiny text, thin lines, grayscale scans and colored annotations before choosing a quality setting or merging.

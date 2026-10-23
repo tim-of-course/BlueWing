@@ -37,6 +37,8 @@ export default defineConfig(({ command }) => {
     plugins: [solid({ diagnostics: true })],
     // Codec SDK checkouts under tmp contain their own unrelated HTML fixtures.
     optimizeDeps: { entries: ['index.html', 'tests/browser/*.html'] },
+    // SDK checkouts and native build output can contain tens of thousands of files.
+    server: { watch: { ignored: ['**/tmp/**', '**/src-tauri/target/**'] } },
     worker: { format: 'es' },
     resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },
   };
