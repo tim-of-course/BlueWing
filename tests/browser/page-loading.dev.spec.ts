@@ -4,7 +4,7 @@ import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import type { PageImages as PageImageCache } from '../../src/pdf/page-images';
 import type { RasterResource as Resource } from '../../src/pdf/raster';
-import type { RasterLease } from '../../src/pdf/raster';
+import type { RasterLease, RasterProgress } from '../../src/pdf/raster';
 import type { Project } from '../../src/core/types';
 import { cli } from './wingman';
 
@@ -58,6 +58,7 @@ async function setup(page: Page, cachedPreview: boolean) {
       const resources = new Map<string, Resource>();
       const pending = new Map<string, (lease: RasterLease) => void>();
       const signals = new Map<string, AbortSignal | undefined>();
+      const progress = new Map<string, RasterProgress>();
       const requested: string[] = [],
         released: string[] = [];
       for (const [index, id] of ids.entries()) {
@@ -100,10 +101,16 @@ async function setup(page: Page, cachedPreview: boolean) {
           ? lease(`${sheet.id}/preview`)
           : null;
       };
-      PageImages.prototype.acquire = function (sheet, dimension, signal) {
+      PageImages.prototype.acquire = function (
+        sheet,
+        dimension,
+        signal,
+        observer,
+      ) {
         const key = `${sheet.id}/${dimension === 640 ? 'preview' : 'full'}`;
         requested.push(key);
         signals.set(key, signal);
+        if (observer) progress.set(sheet.id, observer);
         // Intentionally allow late completion after cancellation, like an in-flight decode.
         return new Promise<RasterLease>((resolve) => {
           pending.set(key, resolve);
@@ -116,6 +123,11 @@ async function setup(page: Page, cachedPreview: boolean) {
           if (!resolve) throw new Error(`No pending ${key}`);
           pending.delete(key);
           resolve(lease(key));
+        },
+        progress(id: string) {
+          const observer = progress.get(id);
+          if (!observer) throw new Error(`No progressive request for ${id}`);
+          observer.onProgress(lease(`${id}/preview`), 'coarse');
         },
         requested: () => requested.slice(),
         released: () => released.slice(),
@@ -150,7 +162,7 @@ function row(page: Page, id: string) {
 }
 
 for (const cachedPreview of [true, false]) {
-  test(`page switch paints the ${cachedPreview ? 'resident' : 'loaded'} preview before the full image`, async ({
+  test(`page switch uses progressive pixels with ${cachedPreview ? 'a resident' : 'no'} sidebar preview`, async ({
     page,
   }, info) => {
     const errors: string[] = [];
@@ -165,12 +177,11 @@ for (const cachedPreview of [true, false]) {
         async () => {
           await row(page, target).click();
           await expect(canvas).toHaveAttribute('aria-busy', 'true');
-          if (!cachedPreview)
-            await control.evaluate((control, id) => {
-              control.complete(id, 'preview');
-            }, target);
+          await control.evaluate((control, id) => {
+            control.progress(id);
+          }, target);
           await expect.poll(() => color(canvas)).toEqual([0, 255, 0, 255]);
-          // A visible preview must not announce completion of full-resolution loading.
+          // Intermediate pixels must not announce full-resolution completion.
           await expect(canvas).toHaveAttribute('aria-busy', 'true');
           const camera = await canvas.getAttribute('data-camera-zoom');
           await control.evaluate((control, id) => {
@@ -184,11 +195,7 @@ for (const cachedPreview of [true, false]) {
           );
           expect(
             await control.evaluate((control) => control.requested()),
-          ).toEqual(
-            cachedPreview
-              ? [`${target}/full`]
-              : [`${target}/preview`, `${target}/full`],
-          );
+          ).toEqual([`${target}/full`]);
           expect(
             await control.evaluate((control) => control.released()),
           ).toContain(`${target}/preview`);
@@ -211,7 +218,7 @@ for (const cachedPreview of [true, false]) {
   });
 }
 
-test('late preview and full-image completions cannot overwrite a newer page or sharper image', async ({
+test('late progressive and full-image completions cannot overwrite a newer page or sharper image', async ({
   page,
 }) => {
   const { control, ids } = await setup(page, false);
@@ -224,7 +231,7 @@ test('late preview and full-image completions cannot overwrite a newer page or s
     await row(page, first).click();
     await expect(canvas).toHaveAttribute('data-sheet-id', first);
     await control.evaluate((control, id) => {
-      control.complete(id, 'preview');
+      control.progress(id);
     }, first);
     await expect.poll(() => color(canvas)).toEqual([255, 0, 0, 255]);
     expect(
@@ -233,14 +240,8 @@ test('late preview and full-image completions cannot overwrite a newer page or s
         second,
       ),
     ).toBe(true);
-    expect(
-      await control.evaluate(
-        (control, id) => control.aborted(id, 'preview'),
-        second,
-      ),
-    ).toBe(true);
     await control.evaluate((control, id) => {
-      control.complete(id, 'preview');
+      control.progress(id);
       control.complete(id, 'full');
     }, second);
     await expect.poll(() => color(canvas)).toEqual([255, 0, 0, 255]);
@@ -255,15 +256,9 @@ test('late preview and full-image completions cannot overwrite a newer page or s
     }, second);
     await expect.poll(() => color(canvas)).toEqual([255, 0, 255, 255]);
     await control.evaluate((control, id) => {
-      control.complete(id, 'preview');
+      control.progress(id);
     }, second);
     await expect.poll(() => color(canvas)).toEqual([255, 0, 255, 255]);
-    expect(
-      await control.evaluate(
-        (control, id) => control.aborted(id, 'preview'),
-        second,
-      ),
-    ).toBe(true);
     expect(await control.evaluate((control) => control.released())).toEqual(
       expect.arrayContaining([
         `${first}/preview`,

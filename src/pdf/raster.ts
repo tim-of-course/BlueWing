@@ -6,6 +6,13 @@ export interface RasterLease {
   release(): void;
 }
 
+export type RasterStage = 'coarse' | 'screen';
+export interface RasterProgress {
+  /** Long edge of the displayed page in device pixels, capped at the master. */
+  dimension: number;
+  onProgress(lease: RasterLease, stage: RasterStage): void;
+}
+
 export class RasterResource {
   private references = 1;
   readonly width: number;

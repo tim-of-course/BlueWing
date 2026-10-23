@@ -2,6 +2,7 @@ import type { AssetRange } from '../platform/storage-model';
 import type { Sheet } from '../core/types';
 import type { SheetNameSuggestion } from './sheet-names';
 import type { PerformanceRecorder } from '../performance/recorder';
+import { encodeJpegXl } from './jpeg-xl-encode';
 import type {
   EncodedRaster,
   PdfWorkerRequest,
@@ -31,6 +32,7 @@ export class PdfWorkerClient {
     { type: 'module' },
   );
   private readonly pending = new Map<number, Pending>();
+  private readonly encoders = new Map<number, AbortController>();
   private sequence = 0;
   private closed = false;
   private source: AssetRange | undefined;
@@ -86,6 +88,7 @@ export class PdfWorkerClient {
     signal?: AbortSignal,
     paused?: () => boolean,
     priority: number | (() => number) = 100,
+    jpegXl = false,
   ) {
     return this.request<RasterImage>(
       {
@@ -94,6 +97,7 @@ export class PdfWorkerClient {
         bounds,
         dimension,
         encode: true,
+        jpegXl,
         paused: paused?.() ?? false,
         priority: typeof priority === 'function' ? priority() : priority,
       },
@@ -205,6 +209,8 @@ export class PdfWorkerClient {
   }
 
   private fail(id: number, reason: Error) {
+    this.encoders.get(id)?.abort();
+    this.encoders.delete(id);
     const pending = this.pending.get(id);
     if (!pending) return;
     this.pending.delete(id);
@@ -215,6 +221,33 @@ export class PdfWorkerClient {
   }
 
   private async receive(data: PdfWorkerResponse) {
+    if (data.type === 'encode') {
+      if (!this.pending.has(data.id) || this.closed) return;
+      const abort = new AbortController();
+      this.encoders.set(data.id, abort);
+      try {
+        const bytes = await encodeJpegXl(data, abort.signal);
+        if (this.pending.has(data.id))
+          this.renderer.postMessage(
+            {
+              type: 'encode-result',
+              id: data.id,
+              bytes,
+            } satisfies PdfWorkerRequest,
+            [bytes.buffer],
+          );
+      } catch (reason) {
+        if (this.pending.has(data.id))
+          this.renderer.postMessage({
+            type: 'encode-result',
+            id: data.id,
+            error: reason instanceof Error ? reason.message : String(reason),
+          } satisfies PdfWorkerRequest);
+      } finally {
+        this.encoders.delete(data.id);
+      }
+      return;
+    }
     if (data.type === 'range') {
       const end = this.recorder?.span('pdf.range.read', {
         offset: data.begin,

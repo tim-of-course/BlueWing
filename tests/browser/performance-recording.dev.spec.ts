@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import type { PdfDocuments as PdfDocumentCache } from '../../src/pdf/documents';
 import type { Project } from '../../src/core/types';
 import type { PerformanceReport } from '../../src/performance/recorder';
+import { PAGE_RENDERER_VERSION } from '../../src/pdf/page-images';
 import { captureErrors, cli, startWingmanProject } from './wingman';
 
 test('performance recording stops during queued PDF work and exports the same report', async ({
@@ -75,7 +76,7 @@ test('performance recording stops during queued PDF work and exports the same re
     expect(stopped.response.ok).toBe(true);
     expect(stopped.response.data.active).toBe(false);
     expect(stopped.response.data.metadata.rendererVersion).toBe(
-      'pdfium-embedpdf-3.0.0-next.15-worker-v1-200dpi',
+      PAGE_RENDERER_VERSION,
     );
     await expect(
       page.getByRole('button', { name: 'Record performance', exact: true }),

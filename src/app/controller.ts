@@ -658,8 +658,8 @@ export function createWorkspace(
     deleteAssignment: (id) => command('assignment.delete', { id }),
     saveRecipe: (recipe, expected) => command('assembly.put', recipe, expected),
     deleteRecipe: (id) => command('assembly.delete', { id }),
-    acquireSheet: (sheet, maxDimension, signal) =>
-      app.pageImages.acquire(sheet, maxDimension, signal),
+    acquireSheet: (sheet, maxDimension, signal, progress) =>
+      app.pageImages.acquire(sheet, maxDimension, signal, progress),
     previewSheet: (sheet, signal) => app.pageImages.preview(sheet, signal),
     cachedSheetPreview: (sheet) =>
       app.pageImages.peek(sheet, PAGE_PREVIEW_DIMENSION),

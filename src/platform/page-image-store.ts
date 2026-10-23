@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { PageImageStore } from '../pdf/page-images';
+import { isJpegXl } from '../pdf/jpeg-xl-format';
 
 async function digest(key: string) {
   const bytes = await crypto.subtle.digest(
@@ -62,7 +63,9 @@ export function pageImageStore(native: boolean): PageImageStore | undefined {
       ).put(
         await url(key),
         new Response(bytes.slice().buffer, {
-          headers: { 'Content-Type': 'image/png' },
+          headers: {
+            'Content-Type': isJpegXl(bytes) ? 'image/jxl' : 'image/png',
+          },
         }),
       );
     },

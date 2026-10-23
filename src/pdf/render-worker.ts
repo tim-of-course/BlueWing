@@ -23,12 +23,21 @@ interface RenderJob extends RenderRequest {
   cancelled: boolean;
   preempted: boolean;
   stage: 'queued' | 'drawing' | 'encoding';
+  cancelEncoding?: (() => void) | undefined;
   interrupt: (() => void) | undefined;
 }
 interface Operation {
   cancelled: boolean;
 }
 const jobs = new Map<number, RenderJob>();
+const encoders = new Map<
+  number,
+  {
+    resolve(bytes: Uint8Array): void;
+    reject(reason: Error): void;
+    cleanup(): void;
+  }
+>();
 const operations = new Map<number, Operation>();
 const names = new Map<string, Promise<SheetNameSuggestion>>();
 let pdf: PdfiumDocument | undefined;
@@ -161,6 +170,7 @@ function cancel(id: number): void {
   const job = jobs.get(id);
   if (!job) return;
   job.cancelled = true;
+  job.cancelEncoding?.();
   jobs.delete(id);
   job.interrupt?.();
   // After raster delivery the host rejects only the outstanding encoded result.
@@ -204,6 +214,41 @@ function releaseCanvas(canvas: OffscreenCanvas | undefined): void {
   if (canvas) canvas.width = canvas.height = 0;
 }
 
+function requestJpegXl(
+  job: RenderJob,
+  canvas: OffscreenCanvas,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  signal.throwIfAborted();
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) throw new Error('JPEG XL encoding canvas is unavailable');
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) => {
+    const cleanup = () => {
+      signal.removeEventListener('abort', cancel);
+    };
+    const cancel = () => {
+      encoders.delete(job.id);
+      cleanup();
+      reject(abortError());
+    };
+    encoders.set(job.id, { resolve, reject, cleanup });
+    signal.addEventListener('abort', cancel, { once: true });
+    // The app creates this sibling worker: nested module workers fail on Tauri's
+    // resource origin. Transfer pixels through the coordinator without copying them.
+    post(
+      {
+        type: 'encode',
+        id: job.id,
+        data: pixels.data,
+        width: pixels.width,
+        height: pixels.height,
+      },
+      [pixels.data.buffer],
+    );
+  });
+}
+
 async function encode(
   job: RenderJob,
   canvas: OffscreenCanvas,
@@ -213,11 +258,20 @@ async function encode(
 ): Promise<void> {
   encodingJobs++;
   const encodingStarted = performance.now();
+  const abort = new AbortController();
+  job.cancelEncoding = () => {
+    abort.abort();
+  };
   try {
     checkJob(job);
-    const blob = await canvas.convertToBlob({ type: 'image/png' });
-    checkJob(job);
-    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const bytes =
+      job.jpegXl && job.dimension > PAGE_PREVIEW_DIMENSION
+        ? await requestJpegXl(job, canvas, abort.signal)
+        : new Uint8Array(
+            await (
+              await canvas.convertToBlob({ type: 'image/png' })
+            ).arrayBuffer(),
+          );
     checkJob(job);
     let previewBytes: Uint8Array | undefined;
     if (preview) {
@@ -248,6 +302,7 @@ async function encode(
     releaseCanvas(canvas);
     releaseCanvas(preview);
     jobs.delete(job.id);
+    job.cancelEncoding = undefined;
     encodingJobs--;
     void pump();
   }
@@ -328,7 +383,7 @@ async function raster(job: RenderJob): Promise<void> {
     if (job.encode) {
       job.stage = 'encoding';
       encodingOwnsCanvases = true;
-      // PNG conversion runs off the UI thread and does not occupy the raster slot.
+      // JPEG XL compression runs off the UI thread, after the first raster is sent.
       void encode(job, canvas, preview, timings, started);
     } else jobs.delete(job.id);
   } finally {
@@ -385,6 +440,16 @@ scope.addEventListener('message', ({ data: message }) => {
     case 'cancel':
       cancel(message.id);
       break;
+    case 'encode-result': {
+      const pending = encoders.get(message.id);
+      if (!pending) break;
+      encoders.delete(message.id);
+      pending.cleanup();
+      if (message.bytes) pending.resolve(message.bytes);
+      else
+        pending.reject(new Error(message.error ?? 'JPEG XL encoding failed'));
+      break;
+    }
     case 'pause': {
       const job = jobs.get(message.id);
       if (job) job.paused = message.paused;

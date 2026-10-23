@@ -15,6 +15,8 @@ export default tseslint.config(
       'src-tauri/target/**',
       'src-tauri/gen/**',
       'public/pdfjs/**',
+      'public/jpeg-xl-notices/**',
+      'assets/jpeg-xl/**',
       'tmp/**',
       'output/**',
       'tests/platform/.compiled/**',
@@ -50,7 +52,12 @@ export default tseslint.config(
     settings: { 'jsx-a11y': { attributes: { for: ['for'] } } },
   },
   {
-    files: ['*.config.{js,ts}', 'tests/**/*.ts', 'scripts/**/*.ts'],
+    files: [
+      '*.config.{js,ts}',
+      'tests/**/*.ts',
+      'scripts/**/*.ts',
+      'codecs/**/*.mjs',
+    ],
     languageOptions: { globals: globals.node },
   },
   prettier,

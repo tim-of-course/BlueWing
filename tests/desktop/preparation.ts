@@ -107,6 +107,26 @@ try {
   await page
     .getByRole('button', { name: 'Create project', exact: true })
     .waitFor();
+  await page.evaluate(() => {
+    const errors: unknown[] = [];
+    Reflect.set(window, '__nativeWorkerErrors', errors);
+    const OriginalWorker = window.Worker;
+    window.Worker = class extends OriginalWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        this.addEventListener(
+          'message',
+          (event: MessageEvent<{ error?: unknown }>) => {
+            if (event.data.error)
+              errors.push({ worker: String(url), error: event.data.error });
+          },
+        );
+        this.addEventListener('error', (event) => {
+          errors.push({ worker: String(url), error: event.message });
+        });
+      }
+    };
+  });
   await call('project.create', {
     name: 'Preparation responsiveness',
     path: join(temporary, 'test.bluewing'),
@@ -209,6 +229,14 @@ try {
     JSON.stringify(summary, null, 2),
   );
   console.log(JSON.stringify(summary));
+  const workerErrors: unknown = await page.evaluate(
+    () => Reflect.get(window, '__nativeWorkerErrors') as unknown,
+  );
+  await writeFile(
+    join(evidence, 'worker-errors.json'),
+    JSON.stringify(workerErrors, null, 2),
+  );
+  console.log(JSON.stringify({ workerErrors }));
   assert.equal(status.preparation.failed, 0);
   assert(
     status.preparation.completed >= 7,
@@ -233,11 +261,13 @@ try {
   );
   assert(gaps.length > 60, 'Must record visible frames throughout preparation');
   assert(
-    report.events.filter(
-      (event) =>
-        event.name === 'pdf.raster.request' &&
-        Number(event.data.dimension) >= 7000,
-    ).length >= 5,
+    report.summary.activities
+      .filter(
+        (activity) =>
+          activity.name === 'pdf.raster.request' &&
+          Number(activity.dimensions.dimension) >= 7000,
+      )
+      .reduce((count, activity) => count + activity.count, 0) >= 5,
     'Must render full-size cold masters',
   );
   assert(
@@ -245,7 +275,7 @@ try {
       report.summary.frames.worstMs <= 150,
     'No frame may stall longer than 150ms during preparation',
   );
-  // Exercise the saved PNG after all decoded images and document workers close.
+  // Exercise the saved master after all decoded images and document workers close.
   await page.keyboard.press('Escape');
   await call('project.close', {}, true);
   await call('performance.start');
@@ -261,6 +291,18 @@ try {
     join(evidence, 'reopened.json'),
     JSON.stringify(reopened, null, 2),
   );
+  const displays = reopened.events.filter((event) =>
+    ['page.firstDisplay', 'page.display', 'page.progress'].includes(event.name),
+  );
+  console.log(JSON.stringify({ reopened: displays }));
+  assert(
+    reopened.events.some(
+      (event) =>
+        event.name === 'page.firstDisplay' &&
+        event.data.purpose === 'progressive',
+    ),
+    'A real JPEG XL pass must paint before the full master',
+  );
   assert(
     reopened.events.some(
       (event) =>
@@ -272,7 +314,7 @@ try {
   );
   assert(
     !reopened.events.some((event) => event.name === 'pdf.raster.request'),
-    'Saved PNG must reopen without another PDF render',
+    'Saved master must reopen without another PDF render',
   );
 } finally {
   await execute('taskkill', ['/PID', String(desktop.pid), '/T', '/F']).catch(

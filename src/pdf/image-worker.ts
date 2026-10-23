@@ -1,3 +1,6 @@
+import { isJpegXl } from './jpeg-xl-format';
+import { decodeJpegXl } from './jpeg-xl-decode';
+
 interface DecodeRequest {
   type: 'decode';
   id: number;
@@ -5,9 +8,11 @@ interface DecodeRequest {
   width?: number;
   height?: number;
   dimension?: number;
+  screenDimension?: number;
 }
 const jobs = new Map<number, DecodeRequest>();
 let running = false;
+let codecLoaded = false;
 function priority(job: DecodeRequest) {
   return !job.dimension && Math.max(job.width ?? 0, job.height ?? 0) > 640
     ? 100
@@ -29,9 +34,24 @@ async function pump() {
       let bitmap: ImageBitmap | undefined;
       let canvas: OffscreenCanvas | undefined;
       try {
-        bitmap = await createImageBitmap(
-          new Blob([job.bytes.buffer as ArrayBuffer], { type: 'image/png' }),
-        );
+        codecLoaded ||= isJpegXl(job.bytes);
+        bitmap = isJpegXl(job.bytes)
+          ? await decodeJpegXl(
+              job.bytes,
+              () => jobs.has(job.id),
+              (bitmap, stage) => {
+                self.postMessage(
+                  { id: job.id, bitmap, stage },
+                  { transfer: [bitmap] },
+                );
+              },
+              job.screenDimension,
+            )
+          : await createImageBitmap(
+              new Blob([job.bytes.buffer as ArrayBuffer], {
+                type: 'image/png',
+              }),
+            );
         if (!jobs.has(job.id)) continue;
         let bytes = job.bytes;
         if (job.dimension) {
@@ -58,7 +78,7 @@ async function pump() {
         }
         if (!jobs.has(job.id)) continue;
         self.postMessage(
-          { id: job.id, bitmap, bytes },
+          { id: job.id, bitmap, bytes, retire: codecLoaded },
           { transfer: [bitmap, bytes.buffer as ArrayBuffer] },
         );
         bitmap = undefined;
@@ -66,6 +86,7 @@ async function pump() {
         if (jobs.has(job.id))
           self.postMessage({
             id: job.id,
+            retire: codecLoaded,
             error: error instanceof Error ? error.message : String(error),
           });
       } finally {

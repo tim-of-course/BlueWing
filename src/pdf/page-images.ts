@@ -1,6 +1,10 @@
 import type { Sheet } from '../core/types';
 import type { PdfRenderBounds, RasterImage } from './worker-protocol';
-import { RasterResource, type RasterLease } from './raster';
+import {
+  RasterResource,
+  type RasterLease,
+  type RasterProgress,
+} from './raster';
 import { ImageDecoder } from './image-decoder';
 import type { PerformanceRecorder } from '../performance/recorder';
 import {
@@ -11,7 +15,7 @@ import {
 
 export { pageImageDimension, PAGE_PREVIEW_DIMENSION };
 export const PAGE_RENDERER_VERSION =
-  'pdfium-embedpdf-3.0.0-next.15-worker-v1-200dpi';
+  'pdfium-embedpdf-3.0.0-next.15-worker-v1-200dpi-jxl80-progressive-v1';
 export interface PageImageStore {
   read(key: string): Promise<Uint8Array | null>;
   write(key: string, bytes: Uint8Array): Promise<void>;
@@ -38,6 +42,7 @@ interface ImageJob {
   promise: Promise<{ entry: ImageEntry; preview?: ImageEntry }>;
   saved: Promise<boolean>;
   resources: RasterResource[];
+  progress: Set<RasterProgress>;
 }
 export interface PreparationStatus {
   total: number;
@@ -139,9 +144,14 @@ export class PageImages {
     sheet: Sheet,
     dimension = pageImageDimension(sheet),
     signal?: AbortSignal,
+    progress?: RasterProgress,
   ): Promise<RasterLease> {
-    return this.request(sheet, dimension, signal, (entry) =>
-      entry.resource.lease(),
+    return this.request(
+      sheet,
+      dimension,
+      signal,
+      (entry) => entry.resource.lease(),
+      progress,
     );
   }
   async preview(sheet: Sheet, signal?: AbortSignal): Promise<Uint8Array> {
@@ -245,6 +255,7 @@ export class PageImages {
     dimension: number,
     signal: AbortSignal | undefined,
     use: (entry: ImageEntry) => T | Promise<T>,
+    progress?: RasterProgress,
   ): Promise<T> {
     signal?.throwIfAborted();
     dimension = imageDimension(sheet, dimension);
@@ -274,6 +285,7 @@ export class PageImages {
       try {
         job.users++;
         if (foreground) job.foregroundUsers++;
+        if (progress) job.progress.add(progress);
         const result = await waitFor(job.promise, signal);
         signal?.throwIfAborted();
         job.abort.signal.throwIfAborted();
@@ -282,6 +294,7 @@ export class PageImages {
         return value instanceof Promise ? await waitFor(value, signal) : value;
       } finally {
         job.users--;
+        if (progress) job.progress.delete(progress);
         if (foreground) {
           job.foregroundUsers--;
           this.foreground--;
@@ -360,6 +373,7 @@ export class PageImages {
       promise: undefined as unknown as ImageJob['promise'],
       saved: Promise.resolve(true),
       resources: [],
+      progress: new Set(),
     };
     this.jobs.set(key, job);
     job.promise = Promise.resolve()
@@ -388,7 +402,32 @@ export class PageImages {
             dimension,
           });
           const result = await this.decoder
-            .decode(bytes, size(sheet, dimension), signal)
+            .decode(
+              bytes,
+              size(sheet, dimension),
+              signal,
+              (bitmap, stage) => {
+                const resource = new RasterResource(
+                  bitmap,
+                  Promise.resolve(new Uint8Array()),
+                );
+                try {
+                  this.recorder?.event('page.progress', {
+                    pageId: sheet.id,
+                    purpose: stage,
+                    dimension: Math.max(bitmap.width, bitmap.height),
+                  });
+                  for (const listener of job.progress)
+                    listener.onProgress(resource.lease(), stage);
+                } finally {
+                  resource.release();
+                }
+              },
+              Math.max(
+                0,
+                ...[...job.progress].map((listener) => listener.dimension),
+              ),
+            )
             .finally(() => decode?.());
           if (signal.aborted) {
             result.bitmap.close();

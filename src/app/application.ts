@@ -104,7 +104,7 @@ export class Application {
     );
     this.pageImages = new PageImages(
       (sheet, dimension, signal, paused, priority) =>
-        this.pdf.raster(sheet, dimension, signal, paused, priority),
+        this.pdf.raster(sheet, dimension, signal, paused, priority, true),
       pageImageStore(native),
       undefined,
       undefined,

@@ -59,12 +59,14 @@ export type PdfWorkerRequest =
       bounds: PdfRenderBounds;
       dimension: number;
       encode: boolean;
+      jpegXl?: boolean;
       paused: boolean;
       priority: number;
     }
   | { type: 'cancel'; id: number }
   | { type: 'pause'; id: number; paused: boolean }
   | { type: 'priority'; id: number; priority: number }
+  | { type: 'encode-result'; id: number; bytes?: Uint8Array; error?: string }
   | {
       type: 'range-result';
       rangeId: number;
@@ -73,6 +75,13 @@ export type PdfWorkerRequest =
     };
 
 export type PdfWorkerResponse =
+  | {
+      type: 'encode';
+      id: number;
+      data: Uint8ClampedArray;
+      width: number;
+      height: number;
+    }
   | { type: 'ready'; id: number; value: PdfOpenMetadata }
   | { type: 'result'; id: number; value: Sheet[] | SheetNameSuggestion }
   | { type: 'range'; rangeId: number; begin: number; end: number }

@@ -13,7 +13,7 @@ import type { CliConnection } from './cli-guide';
 import type { ViewBounds, WingmanPresentation } from './wingman-types';
 import type { DrawingVisibility } from './visibility';
 import type { PreparationStatus } from '../pdf/page-images';
-import type { RasterLease } from '../pdf/raster';
+import type { RasterLease, RasterProgress } from '../pdf/raster';
 import type {
   FinishPerformanceSpan,
   PerformanceData,
@@ -163,6 +163,7 @@ export interface WorkspaceController {
     sheet: Sheet,
     maxDimension?: number,
     signal?: AbortSignal,
+    progress?: RasterProgress,
   ): Promise<RasterLease>;
   previewSheet(sheet: Sheet, signal?: AbortSignal): Promise<Uint8Array>;
   cachedSheetPreview(sheet: Sheet): RasterLease | null;

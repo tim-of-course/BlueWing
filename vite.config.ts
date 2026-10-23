@@ -9,6 +9,10 @@ cpSync(
   'public/pdfium-notices/LICENSE.embedpdf',
 );
 cpSync('assets/pdfium', 'public/pdfium-notices', { recursive: true });
+mkdirSync('public/jpeg-xl-notices', { recursive: true });
+cpSync('assets/jpeg-xl/licenses', 'public/jpeg-xl-notices', {
+  recursive: true,
+});
 
 export default defineConfig(({ command }) => {
   // PDF.js remains an independent development reference and sample renderer.
@@ -31,6 +35,8 @@ export default defineConfig(({ command }) => {
   }
   return {
     plugins: [solid({ diagnostics: true })],
+    // Codec SDK checkouts under tmp contain their own unrelated HTML fixtures.
+    optimizeDeps: { entries: ['index.html', 'tests/browser/*.html'] },
     worker: { format: 'es' },
     resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },
   };

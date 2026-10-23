@@ -140,6 +140,7 @@ export class PdfDocuments {
     signal?: AbortSignal,
     paused?: () => boolean,
     priority: number | (() => number) = 100,
+    jpegXl = false,
   ): Promise<RasterImage> {
     return this.rasterRegion(
       sheet,
@@ -148,6 +149,7 @@ export class PdfDocuments {
       signal,
       paused,
       priority,
+      jpegXl,
     );
   }
 
@@ -158,6 +160,7 @@ export class PdfDocuments {
     signal?: AbortSignal,
     paused?: () => boolean,
     priority: number | (() => number) = 100,
+    jpegXl = false,
   ): Promise<RasterImage> {
     const finish = this.recorder?.span('pdf.raster.request', {
       pageId: sheet.id,
@@ -167,7 +170,15 @@ export class PdfDocuments {
     return this.useDocument(
       sheet.assetId,
       (worker) =>
-        worker.render(sheet, bounds, dimension, signal, paused, priority),
+        worker.render(
+          sheet,
+          bounds,
+          dimension,
+          signal,
+          paused,
+          priority,
+          jpegXl,
+        ),
       undefined,
       signal,
     ).finally(() => finish?.());

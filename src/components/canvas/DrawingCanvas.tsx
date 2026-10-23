@@ -19,10 +19,7 @@ import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
 import { registerCanvasCapture } from '../../platform/canvas-capture';
-import {
-  pageImageDimension,
-  PAGE_PREVIEW_DIMENSION,
-} from '../../pdf/page-images';
+import { pageImageDimension } from '../../pdf/page-images';
 import type { RasterLease } from '../../pdf/raster';
 import type { FinishPerformanceSpan } from '../../performance/recorder';
 
@@ -42,6 +39,7 @@ interface SheetImage {
   lease: RasterLease;
   full: boolean;
   finishDisplay?: FinishPerformanceSpan;
+  finishFirstDisplay?: FinishPerformanceSpan;
 }
 
 function cameraForView(
@@ -195,6 +193,7 @@ export default function DrawingCanvas(props: {
     { width: 1, height: 1, dpr: 1 },
     { name: 'canvas.viewport' },
   );
+  const viewportReady = createMemo(() => viewport().width > 1);
   // Leases belong to the imperative painter, which reads them at draw time.
   let heldImage: SheetImage | null = null;
   let paintedImage: RasterLease | undefined;
@@ -203,6 +202,8 @@ export default function DrawingCanvas(props: {
     const previous = heldImage;
     heldImage = next;
     previous?.lease.release();
+    if (previous?.finishDisplay !== next?.finishDisplay)
+      previous?.finishDisplay?.({ success: false, cancelled: true });
     schedulePaint();
   }
   const [draft, setDraft] = createSignal<Draft | null>(null, {
@@ -289,6 +290,7 @@ export default function DrawingCanvas(props: {
   });
   const pdfRequest = createMemo(
     () => {
+      if (!viewportReady()) return null;
       const current = props.active === false ? undefined : renderSheet();
       return current ? { current, controller: props.controller } : null;
     },
@@ -405,58 +407,83 @@ export default function DrawingCanvas(props: {
       stopBrush();
       let cancelled = false;
       const renderAbort = new AbortController();
-      const previewAbort = new AbortController();
       const startedAt = performance.now();
       // Includes acquisition, decoding and the wait for the first full canvas
       // draw. This measures draw submission, not GPU presentation to the screen.
       const finishDisplay = controller.performanceSpan('page.display', {
         pageId: current.id,
       });
+      const finishFirstDisplay = controller.performanceSpan(
+        'page.firstDisplay',
+        { pageId: current.id },
+      );
       const cached = controller.cachedSheetImage(current);
-      const preview = cached ? null : controller.cachedSheetPreview(current);
       let fullReady = !!cached;
       replaceImage(
         cached
-          ? { sheet: current, lease: cached, full: true, finishDisplay }
-          : preview
-            ? { sheet: current, lease: preview, full: false }
-            : null,
+          ? {
+              sheet: current,
+              lease: cached,
+              full: true,
+              finishDisplay,
+              finishFirstDisplay,
+            }
+          : null,
       );
-      if (!cached && !preview) {
-        // A saved preview can arrive before the master finishes decoding. Both
-        // requests share the existing page cache and a cold master render.
-        void controller
-          .acquireSheet(current, PAGE_PREVIEW_DIMENSION, previewAbort.signal)
-          .then((rendered) => {
-            if (cancelled || fullReady) rendered.release();
-            else replaceImage({ sheet: current, lease: rendered, full: false });
-          })
-          .catch(() => {
-            /* The master request owns loading failures. */
-          });
-      }
+      const sampling = untrack(
+        () =>
+          Math.max(current.width, current.height) *
+          camera().zoom *
+          viewport().dpr,
+      );
       void controller
-        .acquireSheet(current, pageImageDimension(current), renderAbort.signal)
+        .acquireSheet(
+          current,
+          pageImageDimension(current),
+          renderAbort.signal,
+          {
+            dimension: Math.min(
+              pageImageDimension(current),
+              Math.ceil(sampling),
+            ),
+            onProgress(lease, stage) {
+              if (cancelled || fullReady) lease.release();
+              else
+                replaceImage({
+                  sheet: current,
+                  lease,
+                  full: false,
+                  finishFirstDisplay,
+                  finishDisplay: controller.performanceSpan(
+                    'page.progress.display',
+                    { pageId: current.id, purpose: stage },
+                  ),
+                });
+            },
+          },
+        )
         .then((rendered) => {
           if (!cancelled) {
             fullReady = true;
-            previewAbort.abort();
+            const hadImage = !!heldImage;
             replaceImage({
               sheet: current,
               lease: rendered,
               full: true,
               finishDisplay,
+              finishFirstDisplay,
             });
             setPdfResult({
               request,
               error: '',
-              fade: performance.now() - startedAt > 120,
+              fade: !hadImage && performance.now() - startedAt > 120,
             });
           } else rendered.release();
         })
         .catch((reason: unknown) => {
           if (cancelled) return;
           finishDisplay({ success: false });
+          finishFirstDisplay({ success: false });
           const message =
             reason instanceof Error ? reason.message : String(reason);
           setPdfResult({ request, error: message, fade: false });
@@ -465,8 +492,8 @@ export default function DrawingCanvas(props: {
       return () => {
         cancelled = true;
         renderAbort.abort();
-        previewAbort.abort();
         finishDisplay({ success: false, cancelled: true });
+        finishFirstDisplay({ success: false, cancelled: true });
       };
     },
     { name: 'canvas.loadPdf' },
@@ -648,12 +675,13 @@ export default function DrawingCanvas(props: {
         heldImage?.sheet === untrack(renderSheet) ? heldImage : null;
       try {
         paintScene(state, image);
-        if (
-          image?.full &&
-          paintedImage === image.lease &&
-          state.presentation?.mode !== 'takeoff'
-        )
+        if (image && state.presentation?.mode !== 'takeoff') {
           image.finishDisplay?.({ success: true });
+          image.finishFirstDisplay?.({
+            success: true,
+            purpose: image.full ? 'full' : 'progressive',
+          });
+        }
       } finally {
         finish();
       }

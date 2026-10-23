@@ -8,6 +8,8 @@ src-tauri/gen/
 public/pdfjs/
 public/pdfium-notices/
 assets/pdfium/
+assets/jpeg-xl/
+public/jpeg-xl-notices/
 tmp/
 output/
 tests/platform/.compiled/
