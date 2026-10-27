@@ -244,6 +244,26 @@ test('range-backed PDFs read needed objects and reopen from the persistent sourc
   expect(errors).toEqual([]);
 });
 
+test('linearized PDFs import all ranged pages with the correct scale and rotation', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  await page.goto('/tests/browser/pdf-rendering-harness.html');
+  const result = await page.evaluate(() =>
+    window.pdfRendering.linearizedImport(),
+  );
+  expect(result.sheets).toEqual([
+    { width: 128, height: 96, rotation: 0 },
+    { width: 96, height: 128, rotation: 90 },
+    { width: 256, height: 192, rotation: 0 },
+  ]);
+  expect(result.colors[0]?.left).toEqual([255, 0, 0, 255]);
+  expect(result.colors[1]?.left).toEqual([0, 0, 255, 255]);
+  expect(result.colors[2]?.left).toEqual([0, 255, 0, 255]);
+  expect(result.reopened).toEqual(result.colors[1]);
+  expect(errors).toEqual([]);
+});
+
 test('range-backed PDFs open a later nested page before enumeration and after reopening', async ({
   page,
 }) => {

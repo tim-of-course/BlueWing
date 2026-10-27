@@ -94,9 +94,10 @@ export class PdfiumDocument {
     const memory = this.allocate(48);
     const module = this.runtime.fn;
     const mem = this.runtime.mem;
+    const metadataNotReady = new Error('Unable to read PDF page dimensions');
     try {
       for (let index = 0; index < this.numPages; index++) {
-        const sheet = await this.read(() => {
+        const readSheet = () => {
           const box = (
             type: number,
           ): [number, number, number, number] | undefined => {
@@ -124,7 +125,7 @@ export class PdfiumDocument {
               add(memory, 4),
             )
           )
-            throw new Error('Unable to read PDF page dimensions');
+            throw metadataNotReady;
           const rawRotation = Number(mem.peek(memory, 'i32'));
           const rotation =
             rawRotation % 90 === 0 ? ((rawRotation % 360) + 360) % 360 : 0;
@@ -172,7 +173,17 @@ export class PdfiumDocument {
             rotation,
             pdfToPage,
           } satisfies Sheet;
-        }, check);
+        };
+        let sheet: Sheet;
+        try {
+          sheet = await this.read(readSheet, check);
+        } catch (error) {
+          if (error !== metadataNotReady || !this.source) throw error;
+          // Linearized PDFs can have a page tree that PDFium has not loaded,
+          // even when a metadata lookup requested no additional bytes.
+          await this.source.page(index, check, (pending) => pending);
+          sheet = await this.read(readSheet, check);
+        }
         sheets.push(sheet);
         await yieldPdf();
       }

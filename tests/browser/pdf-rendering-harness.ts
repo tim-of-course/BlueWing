@@ -10,6 +10,7 @@ import {
   embeddedFontPdf,
   fallbackBoxPdf,
   hiddenLayerPdf,
+  linearizedPdf,
   nestedPagesPdf,
   planClarityPdf,
   rotatedCropPdf,
@@ -467,6 +468,38 @@ async function rangedRendering() {
       totalReads: source.reads.length,
       opens,
       length: source.range.length,
+    };
+  } finally {
+    await pdf.clear();
+  }
+}
+
+async function linearizedImport() {
+  const bytes = linearizedPdf();
+  const range: AssetRange = {
+    length: bytes.length,
+    read: (offset, length) =>
+      Promise.resolve(bytes.slice(offset, offset + length)),
+  };
+  const pdf = new PdfDocuments(() => Promise.resolve(range));
+  try {
+    const sheets = await pdf.import('linearized', 'Plan.pdf', range);
+    const [first, rotated, scaled] = sheets;
+    if (!first || !rotated || !scaled)
+      throw new Error('Missing linearized pages');
+    const colors = await Promise.all(
+      sheets.map((sheet) => rasterPixels(pdf, sheet, 128)),
+    );
+    await pdf.release('linearized');
+    const reopened = await rasterPixels(pdf, rotated, 128);
+    return {
+      sheets: sheets.map(({ width, height, rotation }) => ({
+        width,
+        height,
+        rotation,
+      })),
+      colors,
+      reopened,
     };
   } finally {
     await pdf.clear();
@@ -1159,6 +1192,7 @@ const harness = {
   fidelity,
   preemption,
   rangedRendering,
+  linearizedImport,
   nestedPageTree,
   hiddenLayers,
   fallbackBoxes,

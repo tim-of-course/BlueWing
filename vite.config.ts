@@ -31,6 +31,9 @@ export default defineConfig(({ command }) => {
   }
   return {
     plugins: [solid({ diagnostics: true })],
+    // Keep generated codec SDKs and native build files out of development scanning.
+    optimizeDeps: { entries: ['index.html', 'tests/browser/*.html'] },
+    server: { watch: { ignored: ['**/tmp/**', '**/src-tauri/target/**'] } },
     worker: { format: 'es' },
     resolve: { dedupe: ['solid-js', '@solidjs/signals', '@solidjs/web'] },
   };
