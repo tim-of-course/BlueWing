@@ -165,6 +165,8 @@ function cancel(id: number): void {
   job.interrupt?.();
   // After raster delivery the host rejects only the outstanding encoded result.
   reportError(id, abortError());
+  // Queued work holds no canvas. Active work acknowledges its own cleanup.
+  if (job.stage === 'queued') post({ type: 'render-settled', id });
 }
 
 function nextJob(): RenderJob | undefined {
@@ -202,6 +204,10 @@ function checkJob(job: RenderJob): void {
 
 function releaseCanvas(canvas: OffscreenCanvas | undefined): void {
   if (canvas) canvas.width = canvas.height = 0;
+}
+
+function renderFinished(job: RenderJob): boolean {
+  return job.stage !== 'encoding' && !jobs.has(job.id);
 }
 
 async function encode(
@@ -249,6 +255,7 @@ async function encode(
     releaseCanvas(preview);
     jobs.delete(job.id);
     encodingJobs--;
+    post({ type: 'render-settled', id: job.id });
     void pump();
   }
 }
@@ -359,6 +366,8 @@ async function pump(): Promise<void> {
         recoverRaster(job, error);
       } finally {
         active = undefined;
+        // Preempted work remains queued; encoding owns its canvases separately.
+        if (renderFinished(job)) post({ type: 'render-settled', id: job.id });
       }
     }
   } finally {
@@ -414,6 +423,7 @@ scope.addEventListener('message', ({ data: message }) => {
           message.id,
           fatalError ?? new Error('Open the PDF before rendering'),
         );
+        post({ type: 'render-settled', id: message.id });
         break;
       }
       jobs.set(message.id, {

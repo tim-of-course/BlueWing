@@ -78,6 +78,7 @@ export type PdfWorkerResponse =
   | { type: 'range'; rangeId: number; begin: number; end: number }
   | { type: 'fatal'; error: PdfWorkerError }
   | { type: 'error'; id: number; error: PdfWorkerError }
+  | { type: 'render-settled'; id: number }
   | {
       type: 'raster';
       id: number;

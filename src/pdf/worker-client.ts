@@ -18,6 +18,9 @@ type Body<T = Operation> = T extends { id: number } ? Omit<T, 'id'> : never;
 interface Pending {
   resolve(value: unknown): void;
   reject(reason: Error): void;
+  // Pixel-only callers receive their bitmap after worker canvas cleanup.
+  raster?: RasterPixels;
+  encodedResult?: EncodedRaster;
   encode?(value: EncodedRaster): void;
   rejectEncoding?(reason: Error): void;
   encoded?: Promise<EncodedRaster>;
@@ -31,6 +34,8 @@ export class PdfWorkerClient {
     { type: 'module' },
   );
   private readonly pending = new Map<number, Pending>();
+  // Cancellation can settle the caller before the worker releases its pixels.
+  private readonly renders = new Set<number>();
   private sequence = 0;
   private closed = false;
   private source: AssetRange | undefined;
@@ -48,7 +53,7 @@ export class PdfWorkerClient {
   }
 
   get busy() {
-    return this.pending.size > 0;
+    return this.pending.size > 0 || this.renders.size > 0;
   }
   get disposed() {
     return this.closed;
@@ -197,6 +202,7 @@ export class PdfWorkerClient {
           }
         }, 50);
       }
+      if (body.type === 'render') this.renders.add(id);
       this.renderer.postMessage(
         { ...body, id } satisfies PdfWorkerRequest,
         transfers,
@@ -209,6 +215,8 @@ export class PdfWorkerClient {
     if (!pending) return;
     this.pending.delete(id);
     pending.cleanup();
+    pending.raster?.bitmap.close();
+    pending.raster?.previewBitmap?.close();
     pending.reject(reason);
     pending.rejectEncoding?.(reason);
     if (!this.busy) this.onIdle?.();
@@ -254,6 +262,21 @@ export class PdfWorkerClient {
       );
       return;
     }
+    if (data.type === 'render-settled') {
+      if (!this.renders.delete(data.id)) return;
+      const pending = this.pending.get(data.id);
+      if (pending?.raster) {
+        this.pending.delete(data.id);
+        pending.cleanup();
+        pending.resolve(pending.raster);
+      } else if (pending?.encodedResult) {
+        this.pending.delete(data.id);
+        pending.cleanup();
+        pending.encode?.(pending.encodedResult);
+      }
+      if (!this.busy) this.onIdle?.();
+      return;
+    }
     const pending = this.pending.get(data.id);
     if (!pending) {
       if (data.type === 'raster') {
@@ -263,34 +286,29 @@ export class PdfWorkerClient {
       return;
     }
     switch (data.type) {
-      case 'raster':
+      case 'raster': {
         this.recorder?.event('pdf.worker.raster', {
           ...data.timings,
           purpose: 'worker',
         });
-        pending.resolve({
+        const raster = {
           bitmap: data.bitmap,
           ...(data.previewBitmap ? { previewBitmap: data.previewBitmap } : {}),
           ...(pending.encoded ? { encoded: pending.encoded } : {}),
-        } satisfies RasterPixels | RasterImage);
-        if (!pending.encoded) {
-          this.pending.delete(data.id);
-          pending.cleanup();
-          if (!this.busy) this.onIdle?.();
-        }
+        } satisfies RasterPixels | RasterImage;
+        if (pending.encoded) pending.resolve(raster);
+        else pending.raster = raster;
         break;
+      }
       case 'encoded':
         this.recorder?.event('pdf.worker.encoded', {
           ...data.timings,
           purpose: 'worker',
         });
-        pending.encode?.({
+        pending.encodedResult = {
           bytes: data.bytes,
           ...(data.previewBytes ? { previewBytes: data.previewBytes } : {}),
-        });
-        this.pending.delete(data.id);
-        pending.cleanup();
-        if (!this.busy) this.onIdle?.();
+        };
         break;
       case 'error':
         this.fail(
@@ -315,6 +333,9 @@ export class PdfWorkerClient {
     this.closed = true;
     for (const id of this.pending.keys()) this.fail(id, reason);
     this.renderer.terminate();
+    const hadRenders = this.renders.size > 0;
+    this.renders.clear();
+    if (hadRenders && !this.busy) this.onIdle?.();
     void this.source?.close?.().catch(() => undefined);
     this.source = undefined;
   }
