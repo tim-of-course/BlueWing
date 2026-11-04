@@ -7,12 +7,21 @@ interface Pending {
   reject(error: Error): void;
   cleanup(): void;
 }
+type DecodeReply =
+  | ({ id: number } & ({ error: string } | DecodedImage))
+  | { id: number; settled: true };
 
 /** A lazy, reusable worker decodes disposable PNGs without a second display canvas. */
 export class ImageDecoder {
   private worker: Worker | undefined;
   private sequence = 0;
   private readonly pending = new Map<number, Pending>();
+  // Native image decode may continue after its caller cancels.
+  private readonly active = new Set<number>();
+  constructor(private readonly onIdle?: () => void) {}
+  get busy() {
+    return this.active.size > 0;
+  }
   decode(
     bytes: Uint8Array,
     dimensions: { width: number; height: number },
@@ -38,13 +47,13 @@ export class ImageDecoder {
       this.worker = new Worker(new URL('./image-worker.ts', import.meta.url), {
         type: 'module',
       });
-      this.worker.onmessage = (
-        event: MessageEvent<
-          ({ error: string } | DecodedImage) & { id: number }
-        >,
-      ) => {
-        const result = event.data,
-          pending = this.pending.get(result.id);
+      this.worker.onmessage = (event: MessageEvent<DecodeReply>) => {
+        const result = event.data;
+        if ('settled' in result) {
+          if (this.active.delete(result.id) && !this.busy) this.onIdle?.();
+          return;
+        }
+        const pending = this.pending.get(result.id);
         if (!pending) {
           if ('bitmap' in result) result.bitmap.close();
           return;
@@ -77,9 +86,18 @@ export class ImageDecoder {
         },
       });
       signal.addEventListener('abort', cancel, { once: true });
-      this.worker?.postMessage({ type: 'decode', id, bytes, ...dimensions }, [
-        bytes.buffer as ArrayBuffer,
-      ]);
+      this.active.add(id);
+      try {
+        this.worker?.postMessage({ type: 'decode', id, bytes, ...dimensions }, [
+          bytes.buffer as ArrayBuffer,
+        ]);
+      } catch (error) {
+        this.pending.delete(id);
+        this.active.delete(id);
+        signal.removeEventListener('abort', cancel);
+        if (!this.busy) this.onIdle?.();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
   clear(reason = new Error('Cache decoding was cancelled')) {
@@ -90,5 +108,8 @@ export class ImageDecoder {
     this.pending.clear();
     this.worker?.terminate();
     this.worker = undefined;
+    const hadActive = this.busy;
+    this.active.clear();
+    if (hadActive) this.onIdle?.();
   }
 }

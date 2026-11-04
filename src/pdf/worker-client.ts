@@ -203,10 +203,18 @@ export class PdfWorkerClient {
         }, 50);
       }
       if (body.type === 'render') this.renders.add(id);
-      this.renderer.postMessage(
-        { ...body, id } satisfies PdfWorkerRequest,
-        transfers,
-      );
+      try {
+        this.renderer.postMessage(
+          { ...body, id } satisfies PdfWorkerRequest,
+          transfers,
+        );
+      } catch (error) {
+        this.renders.delete(id);
+        this.fail(
+          id,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
     });
   }
 

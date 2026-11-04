@@ -8,6 +8,7 @@ interface DecodeRequest {
 }
 const jobs = new Map<number, DecodeRequest>();
 let running = false;
+let active: DecodeRequest | undefined;
 function priority(job: DecodeRequest) {
   return !job.dimension && Math.max(job.width ?? 0, job.height ?? 0) > 640
     ? 100
@@ -26,6 +27,7 @@ async function pump() {
       );
       const job = ordered[0];
       if (!job) break;
+      active = job;
       let bitmap: ImageBitmap | undefined;
       let canvas: OffscreenCanvas | undefined;
       try {
@@ -72,6 +74,8 @@ async function pump() {
         bitmap?.close();
         if (canvas) canvas.width = canvas.height = 0;
         jobs.delete(job.id);
+        active = undefined;
+        self.postMessage({ id: job.id, settled: true });
       }
     }
   } finally {
@@ -84,7 +88,13 @@ self.addEventListener(
   (event: MessageEvent<DecodeRequest | { type: 'cancel'; id: number }>) => {
     const message = event.data;
     if (message.type === 'cancel') {
-      jobs.delete(message.id);
+      const job = jobs.get(message.id);
+      if (job) {
+        jobs.delete(message.id);
+        // A queued job has no pixels to release; active native decoding must
+        // acknowledge only after its finally block has closed its bitmap.
+        if (job !== active) self.postMessage({ id: message.id, settled: true });
+      }
     } else {
       jobs.set(message.id, message);
       void pump();

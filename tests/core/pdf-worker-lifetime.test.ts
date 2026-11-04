@@ -22,12 +22,17 @@ class FakeWorker {
   onerror: ((event: ErrorEvent) => void) | null = null;
   messages: PdfWorkerRequest[] = [];
   terminated = false;
+  failNext = false;
 
   constructor() {
     FakeWorker.current = this;
   }
 
   postMessage(message: PdfWorkerRequest) {
+    if (this.failNext) {
+      this.failNext = false;
+      throw new Error('Cannot transfer render request');
+    }
     this.messages.push(message);
   }
   terminate() {
@@ -68,6 +73,33 @@ void test('cancelled render stays busy until worker cleanup is acknowledged', as
     assert.equal(idle, 1);
     client.destroy();
     assert.equal(worker.terminated, true);
+    assert.equal(idle, 1);
+  } finally {
+    globalThis.Worker = original;
+  }
+});
+
+void test('synchronous render transfer failure clears busy state and abort listener', async () => {
+  const original = globalThis.Worker;
+  globalThis.Worker = FakeWorker as unknown as typeof Worker;
+  try {
+    let idle = 0;
+    const client = new PdfWorkerClient(undefined, () => idle++);
+    const worker = FakeWorker.current;
+    worker.failNext = true;
+    const abort = new AbortController();
+    const request = client.render(
+      sheet,
+      { x: 0, y: 0, width: 720, height: 480 },
+      1440,
+      abort.signal,
+    );
+    await assert.rejects(request, /Cannot transfer render request/);
+    assert.equal(client.busy, false);
+    assert.equal(idle, 1);
+    abort.abort();
+    assert.equal(worker.messages.length, 0);
+    client.destroy();
     assert.equal(idle, 1);
   } finally {
     globalThis.Worker = original;
