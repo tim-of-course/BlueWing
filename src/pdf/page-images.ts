@@ -92,6 +92,7 @@ export class PageImages {
   private readonly prepared = new Set<string>();
   private readonly failed = new Set<string>();
   private readonly decoder = new ImageDecoder();
+  private readonly previewDecoder = new ImageDecoder();
   private readonly listeners = new Set<() => void>();
   private queue: Sheet[] = [];
   private total = 0;
@@ -343,6 +344,7 @@ export class PageImages {
     for (const entry of this.images.values()) entry.resource.release();
     this.images.clear();
     this.decoder.clear();
+    this.previewDecoder.clear();
     this.userPaused = false;
     this.changed();
   }
@@ -387,7 +389,14 @@ export class PageImages {
             pageId: sheet.id,
             dimension,
           });
-          const result = await this.decoder
+          // A saved preview must not queue behind an uncancellable master decode.
+          // Thumbnail generation still uses the master decoder because its input
+          // is a full-size image.
+          const decoder =
+            dimension <= PAGE_PREVIEW_DIMENSION
+              ? this.previewDecoder
+              : this.decoder;
+          const result = await decoder
             .decode(bytes, size(sheet, dimension), signal)
             .finally(() => decode?.());
           if (signal.aborted) {
