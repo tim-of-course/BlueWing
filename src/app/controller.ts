@@ -477,17 +477,22 @@ export function createWorkspace(
         : localStorage.getItem('bluewing.lastProject');
       if (!path && !app.native)
         throw new Error('No saved browser project. Create a project first.');
-      if (path) await command('project.open', { path });
+      if (path) {
+        if (app.session) await command('project.close');
+        await command('project.open', { path });
+      }
     },
     closeProject: () => command('project.close'),
     renameProject: (name) => command('project.rename', { name }),
     async importPdf() {
       const expected = app.observe();
       await run(async () => {
-        const file = await choosePdf(app.native);
-        if (file) {
-          const sheets = await app.importBytes(file, expected);
-          setActiveSheetId(sheets[0]?.id ?? null);
+        const files = await choosePdf(app.native);
+        let observation = expected;
+        for (const readFile of files) {
+          const sheets = await app.importBytes(await readFile(), observation);
+          if (observation === expected) setActiveSheetId(sheets[0]?.id ?? null);
+          observation = app.observe();
         }
       });
     },

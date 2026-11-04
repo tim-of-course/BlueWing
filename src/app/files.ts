@@ -58,42 +58,44 @@ export async function chooseProject(
     filters,
   });
 }
-export async function choosePdf(native: boolean): Promise<ImportedFile | null> {
+export async function choosePdf(
+  native: boolean,
+): Promise<Array<() => Promise<ImportedFile>>> {
   if (native) {
     const path = await open({
       title: 'Import PDF plans',
-      multiple: false,
+      multiple: true,
       directory: false,
       filters: [{ name: 'PDF plans', extensions: ['pdf'] }],
     });
-    return path ? readNativeFile(path) : null;
+    return (path ?? []).map((item) => () => readNativeFile(item));
   }
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,application/pdf';
+    input.multiple = true;
     input.style.display = 'none';
     document.body.append(input);
     input.addEventListener(
       'cancel',
       () => {
         input.remove();
-        resolve(null);
+        resolve([]);
       },
       { once: true },
     );
     input.addEventListener(
       'change',
       () => {
-        const file = input.files?.[0];
+        const files = Array.from(input.files ?? []);
         input.remove();
-        if (!file) {
-          resolve(null);
-          return;
-        }
-        void file.arrayBuffer().then((data) => {
-          resolve({ name: file.name, data: new Uint8Array(data) });
-        }, reject);
+        resolve(
+          files.map((file) => async () => ({
+            name: file.name,
+            data: new Uint8Array(await file.arrayBuffer()),
+          })),
+        );
       },
       { once: true },
     );

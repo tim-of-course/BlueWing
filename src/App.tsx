@@ -285,7 +285,7 @@ export default function App(props: { application?: Application }) {
         </button>
         <button
           type="button"
-          disabled={controller.busy() || hasDraft() || !!controller.project()}
+          disabled={controller.busy() || hasDraft()}
           onClick={() => {
             run(() => controller.openProject());
           }}
