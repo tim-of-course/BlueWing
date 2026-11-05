@@ -252,6 +252,19 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     },
   ],
   [
+    'sheet.renameMany',
+    'Rename sheets atomically, preserving their other fields.',
+    object({
+      sheets: {
+        ...array(object({ id: string, name: string })),
+        minItems: 1,
+        maxItems: 500,
+      },
+    }),
+    true,
+    { sheets: [{ id: 'sheet-1', name: 'A101 · FLOOR PLAN' }] },
+  ],
+  [
     'sheet.scale',
     'Set a PDF sheet scale from printed paper and real distances (72 page units per paper inch).',
     object({
@@ -895,6 +908,19 @@ export function executeCommandOnDraft(
     case 'sheet.put':
       next.sheets[entityId] = structuredClone(payload) as unknown as Sheet;
       break;
+    case 'sheet.renameMany': {
+      const entries = payload.sheets as { id: string; name: string }[];
+      const seen = new Set<string>();
+      for (const entry of entries) {
+        if (seen.has(entry.id)) throw new Error(`Duplicate sheet: ${entry.id}`);
+        seen.add(entry.id);
+        requireEntity(next.sheets, entry.id, 'Sheet');
+        if (!entry.name.trim()) throw new Error('Sheet name cannot be empty');
+      }
+      for (const entry of entries)
+        requireEntity(next.sheets, entry.id, 'Sheet').name = entry.name.trim();
+      break;
+    }
     case 'sheet.scale':
       requireEntity(next.sheets, entityId, 'Sheet').calibration =
         calibrationFromRatio(payload as unknown as PaperScale);
