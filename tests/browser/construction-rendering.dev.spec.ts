@@ -8,6 +8,39 @@ declare global {
   }
 }
 
+test('middle-drag pans and right-drag zooms the 3D view', async ({ page }) => {
+  await page.goto('/tests/browser/construction-rendering-harness.html');
+  await page.evaluate(() => {
+    window.constructionRendering.setupNavigation();
+  });
+  const canvas = page.getByLabel('Construction rendering fixture');
+  const bounds = await canvas.boundingBox();
+  if (!bounds) throw new Error('3D canvas is not visible');
+  const x = bounds.x + bounds.width / 2;
+  const y = bounds.y + bounds.height / 2;
+  const before = await page.evaluate(() =>
+    window.constructionRendering.readNavigation(),
+  );
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(x + 50, y + 30);
+  await page.mouse.up({ button: 'middle' });
+  const panned = await page.evaluate(() =>
+    window.constructionRendering.readNavigation(),
+  );
+  expect(panned.target).not.toEqual(before.target);
+  expect(panned.zoom).toBe(before.zoom);
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(x, y + 50);
+  await page.mouse.up({ button: 'right' });
+  const zoomed = await page.evaluate(() =>
+    window.constructionRendering.readNavigation(),
+  );
+  expect(zoomed.zoom).not.toBe(panned.zoom);
+  expect(zoomed.target).toEqual(panned.target);
+});
+
 test('crossing members occlude and pick at pixel depth from both sides, including exports', async ({
   page,
 }, testInfo) => {
@@ -101,5 +134,31 @@ test('app screenshot capture includes an idle WebGL construction view', async ({
   });
   expect(result.checkedPixels).toBeGreaterThan(500);
   expect(result.wrongPixels).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('plan plane is correctly oriented, keeps construction selectable, and releases its texture', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  await page.goto('/tests/browser/construction-rendering-harness.html');
+  const result = await page.evaluate(() =>
+    window.constructionRendering.planPlane(),
+  );
+  const expected = [
+    [255, 0, 0],
+    [0, 255, 0],
+    [0, 0, 255],
+    [255, 255, 0],
+  ];
+  for (const [index, color] of result.colors.entries())
+    for (const [channel, value] of color.entries())
+      expect(Math.abs(value - (expected[index]?.[channel] ?? 0))).toBeLessThan(
+        5,
+      );
+  expect(result.picked?.id).toBe('tall-stud');
+  expect(result.withPlan.textures).toBe(result.baseline.textures + 1);
+  expect(result.removed.textures).toBe(result.baseline.textures);
+  expect(result.removed.geometries).toBe(result.baseline.geometries);
   expect(errors).toEqual([]);
 });

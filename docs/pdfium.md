@@ -22,6 +22,8 @@ Native PDFs use the asynchronous asset bridge with 256 KiB cached chunks and adj
 
 Fetched chunks remain resident for that document. Availability recovery can request the entire PDF, so selective reads are an optimization, not a memory bound. Browser imports still load source bytes in full. Two idle workers remain cached; active workers, page bitmaps, the WASM heap and browser/GPU copies are outside the page-image cache budget. A document's worker termination releases its engine and source memory.
 
+If PDFium reports an availability error for a valid ranged document, Bluewing retries with the complete PDF in the worker's WASM memory. This can temporarily use additional memory proportional to the PDF size. The range chunks are released after the fallback opens successfully.
+
 Vite emits the WASM binary as a versioned local asset. Complete web-release manifests include it and runtime notices, including the CloudPDF NOTICE and pinned third-party license texts. No CDN is used at runtime. PDF.js is a development dependency for the independent reference renderer and comparison sample; its assets are excluded from production builds.
 
 ## Known rendering differences

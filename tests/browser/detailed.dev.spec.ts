@@ -27,6 +27,23 @@ test('positioned takeoff, linked 3D and highlighted review survive reopening', a
         .getByRole('combobox', { name: 'Role', exact: true })
         .selectOption('stud');
       await expect(viewer).toContainText('19 objects shown');
+      const plan = viewer.getByRole('checkbox', { name: 'Show plan' });
+      await expect(plan).toBeChecked();
+      await plan.uncheck();
+      await page
+        .getByLabel('Workspace view', { exact: true })
+        .selectOption('plan');
+      await page
+        .getByLabel('Workspace view', { exact: true })
+        .selectOption('3d');
+      await expect(plan).not.toBeChecked();
+      await expect(viewer.getByRole('status')).toBeHidden();
+      const canvas = viewer.locator('canvas');
+      const withoutPlan = await canvas.screenshot();
+      await plan.check();
+      await expect
+        .poll(async () => (await canvas.screenshot()).equals(withoutPlan))
+        .toBe(false);
     },
     { scenario: 'construction-view' },
   );

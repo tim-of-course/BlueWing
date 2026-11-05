@@ -19,13 +19,16 @@ export function paintTakeoff(
   context.save();
   context.lineCap = 'round';
   context.lineJoin = 'round';
+  const transform = context.getTransform();
+  const outputPixel = Math.hypot(transform.a, transform.b) * pixel;
   for (const geometry of geometries) {
     const first = geometry.points[0];
     if (!first) continue;
     const color = options.colors?.[geometry.id] ?? '#3b82f6';
     context.strokeStyle = selected.has(geometry.id) ? '#60a5fa' : color;
     context.fillStyle = color;
-    context.lineWidth = (selected.has(geometry.id) ? 3 : 2) * pixel;
+    const isSelected = selected.has(geometry.id);
+    context.lineWidth = (isSelected ? 3 : 2) * pixel;
     if (geometry.kind === 'count') {
       for (const point of geometry.points) {
         context.beginPath();
@@ -51,7 +54,11 @@ export function paintTakeoff(
       context.fill();
       context.restore();
     }
+    context.lineWidth = (isSelected ? 6 : 4) * pixel;
+    context.shadowColor = isSelected ? '#60a5fa' : color;
+    context.shadowBlur = (isSelected ? 10 : 4) * outputPixel;
     context.stroke();
+    context.shadowBlur = 0;
   }
   context.restore();
 }

@@ -332,12 +332,104 @@ async function screenshotCapture() {
   }
 }
 
+async function planPlane() {
+  const renderer = createConstructionRenderer(target);
+  const source = document.createElement('canvas');
+  source.width = source.height = 4;
+  const context = source.getContext('2d');
+  if (!context) throw new Error('Plan fixture context is unavailable.');
+  for (const [x, y, color] of [
+    [0, 0, '#ff0000'],
+    [2, 0, '#00ff00'],
+    [0, 2, '#0000ff'],
+    [2, 2, '#ffff00'],
+  ] as const) {
+    context.fillStyle = color;
+    context.fillRect(x, y, 2, 2);
+  }
+  const original = await createImageBitmap(source);
+  const image = await createImageBitmap(original, {
+    imageOrientation: 'flipY',
+  });
+  original.close();
+  const view: SceneCamera = {
+    yaw: -Math.PI / 2,
+    pitch: Math.PI / 2,
+    zoom: 1,
+    target: { x: 0, y: 0, z: 0 },
+    span: 6,
+  };
+  const scene = makeScene([stud]);
+  const corners = [
+    { x: -2, y: 2, z: -0.001 },
+    { x: 2, y: 2, z: -0.001 },
+    { x: 2, y: -2, z: -0.001 },
+    { x: -2, y: -2, z: -0.001 },
+  ] as const;
+  try {
+    renderer.render(scene, options(view));
+    const baseline = renderer.info();
+    renderer.render(scene, { ...options(view), plan: { image, corners } });
+    const data = pixels(target);
+    const colorAt = (x: number, y: number) =>
+      Array.from(data.slice((y * width + x) * 4, (y * width + x) * 4 + 3));
+    const withPlan = renderer.info();
+    const picked = renderer.pick(300, 300);
+    renderer.render(scene, options(view));
+    const removed = renderer.info();
+    return {
+      colors: [
+        colorAt(200, 200),
+        colorAt(400, 200),
+        colorAt(200, 400),
+        colorAt(400, 400),
+      ],
+      picked,
+      baseline,
+      withPlan,
+      removed,
+    };
+  } finally {
+    renderer.dispose();
+    image.close();
+  }
+}
+
+let navigationCamera = camera;
+let navigationRenderer:
+  ReturnType<typeof createConstructionRenderer> | undefined;
+function setupNavigation() {
+  navigationCamera = camera;
+  navigationRenderer?.dispose();
+  navigationRenderer = createConstructionRenderer(target, {
+    onCameraChange(next) {
+      navigationCamera = next;
+    },
+    onSelect() {},
+  });
+  navigationRenderer.render(makeScene([stud]), options(camera));
+}
+function readNavigation() {
+  return navigationCamera;
+}
+
 Object.assign(window, {
-  constructionRendering: { crossing, finishes, batching, screenshotCapture },
+  constructionRendering: {
+    setupNavigation,
+    readNavigation,
+    crossing,
+    finishes,
+    batching,
+    screenshotCapture,
+    planPlane,
+  },
 });
 export type ConstructionRenderingHarness = {
+  setupNavigation: typeof setupNavigation;
+  readNavigation: typeof readNavigation;
   crossing: typeof crossing;
   finishes: typeof finishes;
   batching: typeof batching;
   screenshotCapture: typeof screenshotCapture;
+  planPlane: typeof planPlane;
 };

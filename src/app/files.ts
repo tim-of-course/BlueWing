@@ -5,6 +5,33 @@ import { nativeRange } from '../platform/native-bytes';
 import type { Asset, AssetRange } from '../platform/storage-model';
 import type { NativeInvoke } from '../platform/storage';
 export type ImportedFile = Omit<Asset, 'id'>;
+export type ImportedFileReader = {
+  name: string;
+  read: () => Promise<ImportedFile>;
+};
+
+export function pdfPathReaders(paths: string[]): ImportedFileReader[] {
+  return paths
+    .filter((path) => /\.pdf$/i.test(path))
+    .map((path) => ({
+      name: path.split(/[\\/]/).pop() ?? path,
+      read: () => readNativeFile(path),
+    }));
+}
+
+export function pdfFileReaders(files: File[]): ImportedFileReader[] {
+  return files
+    .filter(
+      (file) => /\.pdf$/i.test(file.name) || file.type === 'application/pdf',
+    )
+    .map((file) => ({
+      name: file.name,
+      read: async () => ({
+        name: file.name,
+        data: new Uint8Array(await file.arrayBuffer()),
+      }),
+    }));
+}
 export async function readNativeFile(
   path: string,
   call: NativeInvoke = invoke,
@@ -60,7 +87,7 @@ export async function chooseProject(
 }
 export async function choosePdf(
   native: boolean,
-): Promise<Array<() => Promise<ImportedFile>>> {
+): Promise<ImportedFileReader[]> {
   if (native) {
     const path = await open({
       title: 'Import PDF plans',
@@ -68,7 +95,7 @@ export async function choosePdf(
       directory: false,
       filters: [{ name: 'PDF plans', extensions: ['pdf'] }],
     });
-    return (path ?? []).map((item) => () => readNativeFile(item));
+    return pdfPathReaders(path ?? []);
   }
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -90,12 +117,7 @@ export async function choosePdf(
       () => {
         const files = Array.from(input.files ?? []);
         input.remove();
-        resolve(
-          files.map((file) => async () => ({
-            name: file.name,
-            data: new Uint8Array(await file.arrayBuffer()),
-          })),
-        );
+        resolve(pdfFileReaders(files));
       },
       { once: true },
     );

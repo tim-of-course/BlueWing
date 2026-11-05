@@ -7,13 +7,19 @@ import {
   Show,
 } from 'solid-js';
 import type { ModelView, ViewportPort } from '../app/wingman-types';
+import type { WorkspaceController } from '../app/contracts';
 import type { ConstructionSnapshot } from '../core/calculation-state';
+import type { SheetPlacement } from '../core/construction-types';
+import type { Sheet } from '../core/types';
+import type { RasterLease } from '../pdf/raster';
+import { PAGE_PREVIEW_DIMENSION, pageImageDimension } from '../pdf/page-images';
 import {
   buildConstructionScene,
   constructionSceneInput,
   defaultCamera,
   fitCamera,
   orbitCamera,
+  sheetPlanCorners,
   viewPresets,
   zoomCamera,
 } from '../three/scene';
@@ -33,6 +39,11 @@ const viewOptions: readonly { value: ViewPreset; label: string }[] = [
 
 export interface ConstructionViewProps {
   result: ConstructionSnapshot;
+  controller: Pick<WorkspaceController, 'acquireSheet' | 'cachedSheetPreview'>;
+  sheet: Sheet | undefined;
+  placement: SheetPlacement | undefined;
+  showPlan: boolean;
+  onShowPlanChange: (show: boolean) => void;
   estimateOutputs?: number;
   onViewport?: (port: ViewportPort<ModelView>) => void;
   interactionDisabled?: boolean;
@@ -42,6 +53,8 @@ export interface ConstructionViewProps {
   levels?: readonly {
     id: string;
     name: string;
+    elevation: number;
+    sheetIds: readonly string[];
     geometryIds: readonly string[];
   }[];
   /** Optional host isolation; intersects with level, selection and material filters. */
@@ -74,6 +87,41 @@ export default function ConstructionView(props: ConstructionViewProps) {
   const [material, setMaterial] = createSignal('');
   const [role, setRole] = createSignal('');
   const [levelId, setLevelId] = createSignal('');
+  const [planImage, setPlanImage] = createSignal<{
+    image: ImageBitmap;
+    request: { sheet: Sheet };
+  } | null>(null);
+  const imageRequest = createMemo(
+    () =>
+      props.showPlan && props.sheet?.calibration
+        ? { sheet: props.sheet }
+        : undefined,
+    {
+      equals: (a, b) =>
+        a === b ||
+        (!!a &&
+          !!b &&
+          a.sheet.id === b.sheet.id &&
+          a.sheet.assetId === b.sheet.assetId &&
+          a.sheet.pageIndex === b.sheet.pageIndex &&
+          a.sheet.width === b.sheet.width &&
+          a.sheet.height === b.sheet.height &&
+          a.sheet.rotation === b.sheet.rotation),
+    },
+  );
+  const plan = createMemo(() => {
+    const loaded = planImage();
+    const sheet = props.showPlan ? props.sheet : undefined;
+    if (!loaded || loaded.request !== imageRequest() || !sheet)
+      return undefined;
+    const matching =
+      props.levels?.filter((level) => level.sheetIds.includes(sheet.id)) ?? [];
+    const level =
+      props.levels?.find((item) => item.id === levelId()) ??
+      (matching.length === 1 ? matching[0] : undefined);
+    const corners = sheetPlanCorners(sheet, props.placement, level?.elevation);
+    return corners ? { image: loaded.image, corners } : undefined;
+  });
   const [selectedOnly, setSelectedOnly] = createSignal(false);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const input = createMemo(() => constructionSceneInput(props.result));
@@ -204,6 +252,57 @@ export default function ConstructionView(props: ConstructionViewProps) {
     { name: 'construction.interaction' },
   );
   createEffect(
+    () => ({ renderer: renderer(), request: imageRequest() }),
+    ({ renderer, request }) => {
+      if (!renderer || !request) return;
+      const sheet = request.sheet;
+      const abort = new AbortController();
+      let cancelled = false;
+      let fullReady = false;
+      let current: ImageBitmap | null = null;
+      const publish = async (lease: RasterLease, full: boolean) => {
+        try {
+          const scale = Math.min(1, 2048 / Math.max(lease.width, lease.height));
+          const bitmap = await createImageBitmap(lease.source, {
+            resizeWidth: Math.max(1, Math.ceil(lease.width * scale)),
+            resizeHeight: Math.max(1, Math.ceil(lease.height * scale)),
+            resizeQuality: 'high',
+            imageOrientation: 'flipY',
+          });
+          if (cancelled || (!full && fullReady)) {
+            bitmap.close();
+            return;
+          }
+          if (full) fullReady = true;
+          renderer.clearPlan();
+          current?.close();
+          current = bitmap;
+          setPlanImage({ image: bitmap, request });
+        } finally {
+          lease.release();
+        }
+      };
+      const preview = props.controller.cachedSheetPreview(sheet);
+      if (preview) void publish(preview, false).catch(() => undefined);
+      else
+        void props.controller
+          .acquireSheet(sheet, PAGE_PREVIEW_DIMENSION, abort.signal)
+          .then((lease) => publish(lease, false))
+          .catch(() => undefined);
+      void props.controller
+        .acquireSheet(sheet, pageImageDimension(sheet), abort.signal)
+        .then((lease) => publish(lease, true))
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+        abort.abort();
+        renderer.clearPlan();
+        current?.close();
+      };
+    },
+    { name: 'construction.planImage' },
+  );
+  createEffect(
     () => ({
       renderer: renderer(),
       scene: scene(),
@@ -212,6 +311,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       ids: displayIds(),
       selected: selectedId(),
       displayMode: displayMode(),
+      plan: plan(),
     }),
     (state) => {
       const frame = requestAnimationFrame(() => {
@@ -221,6 +321,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
             ...state.viewport,
             camera: state.camera,
             displayMode: state.displayMode,
+            plan: state.plan,
             selectedGeometryIds: state.ids,
             selectedPieceId: state.selected,
           });
@@ -243,6 +344,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
         kind: '3d',
         camera: { ...camera() },
         displayMode: displayMode(),
+        showPlan: props.showPlan,
         ...((
           props.presentationActive
             ? presentation()?.geometryIds
@@ -267,6 +369,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
         setPresentation(view);
         setCamera({ ...view.camera });
         setDisplayMode(view.displayMode ?? 'solid');
+        if (view.showPlan !== undefined) props.onShowPlanChange(view.showPlan);
         setMaterial(view.materialId ?? '');
         setRole(view.role ?? '');
         setLevelId(view.levelId ?? '');
@@ -408,6 +511,16 @@ export default function ConstructionView(props: ConstructionViewProps) {
         <label class="construction-check">
           <input
             type="checkbox"
+            checked={props.showPlan}
+            onChange={(event) => {
+              props.onShowPlanChange(event.currentTarget.checked);
+            }}
+          />
+          Show plan
+        </label>
+        <label class="construction-check">
+          <input
+            type="checkbox"
             checked={selectedOnly()}
             onChange={(event) => setSelectedOnly(event.currentTarget.checked)}
           />
@@ -431,7 +544,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
           }}
           tabindex="0"
           role="img"
-          aria-label="Construction model. Drag to orbit; right-drag or Shift-drag to pan; scroll to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Click a member to select its source."
+          aria-label="Construction model. Left-drag to orbit; middle-drag or Shift-drag to pan; right-drag or scroll to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Click a member to select its source."
           onKeyDown={keydown}
         />
         <Show when={rendererStatus()}>
@@ -447,6 +560,9 @@ export default function ConstructionView(props: ConstructionViewProps) {
         </Show>
       </div>
       <div class="construction-status" aria-live="polite">
+        <Show when={props.showPlan && props.sheet && !props.sheet.calibration}>
+          <span>Calibrate the current sheet to show its plan in 3D.</span>
+        </Show>
         <span>
           {displayMode() === 'xray'
             ? 'X-ray: finish outlines remain visible through framing.'
@@ -462,8 +578,8 @@ export default function ConstructionView(props: ConstructionViewProps) {
           </span>
         </Show>
         <span>
-          {visibleCount().toLocaleString()} objects shown. Drag to orbit ·
-          Right-drag to pan · Scroll to zoom
+          {visibleCount().toLocaleString()} objects shown. Left-drag to orbit ·
+          Middle-drag to pan · Right-drag or scroll to zoom
         </span>
         <Show when={scene().omitted}>
           <strong>

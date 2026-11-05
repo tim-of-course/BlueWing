@@ -1,10 +1,32 @@
 import type { ConstructionSnapshot } from '../core/calculation-state';
+import { sheetPointToWorld } from '../core/construction';
+import type { SheetPlacement } from '../core/construction-types';
+import type { Sheet } from '../core/types';
 
 /** Metres in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
 export interface Point3 {
   x: number;
   y: number;
   z: number;
+}
+
+/** Sheet corners in model metres, ordered from the top-left around the page. */
+export function sheetPlanCorners(
+  sheet: Sheet,
+  placement?: SheetPlacement,
+  levelElevation = 0,
+): [Point3, Point3, Point3, Point3] | null {
+  const scale = sheet.calibration?.metresPerUnit;
+  if (!scale || !Number.isFinite(scale) || scale <= 0) return null;
+  return [
+    { x: 0, y: 0 },
+    { x: sheet.width, y: 0 },
+    { x: sheet.width, y: sheet.height },
+    { x: 0, y: sheet.height },
+  ].map((point) => {
+    const mapped = sheetPointToWorld(point, scale, placement);
+    return { ...mapped, z: mapped.z + levelElevation - 0.001 };
+  }) as [Point3, Point3, Point3, Point3];
 }
 export interface SceneSource {
   id: string;

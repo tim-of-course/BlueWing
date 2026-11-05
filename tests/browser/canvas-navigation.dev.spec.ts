@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { expect, test, type Locator } from '@playwright/test';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
+import type { paintTakeoff as PaintTakeoff } from '../../src/components/canvas/paint';
 import { pagePoint, startProject } from './takeoff';
 
 async function view(canvas: Locator) {
@@ -18,6 +19,42 @@ async function view(canvas: Locator) {
     };
   });
 }
+
+test('line geometry has a stronger glow when selected', async ({ page }) => {
+  await page.goto('/');
+  const result = await page.evaluate(async () => {
+    const path = '/src/components/canvas/paint.ts';
+    const { paintTakeoff } = (await import(path)) as {
+      paintTakeoff: typeof PaintTakeoff;
+    };
+    const canvas = document.createElement('canvas');
+    canvas.width = 100;
+    canvas.height = 100;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas unavailable');
+    const geometry = {
+      id: 'line',
+      sheetId: 'sheet',
+      name: 'Line',
+      kind: 'path' as const,
+      points: [
+        { x: 10, y: 50 },
+        { x: 90, y: 50 },
+      ],
+    };
+    const sample = (selected: boolean) => {
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, 100, 100);
+      paintTakeoff(context, [geometry], {
+        colors: { line: '#3b82f6' },
+        selectedIds: selected ? ['line'] : [],
+      });
+      return Array.from(context.getImageData(50, 57, 1, 1).data);
+    };
+    return { normal: sample(false), selected: sample(true) };
+  });
+  expect(result.selected[0]).toBeLessThan(result.normal[0] ?? 255);
+});
 
 test('wheel and pinch anchor the cursor; pan and resize preserve the drawing view', async ({
   page,

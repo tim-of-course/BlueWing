@@ -1,5 +1,6 @@
 import type { Accessor } from 'solid-js';
 import type { Observation } from './application';
+import type { ImportedFileReader } from './files';
 import type { PaperScale } from '../core/scale';
 import type { SheetNameSuggestion } from '../pdf/sheet-names';
 import type { PlanSnippet } from '../core/review';
@@ -76,6 +77,9 @@ export interface WorkspaceController {
   exportPieces(): Promise<void>;
   activeSheetId: Accessor<string | null>;
   setActiveSheetId(id: string | null): void;
+  canGoBack: Accessor<boolean>;
+  canGoForward: Accessor<boolean>;
+  goSheetHistory(direction: -1 | 1): void;
   selection: Accessor<string[]>;
   setSelection(ids: string[]): void;
   visibleGeometryIds: Accessor<ReadonlySet<string>>;
@@ -99,9 +103,12 @@ export interface WorkspaceController {
   setDraftPending(pending: boolean): void;
   createProject(name: string): Promise<void>;
   openProject(): Promise<void>;
+  recentProjects: Accessor<{ path: string; name: string }[]>;
+  openRecentProject(path: string): Promise<void>;
   closeProject(): Promise<void>;
   renameProject(name: string): Promise<void>;
   importPdf(): Promise<void>;
+  importPdfFiles(files: ImportedFileReader[]): Promise<void>;
   renameSheet(id: string, name: string, expected?: Observation): Promise<void>;
   suggestSheetName(sheet: Sheet): Promise<SheetNameSuggestion>;
   renameSheets(

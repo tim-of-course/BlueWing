@@ -21,6 +21,7 @@ export interface ModelView {
   kind: '3d';
   camera: SceneCamera;
   displayMode?: DisplayMode;
+  showPlan?: boolean;
   geometryIds?: string[];
   levelId?: string;
   materialId?: string;

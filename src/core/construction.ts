@@ -382,7 +382,11 @@ function subtract(
     });
   return spans.filter(([a, b]) => b - a > EPS);
 }
-function world(point: Point, scale: number, placement?: SheetPlacement): Vec3 {
+export function sheetPointToWorld(
+  point: Point,
+  scale: number,
+  placement?: SheetPlacement,
+): Vec3 {
   const x = (point.x - (placement?.pageOrigin.x ?? 0)) * scale;
   const y = -(point.y - (placement?.pageOrigin.y ?? 0)) * scale;
   const angle = placement?.rotation ?? 0;
@@ -399,7 +403,9 @@ function world(point: Point, scale: number, placement?: SheetPlacement): Vec3 {
   };
 }
 function path(geometry: Geometry, scale: number, placement?: SheetPlacement) {
-  const points = geometry.points.map((p) => world(p, scale, placement));
+  const points = geometry.points.map((p) =>
+    sheetPointToWorld(p, scale, placement),
+  );
   const stations = [0];
   for (let i = 1; i < points.length; i++)
     stations.push(
@@ -1278,7 +1284,7 @@ export function generateConstruction(
         ceiling.elevation +
         (ceiling.levelId ? present(data.levels[ceiling.levelId]).elevation : 0);
       const points = geometry.points.map((p) => {
-        const v = world(p, scale, placement);
+        const v = sheetPointToWorld(p, scale, placement);
         return { ...v, z: v.z + elevation };
       });
       if (ceiling.grid) {

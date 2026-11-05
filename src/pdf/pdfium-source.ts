@@ -7,6 +7,11 @@ function pointer(value: number): Ptr {
 const CHUNK = 256 * 1024;
 const TRANSFER_CHUNKS = 4;
 type RangeResult = Extract<PdfWorkerRequest, { type: 'range-result' }>;
+export class PdfAvailabilityError extends Error {
+  constructor() {
+    super('PDF data could not be read');
+  }
+}
 
 /** PDFium probes synchronously; its availability API requests missing bytes
  * before opening a document/page. Only fetched chunks stay in this worker. */
@@ -211,7 +216,7 @@ export class PdfiumSource {
         this.checkingAvailability = false;
       }
       if (status === 1 || status === 2) return;
-      if (status < 0) throw new Error('PDF data could not be read');
+      if (status < 0) throw new PdfAvailabilityError();
       if (!this.wanted.size)
         throw new Error('PDFium did not request missing PDF data');
       // Bound simultaneous IPC copies and keep large download hints incremental.
@@ -233,6 +238,30 @@ export class PdfiumSource {
     } finally {
       this.checkingAvailability = false;
     }
+  }
+
+  async copyAll(destination: Ptr, check: () => void): Promise<void> {
+    const count = Math.ceil(this.length / CHUNK);
+    for (let index = 0; index < count; index += TRANSFER_CHUNKS) {
+      check();
+      const end = Math.min(count, index + TRANSFER_CHUNKS);
+      await this.fetchAll(
+        Array.from({ length: end - index }, (_, offset) => index + offset),
+        check,
+      );
+      for (let part = index; part < end; part++) {
+        const chunk = this.chunks.get(part);
+        if (!chunk) throw new Error('Incomplete PDF data');
+        this.module.mem.writeBytes(
+          pointer(Number(destination) + part * CHUNK),
+          chunk,
+        );
+      }
+    }
+  }
+
+  releaseChunks(): void {
+    this.chunks.clear();
   }
 
   /** Availability hints do not cover every document-level dependency (for

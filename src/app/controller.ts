@@ -14,7 +14,12 @@ import { isTauri } from '@tauri-apps/api/core';
 import { exportQuantities, exportPieces } from '../core';
 import type { AssemblyLibrary, CommandCall, Project } from '../core/types';
 import { Application, type Observation } from './application';
-import { choosePdf, chooseProject, writeOutput } from './files';
+import {
+  choosePdf,
+  chooseProject,
+  writeOutput,
+  type ImportedFileReader,
+} from './files';
 import { connectCli } from './cli';
 import { exportConstruction } from '../core/detailed-commands';
 import { renderImage } from './render';
@@ -56,12 +61,109 @@ export function createWorkspace(
     ),
   );
   const [library, setLibrary] = createSignal<AssemblyLibrary | null>(null);
+  const [recentProjects, setRecentProjects] =
+    createSignal<{ path: string; name: string }[]>(readRecentProjects());
+  let openedPath: string | null = null;
+  let openedSession: Application['session'] = null;
+  function readRecentProjects(): { path: string; name: string }[] {
+    try {
+      const paths: unknown = JSON.parse(
+        localStorage.getItem('bluewing.recentProjects') ?? '[]',
+      );
+      return Array.isArray(paths)
+        ? paths.filter(
+            (item: unknown): item is { path: string; name: string } =>
+              typeof item === 'object' &&
+              item !== null &&
+              'path' in item &&
+              'name' in item &&
+              typeof item.path === 'string' &&
+              typeof item.name === 'string',
+          )
+        : [];
+    } catch {
+      return [];
+    }
+  }
+  function rememberProject(path: string) {
+    const paths = [
+      { path, name: app.project?.name ?? path },
+      ...recentProjects().filter((item) => item.path !== path),
+    ].slice(0, 10);
+    setRecentProjects(paths);
+    try {
+      localStorage.setItem('bluewing.recentProjects', JSON.stringify(paths));
+    } catch {
+      // Opening a project succeeds even if device preferences cannot be saved.
+    }
+  }
   const [project, setProject] = createSignal<Project | null>(null, {
     name: 'workspace.acceptedProject',
   });
-  const [activeSheetId, setActiveSheetId] = createSignal<string | null>(null, {
-    name: 'workspace.activeSheet',
+  const [activeSheetId, setActiveSheetSignal] = createSignal<string | null>(
+    null,
+    {
+      name: 'workspace.activeSheet',
+    },
+  );
+  const [sheetHistory, setSheetHistory] = createSignal<string[]>([]);
+  const [historyIndex, setHistoryIndex] = createSignal(-1);
+  let history: string[] = [];
+  let historyPosition = -1;
+  let currentSheet: string | null = null;
+  function setActiveSheetId(
+    value: string | null | ((id: string | null) => string | null),
+  ) {
+    const id = typeof value === 'function' ? value(currentSheet) : value;
+    if (id !== currentSheet) {
+      currentSheet = id;
+      if (id) {
+        history = [...history.slice(0, historyPosition + 1), id];
+        historyPosition = history.length - 1;
+        setSheetHistory(history);
+        setHistoryIndex(historyPosition);
+      }
+    }
+    setActiveSheetSignal(id);
+  }
+  function resetHistory() {
+    history = [];
+    historyPosition = -1;
+    currentSheet = null;
+    setSheetHistory([]);
+    setHistoryIndex(-1);
+  }
+  function historyTarget(direction: -1 | 1) {
+    let index = historyPosition + direction;
+    while (index >= 0 && index < history.length) {
+      const id = history[index];
+      if (id && app.project?.sheets[id]) return index;
+      index += direction;
+    }
+    return -1;
+  }
+  const canGoBack = createMemo(() => {
+    sheetHistory();
+    historyIndex();
+    project();
+    return historyTarget(-1) !== -1;
   });
+  const canGoForward = createMemo(() => {
+    sheetHistory();
+    historyIndex();
+    project();
+    return historyTarget(1) !== -1;
+  });
+  function goSheetHistory(direction: -1 | 1) {
+    const index = historyTarget(direction);
+    if (index === -1) return;
+    historyPosition = index;
+    currentSheet = history[index] ?? null;
+    setHistoryIndex(index);
+    setActiveSheetSignal(currentSheet);
+    setSelection([]);
+    setActiveGroupId(null);
+  }
   const [selectedIds, setSelection] = createSignal<string[]>([], {
     name: 'workspace.selection',
   });
@@ -210,6 +312,7 @@ export function createWorkspace(
       publishedRevision = revision;
       setProject(current);
       if (publishedId !== (current?.id ?? null)) {
+        resetHistory();
         setVisibility(readVisibility(current?.id ?? null));
         setSelection([]);
         setActiveGroupId(null);
@@ -272,6 +375,58 @@ export function createWorkspace(
         origin: 'ui',
       }),
     );
+  }
+  async function openPath(path: string) {
+    if (app.session && app.session === openedSession && path === openedPath)
+      return;
+    const previousPath =
+      app.session && app.session === openedSession ? openedPath : null;
+    if (app.session) await command('project.close');
+    try {
+      await command('project.open', { path });
+    } catch (error) {
+      if (previousPath) {
+        try {
+          await command('project.open', { path: previousPath });
+          openedSession = app.session;
+          openedPath = previousPath;
+        } catch {
+          openedSession = null;
+          openedPath = null;
+          throw new Error(
+            `Could not open the selected project or reopen the previous project: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      throw error;
+    }
+    openedPath = path;
+    openedSession = app.session;
+    rememberProject(path);
+  }
+  async function importFiles(
+    files: ImportedFileReader[],
+    expected: Observation,
+  ) {
+    let observation = expected;
+    for (const [index, file] of files.entries()) {
+      try {
+        const sheets = await app.importBytes(await file.read(), observation);
+        if (observation === expected) setActiveSheetId(sheets[0]?.id ?? null);
+        observation = app.observe();
+      } catch (error) {
+        const previous = index
+          ? `${String(index)} earlier ${index === 1 ? 'file was' : 'files were'} imported. `
+          : '';
+        const remaining = files.length - index - 1;
+        const later = remaining
+          ? ` ${String(remaining)} later ${remaining === 1 ? 'file was' : 'files were'} not imported.`
+          : '';
+        throw new Error(
+          `${previous}Could not import ${file.name}: ${error instanceof Error ? error.message : String(error)}.${later}`,
+        );
+      }
+    }
   }
   function requireProject(): Project {
     const current = app.project;
@@ -418,6 +573,9 @@ export function createWorkspace(
     project,
     quantities,
     activeSheetId,
+    canGoBack,
+    canGoForward,
+    goSheetHistory,
     setActiveSheetId(id) {
       setActiveSheetId(id);
       setSelection([]);
@@ -469,7 +627,12 @@ export function createWorkspace(
       const path = app.native
         ? await chooseProject(true, name)
         : `browser:${crypto.randomUUID()}`;
-      if (path) await command('project.create', { name, path });
+      if (path) {
+        await command('project.create', { name, path });
+        openedPath = path;
+        openedSession = app.session;
+        rememberProject(path);
+      }
     },
     async openProject() {
       const path = app.native
@@ -477,24 +640,36 @@ export function createWorkspace(
         : localStorage.getItem('bluewing.lastProject');
       if (!path && !app.native)
         throw new Error('No saved browser project. Create a project first.');
-      if (path) {
-        if (app.session) await command('project.close');
-        await command('project.open', { path });
+      if (path) await openPath(path);
+    },
+    recentProjects,
+    async openRecentProject(path) {
+      try {
+        await openPath(path);
+      } catch (error) {
+        const name =
+          recentProjects().find((item) => item.path === path)?.name ?? path;
+        throw new Error(
+          `Could not open recent project “${name}”: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     },
     closeProject: () => command('project.close'),
-    renameProject: (name) => command('project.rename', { name }),
+    async renameProject(name) {
+      await command('project.rename', { name });
+      if (openedPath && app.session === openedSession)
+        rememberProject(openedPath);
+    },
     async importPdf() {
       const expected = app.observe();
       await run(async () => {
         const files = await choosePdf(app.native);
-        let observation = expected;
-        for (const readFile of files) {
-          const sheets = await app.importBytes(await readFile(), observation);
-          if (observation === expected) setActiveSheetId(sheets[0]?.id ?? null);
-          observation = app.observe();
-        }
+        await importFiles(files, expected);
       });
+    },
+    async importPdfFiles(files) {
+      const expected = app.observe();
+      await run(() => importFiles(files, expected));
     },
     undo: () => command('history.undo'),
     renameSheet: (id, name, expected) =>

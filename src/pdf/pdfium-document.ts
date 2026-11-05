@@ -6,7 +6,7 @@ import {
 } from '@embedpdf/engine-runtime';
 import wasmUrl from '@embedpdf/engine-runtime-wasm32/embedpdf.wasm?url';
 import type { Sheet } from '../core/types';
-import { PdfiumSource } from './pdfium-source';
+import { PdfAvailabilityError, PdfiumSource } from './pdfium-source';
 import { suggestSheetName, type SheetTextItem } from './sheet-names';
 import type { PdfRenderBounds } from './worker-protocol';
 
@@ -58,7 +58,12 @@ export class PdfiumDocument {
     } else {
       result.source = new PdfiumSource(runtime, input.length, request);
       attach(result.source);
-      result.document = await result.source.document(check);
+      try {
+        result.document = await result.source.document(check);
+      } catch (error) {
+        if (!(error instanceof PdfAvailabilityError)) throw error;
+        await result.fallbackToMemory(check);
+      }
     }
     check();
     if (!result.document) {
@@ -82,6 +87,30 @@ export class PdfiumDocument {
     const pointer = this.runtime.mem.alloc(size);
     if (!pointer) throw new Error('Not enough memory to render the PDF');
     return pointer;
+  }
+
+  private async fallbackToMemory(check: Check): Promise<void> {
+    const source = this.source;
+    if (!source) throw new Error('PDF data could not be read');
+    const buffer = this.allocate(source.length);
+    try {
+      await source.copyAll(buffer, check);
+      check();
+      const document = this.runtime.fn.FPDF_LoadMemDocument64(
+        buffer,
+        source.length,
+        '',
+      );
+      if (!document) throw new Error('Unable to open PDF');
+      if (this.document) this.runtime.fn.FPDF_CloseDocument(this.document);
+      this.runtime.fn.FPDFAvail_Destroy(source.handle);
+      source.releaseChunks();
+      this.document = document;
+      this.source = undefined;
+    } catch (error) {
+      this.runtime.mem.free(buffer);
+      throw error;
+    }
   }
 
   private async read<T>(run: () => T, check: Check): Promise<T> {
@@ -181,7 +210,13 @@ export class PdfiumDocument {
           if (error !== metadataNotReady || !this.source) throw error;
           // Linearized PDFs can have a page tree that PDFium has not loaded,
           // even when a metadata lookup requested no additional bytes.
-          await this.source.page(index, check, (pending) => pending);
+          try {
+            await this.source.page(index, check, (pending) => pending);
+          } catch (availabilityError) {
+            if (!(availabilityError instanceof PdfAvailabilityError))
+              throw availabilityError;
+            await this.fallbackToMemory(check);
+          }
           sheet = await this.read(readSheet, check);
         }
         sheets.push(sheet);
@@ -214,7 +249,14 @@ export class PdfiumDocument {
   ): Promise<Ptr> {
     if (index < 0 || index >= this.numPages)
       throw new Error('PDF page is out of range');
-    await this.source?.page(index, check, wait);
+    if (this.source) {
+      try {
+        await this.source.page(index, check, wait);
+      } catch (error) {
+        if (!(error instanceof PdfAvailabilityError)) throw error;
+        await this.fallbackToMemory(check);
+      }
+    }
     check();
     const module = this.runtime.fn;
     const object = module.EPDFDoc_GetPageObjectNumberByIndex(

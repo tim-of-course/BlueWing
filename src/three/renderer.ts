@@ -14,13 +14,16 @@ import {
   LineSegments,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
+  MOUSE,
   OrthographicCamera,
   Raycaster,
   Scene,
   ShaderMaterial,
   ShapeUtils,
   SRGBColorSpace,
+  Texture,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -44,6 +47,12 @@ import type {
 } from './scene';
 
 export interface RenderConstructionOptions {
+  plan?:
+    | {
+        image: ImageBitmap;
+        corners: readonly [Point3, Point3, Point3, Point3];
+      }
+    | undefined;
   width?: number;
   height?: number;
   pixelRatio?: number;
@@ -149,6 +158,9 @@ export class ConstructionRenderer {
   private readonly raycaster = new Raycaster();
   private readonly origin = new Vector3();
   private model: ConstructionScene | undefined;
+  private plan: Mesh<BufferGeometry, MeshBasicMaterial> | undefined;
+  private planImage: ImageBitmap | undefined;
+  private planCorners: RenderConstructionOptions['plan'] | undefined;
   private options: RenderConstructionOptions = {};
   private members: InstancedMesh<BoxGeometry, MeshLambertMaterial> | undefined;
   private outlines:
@@ -196,6 +208,8 @@ export class ConstructionRenderer {
     this.world.add(light);
     if (callbacks) {
       this.controls = new OrbitControls(this.camera, canvas);
+      this.controls.mouseButtons.MIDDLE = MOUSE.PAN;
+      this.controls.mouseButtons.RIGHT = MOUSE.DOLLY;
       this.controls.enableDamping = false;
       this.controls.screenSpacePanning = true;
       this.controls.minZoom = 0.01;
@@ -413,12 +427,65 @@ export class ConstructionRenderer {
     }
   }
 
+  clearPlan() {
+    if (!this.plan) return;
+    this.content.remove(this.plan);
+    this.plan.geometry.dispose();
+    this.plan.material.map?.dispose();
+    this.plan.material.dispose();
+    this.plan = undefined;
+    this.planImage = undefined;
+    this.planCorners = undefined;
+    this.requestDraw();
+  }
+
+  private updatePlan(
+    plan: RenderConstructionOptions['plan'],
+    modelChanged: boolean,
+  ) {
+    if (!plan) {
+      this.clearPlan();
+      return;
+    }
+    if (this.planImage !== plan.image) {
+      this.clearPlan();
+      const texture = new Texture(plan.image);
+      texture.colorSpace = SRGBColorSpace;
+      texture.needsUpdate = true;
+      const geometry = new BufferGeometry();
+      geometry.setAttribute(
+        'uv',
+        new Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2),
+      );
+      geometry.setIndex([0, 1, 2, 0, 2, 3]);
+      this.plan = new Mesh(
+        geometry,
+        new MeshBasicMaterial({ map: texture, side: DoubleSide }),
+      );
+      this.planImage = plan.image;
+      this.content.add(this.plan);
+    }
+    if (this.plan && (modelChanged || this.planCorners !== plan)) {
+      const positions = plan.corners.flatMap((point) => {
+        const p = vector(point).sub(this.origin);
+        return [p.x, p.y, p.z];
+      });
+      this.plan.geometry.setAttribute(
+        'position',
+        new Float32BufferAttribute(positions, 3),
+      );
+      this.plan.geometry.computeBoundingSphere();
+      this.planCorners = plan;
+    }
+  }
+
   render(model: ConstructionScene, options: RenderConstructionOptions = {}) {
     if (this.disposed) return;
     this.assertContext();
     const changed = model !== this.model;
     const previous = this.options;
     if (changed) this.setModel(model);
+    this.updatePlan(options.plan, changed);
     this.options = options;
     this.width = Math.max(1, options.width ?? (this.canvas.clientWidth || 640));
     this.height = Math.max(
@@ -454,7 +521,15 @@ export class ConstructionRenderer {
       vector(model.bounds.min),
     );
     const target = vector(state.target).sub(this.origin);
-    const distance = Math.max(1, diagonal + target.length() + state.span);
+    const planRadius = options.plan
+      ? Math.max(
+          ...options.plan.corners.map((point) =>
+            vector(point).sub(this.origin).distanceTo(target),
+          ),
+        )
+      : 0;
+    const depthRadius = Math.max(diagonal + target.length(), planRadius);
+    const distance = Math.max(1, depthRadius + state.span);
     const direction = new Vector3(
       Math.cos(state.pitch) * Math.cos(state.yaw),
       Math.cos(state.pitch) * Math.sin(state.yaw),
@@ -467,8 +542,8 @@ export class ConstructionRenderer {
     this.camera.quaternion.setFromRotationMatrix(
       new Matrix4().makeBasis(right, up, direction),
     );
-    this.camera.near = Math.max(0.001, distance - diagonal - target.length());
-    this.camera.far = distance + diagonal + target.length() + 1;
+    this.camera.near = Math.max(0.001, distance - depthRadius);
+    this.camera.far = distance + depthRadius + 1;
     this.camera.zoom = state.zoom;
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
@@ -564,6 +639,7 @@ export class ConstructionRenderer {
     this.controls?.dispose();
     this.cleanupEvents?.();
     this.clearModel();
+    this.clearPlan();
     this.model = undefined;
     this.gpu.dispose();
     this.gpu.forceContextLoss();

@@ -132,6 +132,10 @@ small,
   font-size: 17px;
   margin-right: 15px;
 }
+.recent-projects {
+  flex: 0 0 140px;
+  width: 140px;
+}
 .project-title {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -467,6 +471,12 @@ th {
   }
   .workspace-header {
     gap: 4px;
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+  }
+  .workspace-header .spacer {
+    display: none;
   }
   .workspace-header button {
     padding: 6px;

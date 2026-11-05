@@ -7,6 +7,7 @@ import {
   fitCamera,
   memberFaces,
   orbitCamera,
+  sheetPlanCorners,
   surfaceFaces,
   zoomCamera,
 } from '../../src/three/scene';
@@ -25,6 +26,52 @@ const member: SceneMember = {
   width: 0.05,
   depth: 0.1,
 };
+
+void test('plan corners follow sheet calibration, placement, rotation and level', () => {
+  const sheet = {
+    id: 'sheet',
+    name: 'Sheet',
+    assetId: 'pdf',
+    pageIndex: 0,
+    width: 100,
+    height: 50,
+    calibration: { metresPerUnit: 0.1 },
+  };
+  const corners = sheetPlanCorners(
+    sheet,
+    {
+      id: 'placement',
+      sheetId: sheet.id,
+      pageOrigin: { x: 10, y: 5 },
+      worldOffset: { x: 3, y: 4, z: 2 },
+      rotation: Math.PI / 2,
+    },
+    3,
+  );
+  assert.ok(corners);
+  const expected = [
+    [2.5, 3],
+    [2.5, 13],
+    [7.5, 13],
+    [7.5, 3],
+  ];
+  for (const [index, point] of corners.entries()) {
+    assert.ok(Math.abs(point.x - (expected[index]?.[0] ?? 0)) < 1e-9);
+    assert.ok(Math.abs(point.y - (expected[index]?.[1] ?? 0)) < 1e-9);
+    assert.ok(Math.abs(point.z - 4.999) < 1e-9);
+  }
+  assert.equal(
+    sheetPlanCorners({
+      id: 'sheet',
+      name: 'Sheet',
+      assetId: 'pdf',
+      pageIndex: 0,
+      width: 100,
+      height: 50,
+    }),
+    null,
+  );
+});
 
 void test('camera fit targets physical bounds and navigation preserves that target', () => {
   const scene = buildConstructionScene({ members: [member], surfaces: [] });

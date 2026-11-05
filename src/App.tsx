@@ -19,6 +19,7 @@ import UpdateDialog from './components/UpdateDialog';
 import ToolIcon from './components/ToolIcon';
 import WorkspacePanel from './components/WorkspacePanel';
 import SheetNavigator from './components/SheetNavigator';
+import { PdfDropTarget } from './components/PdfDropTarget';
 import SheetScaleDialog from './components/SheetScaleDialog';
 import SheetNamesDialog from './components/SheetNamesDialog';
 import type { Sheet } from './core/types';
@@ -90,6 +91,7 @@ export default function App(props: { application?: Application }) {
   });
   const [quantities, setQuantities] = createSignal(false);
   const [view, setView] = createSignal<'plan' | '3d' | 'split'>('plan');
+  const [showPlan, setShowPlan] = createSignal(true);
   const [followingAgent, setFollowingAgent] = createSignal(false);
   let planViewport: ViewportPort<PlanView> | undefined;
   let modelViewport: ViewportPort<ModelView> | undefined;
@@ -219,6 +221,7 @@ export default function App(props: { application?: Application }) {
   };
   onSettled(() => {
     const keydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (
         event.target instanceof Element &&
         event.target.closest(
@@ -240,7 +243,40 @@ export default function App(props: { application?: Application }) {
       )
         return;
       const key = event.key.toLowerCase();
-      if ((event.metaKey || event.ctrlKey) && key === 'z') {
+      if (
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        (key === 'arrowleft' || key === 'arrowright') &&
+        !hasDraft() &&
+        !controller.busy()
+      ) {
+        event.preventDefault();
+        controller.goSheetHistory(key === 'arrowleft' ? -1 : 1);
+      } else if (
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        (key === 'arrowup' || key === 'arrowdown') &&
+        !hasDraft() &&
+        !controller.busy() &&
+        !quantities() &&
+        view() !== '3d'
+      ) {
+        const sheets = Object.values(controller.project()?.sheets ?? {}).sort(
+          (a, b) => (a.order ?? a.pageIndex) - (b.order ?? b.pageIndex),
+        );
+        const index = sheets.findIndex(
+          (sheet) => sheet.id === controller.activeSheetId(),
+        );
+        const next = sheets[index + (key === 'arrowup' ? -1 : 1)];
+        if (index >= 0 && next) {
+          event.preventDefault();
+          controller.setActiveSheetId(next.id);
+          controller.setActiveGroupId(null);
+        }
+      } else if ((event.metaKey || event.ctrlKey) && key === 'z') {
         event.preventDefault();
         run(() => (event.shiftKey ? controller.redo() : controller.undo()));
       } else if ((event.metaKey || event.ctrlKey) && key === 'd' && !draft()) {
@@ -268,6 +304,18 @@ export default function App(props: { application?: Application }) {
   });
   return (
     <div class="workspace">
+      <PdfDropTarget
+        native={controller.native}
+        enabled={!!controller.project() && !controller.busy() && !hasDraft()}
+        unavailableMessage={
+          controller.project()
+            ? 'Finish your current action before importing PDFs'
+            : 'Open a project to import PDFs'
+        }
+        onDrop={(files) => {
+          run(() => controller.importPdfFiles(files));
+        }}
+      />
       <header class="workspace-header">
         <strong class="brand">
           <img src="/brand/bluewing.svg" width="28" height="28" alt="" />
@@ -291,6 +339,54 @@ export default function App(props: { application?: Application }) {
           }}
         >
           Open
+        </button>
+        <Show when={controller.recentProjects().length > 0}>
+          <select
+            class="recent-projects"
+            aria-label="Recent projects"
+            value=""
+            disabled={controller.busy() || hasDraft()}
+            onChange={(event) => {
+              const path = event.currentTarget.value;
+              event.currentTarget.value = '';
+              if (path) run(() => controller.openRecentProject(path));
+            }}
+          >
+            <option value="">Recent projects</option>
+            <For each={controller.recentProjects()}>
+              {(item) => (
+                <option value={item.path}>
+                  {controller.native
+                    ? `${item.name} (${item.path})`
+                    : item.name}
+                </option>
+              )}
+            </For>
+          </select>
+        </Show>
+        <button
+          type="button"
+          title="Previous viewed sheet (Alt+Left)"
+          aria-label="Previous viewed sheet"
+          disabled={controller.busy() || hasDraft() || !controller.canGoBack()}
+          onClick={() => {
+            controller.goSheetHistory(-1);
+          }}
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          title="Next viewed sheet (Alt+Right)"
+          aria-label="Next viewed sheet"
+          disabled={
+            controller.busy() || hasDraft() || !controller.canGoForward()
+          }
+          onClick={() => {
+            controller.goSheetHistory(1);
+          }}
+        >
+          →
         </button>
         <Show when={controller.project()}>
           {(project) => (
@@ -567,6 +663,20 @@ export default function App(props: { application?: Application }) {
               >
                 {(result) => (
                   <ConstructionView
+                    controller={controller}
+                    sheet={
+                      controller.project()?.sheets[
+                        controller.activeSheetId() ?? ''
+                      ]
+                    }
+                    placement={Object.values(
+                      construction()?.placements ?? {},
+                    ).find(
+                      (placement) =>
+                        placement.sheetId === controller.activeSheetId(),
+                    )}
+                    showPlan={showPlan()}
+                    onShowPlanChange={setShowPlan}
                     onViewport={(port) => {
                       modelViewport = port;
                     }}
@@ -580,6 +690,24 @@ export default function App(props: { application?: Application }) {
                     ).map((level) => ({
                       id: level.id,
                       name: level.name,
+                      elevation: level.elevation,
+                      sheetIds: [
+                        ...new Set(
+                          [
+                            ...Object.values(construction()?.walls ?? {}),
+                            ...Object.values(construction()?.ceilings ?? {}),
+                            ...Object.values(construction()?.materials ?? {}),
+                          ]
+                            .filter((source) => source.levelId === level.id)
+                            .map(
+                              (source) =>
+                                controller.project()?.geometries[
+                                  source.geometryId
+                                ]?.sheetId,
+                            )
+                            .filter((id): id is string => !!id),
+                        ),
+                      ],
                       geometryIds: [
                         ...new Set(
                           [
