@@ -29,6 +29,34 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'sheet.text.prefetch',
+    'Start background embedded-text extraction for all sheets or sheetIds (up to 2000). Returns immediately; inspect progress and cached text with sheet.text. No OCR, rendering or project edits.',
+    { sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 } },
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'sheet.text',
+    'Read prefetched page text and progress for AI naming. Paginated (default 5, maximum 20); not-cached pages need sheet.text.prefetch. Includes full-page text, title-block text, positions and explicit truncation/no-text/errors.',
+    {
+      sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 },
+      offset: { type: 'number', minimum: 0 },
+      limit: { type: 'number', minimum: 1 },
+    },
+    [],
+    false,
+    { offset: 0, limit: 5 },
+  ),
+  entry(
+    'sheet.text.cancel',
+    'Cancel queued/in-progress text prefetch, preserving completed cached pages. No project changes.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
     'performance.start',
     'Start a bounded performance recording, including PDF/cache stages and supported browser responsiveness measurements. No project changes.',
     {},

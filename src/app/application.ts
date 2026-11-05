@@ -33,6 +33,7 @@ import {
 } from '../three/scene';
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
+import { TextPrefetch } from '../pdf/text-prefetch';
 import { PageImages, PAGE_RENDERER_VERSION } from '../pdf/page-images';
 import { pageImageStore } from '../platform/page-image-store';
 import {
@@ -79,6 +80,7 @@ export class Application {
   presentation?: WingmanPresentation | undefined;
   readonly storage;
   readonly pdf;
+  readonly textPrefetch;
   readonly pageImages;
   readonly libraryStore;
   library: AssemblyLibrary | null = null;
@@ -101,6 +103,9 @@ export class Application {
           ? this.storage.openAsset(id)
           : this.storage.readAsset(id),
       this.performance,
+    );
+    this.textPrefetch = new TextPrefetch((sheet, signal) =>
+      this.pdf.text(sheet, signal),
     );
     this.pageImages = new PageImages(
       (sheet, dimension, signal, paused, priority) =>
@@ -142,6 +147,7 @@ export class Application {
     });
   }
   private attach(project: Project) {
+    this.textPrefetch.clear();
     this.session = new ProjectSession(project, this.storage);
     this.session.subscribe(() => {
       this.publish();
@@ -242,6 +248,59 @@ export class Application {
           : result.data;
       } else
         switch (request.name) {
+          case 'sheet.text.prefetch':
+          case 'sheet.text':
+          case 'sheet.text.cancel': {
+            const project = this.project;
+            if (!project) throw new Error('Open or create a project first');
+            if (
+              request.projectId !== undefined &&
+              request.projectId !== project.id
+            )
+              throw new Error('The requested project is no longer open');
+            const ids = payload.sheetIds as string[] | undefined;
+            if (ids && new Set(ids).size !== ids.length)
+              throw new Error('Duplicate sheet IDs');
+            const sheets = ids
+              ? ids.map((id) => {
+                  const sheet = project.sheets[id];
+                  if (!sheet || !Object.hasOwn(project.sheets, id))
+                    throw new Error(`Unknown sheet ${id}`);
+                  return sheet;
+                })
+              : Object.values(project.sheets).sort(
+                  (a, b) => (a.order ?? a.pageIndex) - (b.order ?? b.pageIndex),
+                );
+            if (request.name === 'sheet.text.cancel') {
+              this.textPrefetch.cancel();
+              data = this.textPrefetch.status(sheets);
+            } else if (request.name === 'sheet.text.prefetch') {
+              if (sheets.length > 2000)
+                throw new Error('Prefetch at most 2000 sheetIds at a time');
+              data = this.textPrefetch.prefetch(sheets);
+            } else {
+              const offset = (payload.offset as number | undefined) ?? 0;
+              const limit = (payload.limit as number | undefined) ?? 5;
+              if (
+                !Number.isSafeInteger(offset) ||
+                !Number.isSafeInteger(limit) ||
+                limit > 20
+              )
+                throw new Error(
+                  'offset must be an integer and limit must be an integer from 1 to 20',
+                );
+              const end = Math.min(sheets.length, offset + limit);
+              data = {
+                ...this.textPrefetch.status(sheets),
+                offset,
+                nextOffset: end < sheets.length ? end : null,
+                sheets: sheets
+                  .slice(offset, end)
+                  .map((sheet) => this.textPrefetch.get(sheet)),
+              };
+            }
+            break;
+          }
           case 'help': {
             const command = payload.command as string | undefined;
             if (command) {
@@ -555,6 +614,7 @@ export class Application {
             // Capture workers before UI teardown aborts its renders, then detach
             // immediately so queued previews cannot reopen PDFs during cleanup.
             this.pageImages.clear();
+            this.textPrefetch.clear();
             const clearing = this.pdf.clear();
             this.session = null;
             this.disposeConstructionRenderer();

@@ -1,6 +1,7 @@
 import type { AssetRange } from '../platform/storage-model';
 import type { Sheet } from '../core/types';
 import type { SheetNameSuggestion } from './sheet-names';
+import type { PageText } from './page-text';
 import type { PerformanceRecorder } from '../performance/recorder';
 import type {
   EncodedRaster,
@@ -12,7 +13,7 @@ import type {
 
 type Operation = Extract<
   PdfWorkerRequest,
-  { type: 'open' | 'import' | 'name' | 'render' }
+  { type: 'open' | 'import' | 'name' | 'text' | 'render' }
 >;
 type Body<T = Operation> = T extends { id: number } ? Omit<T, 'id'> : never;
 interface Pending {
@@ -83,6 +84,9 @@ export class PdfWorkerClient {
   }
   suggestName(sheet: Sheet) {
     return this.request<SheetNameSuggestion>({ type: 'name', sheet });
+  }
+  text(sheet: Sheet, signal?: AbortSignal) {
+    return this.request<PageText>({ type: 'text', sheet }, signal);
   }
   render(
     sheet: Sheet,

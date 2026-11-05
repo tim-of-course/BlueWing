@@ -417,6 +417,13 @@ scope.addEventListener('message', ({ data: message }) => {
     case 'name':
       void operation(message.id, (check) => nameSheet(message, check));
       break;
+    case 'text':
+      void operation(message.id, async (check) => {
+        const value = await documentProxy().text(message.sheet, check);
+        check();
+        post({ type: 'result', id: message.id, value });
+      });
+      break;
     case 'render':
       if (!pdf || fatalError) {
         reportError(

@@ -134,6 +134,15 @@ export class PdfDocuments {
     });
   }
 
+  text(sheet: Sheet, signal?: AbortSignal) {
+    return this.useDocument(
+      sheet.assetId,
+      (worker) => worker.text(sheet, signal),
+      undefined,
+      signal,
+    );
+  }
+
   raster(
     sheet: Sheet,
     dimension: number,

@@ -47,6 +47,50 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
 
+## Bulk sheet naming with AI
+
+Use embedded PDF text directly instead of relying on the Auto-name sheets dialog's
+title-block heuristic. No dialog, OCR service, or built-in model is required:
+
+```sh
+bluewing sheet.text.prefetch
+bluewing sheet.text '{"payload":{"offset":0,"limit":5}}'
+bluewing sheet.text '{"payload":{"offset":5,"limit":5}}'
+bluewing sheet.renameMany '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheets":[{"id":"SHEET_ID_1","name":"A101 · FLOOR PLAN"},{"id":"SHEET_ID_2","name":"S201 · FOUNDATION PLAN"}]}}'
+```
+
+`sheet.text.prefetch` starts an asynchronous, sequential extraction job and returns
+immediately. Optionally pass `payload.sheetIds` to limit it to a set of sheets
+(at most 2,000 per request). Inspect progress with `sheet.text`: when `queued` and
+`reading` are zero, the current job has settled. Reads do not launch extractions
+or change the project revision. A failed page reports `status: "error"` and an
+error message; prefetch that sheet again to retry. `sheet.text.cancel` cancels
+unfinished work and preserves completed cached text.
+
+`sheet.text` returns up to 20 sheets (five by default), with `nextOffset` for the
+next page. It also accepts `sheetIds`, preserving their requested order. Each row
+contains `sheetId`, current `name`, `assetId`, one-based `pageNumber`, page size,
+full-page `text`, bottom-right-quarter `titleBlockText`, and positioned `lines` in
+top-left page coordinates. The full text includes titles outside the heuristic's
+region and rotated text. The title-block field is a convenience region, not a
+guarantee of where the title is. Use the text/positions to choose the printed
+sheet code and title; avoid confusing drawing-detail titles with the sheet title.
+
+Extraction is bounded to 32,768 PDF characters or 2,000 fragments per page;
+`characterCount` and `truncated` make omission explicit. `no-embedded-text` means
+the PDF supplied no usable text, as with many scans: use `sheet.render` for visual
+inspection instead of inventing a name. The application-session text LRU uses a
+16 MiB serialized-string estimate (not a process-memory bound). Evicted or
+unrequested rows report `not-cached`; prefetch smaller groups if needed. Text is
+not saved in the project and is cleared on close/reopen; it survives renaming and
+does not require rendering plan images.
+
+`sheet.renameMany` accepts up to 500 `{id,name}` entries and saves them atomically
+as one revision and one Undo step. Other sheet properties are preserved. Duplicate
+IDs, missing sheets, blank names, and stale revisions reject the whole request.
+Get the latest project identity/revision before applying names. Reads/prefetch can
+also include `projectId` to reject an accidentally switched project.
+
 ## Performance recordings
 
 Record a slowdown while using the actual desktop app:

@@ -56,6 +56,8 @@ export function cliIntroduction(
       : 'Open or create a project in Bluewing to begin.',
     commands: {
       project: 'project.inspect, project.create, project.open, sheet.render',
+      sheetNaming:
+        'sheet.text.prefetch, sheet.text, sheet.text.cancel, sheet.renameMany',
       takeoff: 'geometry.put, group.put, assignment.put, quantities.inspect',
       construction: 'wall.put, construction.inspect, construction.render',
       review: 'snippet.render, review.inspect, wingman.flash',

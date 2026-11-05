@@ -9,6 +9,7 @@ import type { Sheet } from '../core/types';
 import { PdfAvailabilityError, PdfiumSource } from './pdfium-source';
 import { suggestSheetName, type SheetTextItem } from './sheet-names';
 import type { PdfRenderBounds } from './worker-protocol';
+import { pageText } from './page-text';
 
 export const PDFIUM_VERSION = 'embedpdf-3.0.0-next.15';
 type Check = () => void;
@@ -314,18 +315,51 @@ export class PdfiumDocument {
   }
 
   private async nameOnce(sheet: Sheet, check: Check) {
+    const result = await this.textItems(sheet, check);
+    return suggestSheetName(result.items, {
+      width: sheet.width,
+      height: sheet.height,
+      transform: sheet.pdfToPage ?? [1, 0, 0, -1, 0, sheet.height],
+    });
+  }
+
+  text(sheet: Sheet, check: Check) {
+    const run = async () => {
+      const result = await this.textItems(sheet, check, 32768, 2000);
+      return pageText(
+        result.items,
+        sheet,
+        result.characterCount,
+        result.truncated,
+      );
+    };
+    return this.source ? this.source.complete(run, () => {}, check) : run();
+  }
+
+  private async textItems(
+    sheet: Sheet,
+    check: Check,
+    maxCharacters = Infinity,
+    maxItems = Infinity,
+  ) {
     if ((sheet.rotation ?? 0) % 90 !== 0)
       throw new Error('Invalid PDF page rotation');
     const page = await this.page(sheet.pageIndex, check, (pending) => pending);
     const module = this.runtime.fn;
     const memoryAccess = this.runtime.mem;
-    const text = module.FPDFText_LoadPage(page);
-    const memory = this.allocate(48);
+    let text = NULL_PTR;
+    let memory = NULL_PTR;
     try {
+      text = module.FPDFText_LoadPage(page);
+      if (!text) throw new Error('Unable to read PDF page text');
+      memory = this.allocate(48);
       const items: SheetTextItem[] = [];
       let run: SheetTextItem | undefined;
       const count = module.FPDFText_CountChars(text);
-      for (let index = 0; index < count; index++) {
+      if (count < 0) throw new Error('Unable to read PDF page text');
+      let index = 0;
+      for (; index < Math.min(count, maxCharacters); index++) {
+        if (items.length >= maxItems) break;
         if (index % 1024 === 0) {
           await yieldPdf();
           check();
@@ -388,13 +422,9 @@ export class PdfiumDocument {
           items.push(run);
         }
       }
-      return suggestSheetName(items, {
-        width: sheet.width,
-        height: sheet.height,
-        transform: sheet.pdfToPage ?? [1, 0, 0, -1, 0, sheet.height],
-      });
+      return { items, characterCount: count, truncated: index < count };
     } finally {
-      memoryAccess.free(memory);
+      if (memory) memoryAccess.free(memory);
       if (text) module.FPDFText_ClosePage(text);
       module.FPDF_ClosePage(page);
     }
