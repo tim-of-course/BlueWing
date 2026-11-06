@@ -191,6 +191,8 @@ export interface CalculationSource {
   stockLength?: Quantity;
 }
 export interface CalculationOutput {
+  /** Semantic formula/purchase bucket identity; independent of public output indexes. */
+  quantityKey?: string;
   /** Formula estimates have no invented material geometry. */
   modeling: 'modeled' | 'estimate' | 'unresolved';
   groupId: string;

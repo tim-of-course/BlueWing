@@ -43,6 +43,12 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 `quantities.inspect` returns source contributions, diagnostics, allowance details, purchased quantities, and totals. `quantities.export` returns CSV or JSON text in `data`; the UI export buttons save that same calculation. Invalid calculations mark affected totals incomplete.
 
+`quantities.exportEstiMaker` saves purchased LF/SF lines as versioned `bluewing.takeoff` JSON using the same projection as Quantities. CLI calls require `payload.path`; UI calls can choose a destination. The result is `{path,text}`, with text identical to the saved file. Valid formula estimates export with their model coverage warning; unsupported or incomplete outputs have explicit skipped issues. It does not change the project or revision. See [the contract and checked fixture](estimaker-export.md).
+
+```sh
+bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate.estimaker.json"}}'
+```
+
 `web.stage` accepts a manifest URL and verifies the complete web release before caching it. `web.activate` accepts the staged version and reloads the web application after acknowledging the terminal response. Close the project and finish or cancel drafts first. These commands do not rebuild the Rust shell.
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.

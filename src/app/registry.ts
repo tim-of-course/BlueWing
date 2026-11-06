@@ -29,6 +29,14 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'quantities.exportEstiMaker',
+    'Save purchased LF/SF quantities as bluewing.takeoff v1 JSON for EstiMaker. Includes skipped issues and model coverage. No project changes. CLI requires an explicit path; UI can choose a destination.',
+    { path: string },
+    [],
+    false,
+    { path: '/path/estimate.estimaker.json' },
+  ),
+  entry(
     'sheet.naming.start',
     'Start the AI Page Naming workflow. Prefetch compact bottom-right title-block text for all sheets or sheetIds and return agent instructions. No names change until sheet.naming.apply.',
     { sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 } },
