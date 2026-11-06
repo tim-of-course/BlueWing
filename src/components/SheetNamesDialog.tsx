@@ -1,16 +1,9 @@
-import { createSignal, For, onSettled, Show, untrack } from 'solid-js';
+import { createSignal, onSettled, Show, untrack } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import type { Sheet } from '../core/types';
+import { pageNamingTask } from '../app/page-naming';
 import './SheetNamesDialog.css';
-
-interface Row {
-  sheet: Sheet;
-  name: string;
-  selected: boolean;
-  status: string;
-  matched: boolean;
-}
 
 export default function SheetNamesDialog(props: {
   sheets: Sheet[];
@@ -22,87 +15,61 @@ export default function SheetNamesDialog(props: {
   const initial = untrack(() => ({
     sheets: props.sheets,
     expected: props.expected,
+    name: props.controller.project()?.name ?? 'Plans',
   }));
-  const [rows, setRows] = createSignal<Row[]>(
-    initial.sheets.map((sheet) => ({
-      sheet,
-      name: '',
-      selected: false,
-      status: 'Reading embedded text…',
-      matched: false,
-    })),
+  const [progress, setProgress] = createSignal(
+    untrack(() => props.controller.pageNamingStatus(initial.sheets)),
   );
-  const [loading, setLoading] = createSignal(true);
-  const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
-  const selected = () =>
-    rows().filter(
-      (row) =>
-        row.selected && row.matched && row.name.trim() !== row.sheet.name,
-    );
-  const valid = () =>
-    selected().length > 0 && selected().every((row) => row.name.trim());
-  function update(index: number, patch: Partial<Row>) {
-    setRows((current) =>
-      current.map((row, at) => (at === index ? { ...row, ...patch } : row)),
-    );
-  }
+  const [copyStatus, setCopyStatus] = createSignal('');
+  const task = () =>
+    pageNamingTask(props.controller.cliConnection(), {
+      id: initial.expected.projectId,
+      name: initial.name,
+    });
+  const activeProject = () =>
+    props.controller.project()?.id === initial.expected.projectId;
   onSettled(() => {
     const focus = document.activeElement;
-    const lifetime = { disposed: false };
-    const isDisposed = () => lifetime.disposed;
+    let disposed = false;
+    let started = false;
     dialog?.showModal();
-    void (async () => {
-      for (const [index, sheet] of initial.sheets.entries()) {
-        if (isDisposed()) return;
-        try {
-          const result = await props.controller.suggestSheetName(sheet);
-          if (isDisposed()) return;
-          if (result.status === 'suggested')
-            update(index, {
-              name: result.name,
-              selected: result.name !== sheet.name,
-              matched: true,
-              status: result.title
-                ? 'Code and nearby title found'
-                : 'Code found; no nearby title',
-            });
-          else
-            update(index, {
-              status:
-                result.status === 'no-embedded-text'
-                  ? 'No embedded text. Name unchanged.'
-                  : 'No sheet code found. Name unchanged.',
-            });
-        } catch (cause) {
-          if (isDisposed()) return;
-          update(index, {
-            status: `Could not read text: ${cause instanceof Error ? cause.message : String(cause)}. Name unchanged.`,
-          });
-        }
+    void props.controller
+      .execute(
+        {
+          name: 'sheet.naming.start',
+          payload: { sheetIds: initial.sheets.map((sheet) => sheet.id) },
+        },
+        initial.expected,
+      )
+      .then(() => {
+        started = true;
+      })
+      .catch((cause: unknown) => {
+        started = true;
+        if (!disposed)
+          setError(cause instanceof Error ? cause.message : String(cause));
+      });
+    const timer = setInterval(() => {
+      if (!disposed) {
+        const next = props.controller.pageNamingStatus(initial.sheets);
+        setProgress(next);
+        if (started && !next.queued && !next.reading) clearInterval(timer);
       }
-      if (!isDisposed()) setLoading(false);
-    })();
+    }, 250);
     return () => {
-      lifetime.disposed = true;
+      disposed = true;
+      clearInterval(timer);
       dialog?.close();
       if (focus instanceof HTMLElement) focus.focus({ preventScroll: true });
     };
   });
-  async function apply() {
-    if (loading() || saving() || !valid()) return;
-    setSaving(true);
-    setError('');
+  async function copyTask() {
     try {
-      await props.controller.renameSheets(
-        selected().map((row) => ({ id: row.sheet.id, name: row.name.trim() })),
-        initial.expected,
-      );
-      props.onClose();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSaving(false);
+      await navigator.clipboard.writeText(task());
+      setCopyStatus('Task copied. Paste it into your agent’s chat.');
+    } catch {
+      setCopyStatus('Select and copy the task below.');
     }
   }
   return (
@@ -112,83 +79,60 @@ export default function SheetNamesDialog(props: {
       aria-labelledby="sheet-names-title"
       onCancel={(event) => {
         event.preventDefault();
-        if (!saving()) props.onClose();
+        props.onClose();
       }}
     >
-      <h2 id="sheet-names-title">Auto-name sheets</h2>
+      <h2 id="sheet-names-title">AI Page Naming</h2>
       <p>
-        Review names from embedded PDF text in the bottom-right quarter of each
-        page. Processing stays on this device; scanned pages need manual names.
+        Give your agent this task. It will identify printed sheet numbers and
+        titles from compact bottom-right title-block text, inspect unclear
+        crops, and apply names in one undoable batch.
+      </p>
+      <p role="status">
+        {String(progress().ready)} of {String(progress().total)} title blocks
+        prepared
+        {progress().error
+          ? ` · ${String(progress().error)} extraction errors`
+          : ''}
+        .
       </p>
       <p class="hint">
-        Nothing changes until you apply. Undo restores all applied names
-        together.
+        You can hand off now; the agent can read preparation progress.
+        Preparation continues after this window closes. Names stay unchanged
+        until the agent applies them.
       </p>
-      <form
-        class="stack"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void apply();
-        }}
-      >
-        <p role="status">
-          {loading()
-            ? 'Reading sheet names…'
-            : `${String(selected().length)} sheet names selected`}
+      <label for="page-naming-task">AI page naming task</label>
+      <textarea id="page-naming-task" readonly rows={7} value={task()} />
+      <Show when={!props.controller.cliConnection()}>
+        <p class="hint">
+          Use the desktop app’s CLI connection when giving this task to an
+          external agent.
         </p>
-        <div class="sheet-name-rows">
-          <For each={rows()} keyed={false}>
-            {(row, index) => (
-              <div class="sheet-name-row">
-                <input
-                  type="checkbox"
-                  aria-label={`Rename ${row().sheet.name}`}
-                  checked={row().selected}
-                  disabled={!row().matched || saving()}
-                  onChange={(event) => {
-                    update(index, { selected: event.currentTarget.checked });
-                  }}
-                />
-                <div class="stack">
-                  <span class="sheet-name-current">{row().sheet.name}</span>
-                  <Show when={row().matched}>
-                    <input
-                      aria-label={`Suggested name for ${row().sheet.name}`}
-                      value={row().name}
-                      disabled={saving()}
-                      onInput={(event) => {
-                        update(index, { name: event.currentTarget.value });
-                      }}
-                    />
-                  </Show>
-                  <small class="muted">{row().status}</small>
-                </div>
-              </div>
-            )}
-          </For>
-        </div>
-        <Show when={error()}>
-          <p role="alert">{error()}</p>
-        </Show>
-        <div class="button-row">
-          <button
-            class="primary"
-            type="submit"
-            disabled={loading() || saving() || !valid()}
-          >
-            {saving() ? 'Saving…' : `Apply ${String(selected().length)} names`}
-          </button>
-          <button
-            type="button"
-            disabled={saving()}
-            onClick={() => {
-              props.onClose();
-            }}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+      </Show>
+      <Show when={error()}>
+        <p role="alert">{error()}</p>
+      </Show>
+      <p role="status">{copyStatus()}</p>
+      <div class="button-row">
+        <button
+          type="button"
+          class="primary"
+          disabled={!activeProject()}
+          onClick={() => {
+            void copyTask();
+          }}
+        >
+          Copy AI naming task
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            props.onClose();
+          }}
+        >
+          Close
+        </button>
+      </div>
     </dialog>
   );
 }

@@ -1,5 +1,4 @@
 import type { Sheet } from '../core/types';
-import type { SheetNameSuggestion } from './sheet-names';
 import type { PageText } from './page-text';
 
 export interface PdfRenderBounds {
@@ -52,7 +51,6 @@ export type PdfWorkerRequest =
       source: { bytes: Uint8Array } | { length: number };
     }
   | { type: 'import'; id: number; assetId: string; name: string }
-  | { type: 'name'; id: number; sheet: Sheet }
   | { type: 'text'; id: number; sheet: Sheet }
   | {
       type: 'render';
@@ -79,7 +77,7 @@ export type PdfWorkerResponse =
   | {
       type: 'result';
       id: number;
-      value: Sheet[] | SheetNameSuggestion | PageText;
+      value: Sheet[] | PageText;
     }
   | { type: 'range'; rangeId: number; begin: number; end: number }
   | { type: 'fatal'; error: PdfWorkerError }

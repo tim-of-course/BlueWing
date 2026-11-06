@@ -31,9 +31,9 @@ async function run() {
         }),
       );
     const before = app.observe();
-    const help = await call('help', { command: 'sheet.text.prefetch' });
-    const started = await call('sheet.text.prefetch');
-    const immediate = await call('sheet.text', { limit: 4 });
+    const help = await call('help', { command: 'sheet.naming.start' });
+    const started = await call('sheet.naming.start');
+    const immediate = await call('sheet.naming.read', { limit: 4 });
     for (
       let i = 0;
       i < 500 &&
@@ -43,17 +43,19 @@ async function run() {
     ) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    const result = await call('sheet.text', { limit: 4 });
+    const result = await call('sheet.naming.read', { limit: 4 });
     const status = app.textPrefetch.status(sheets);
-    const repeated = await call('sheet.text', { offset: 1, limit: 1 });
-    const invalid = await call('sheet.text', { limit: 21 });
-    const unknown = await call('sheet.text', { sheetIds: ['__proto__'] });
-    const duplicate = await call('sheet.text.prefetch', {
+    const repeated = await call('sheet.naming.read', { offset: 1, limit: 1 });
+    const invalid = await call('sheet.naming.read', { limit: 21 });
+    const unknown = await call('sheet.naming.read', {
+      sheetIds: ['__proto__'],
+    });
+    const duplicate = await call('sheet.naming.start', {
       sheetIds: [firstSheet.id, firstSheet.id],
     });
     const oldNames = sheets.map((sheet) => sheet.name);
     const renamed = await call(
-      'sheet.renameMany',
+      'sheet.naming.apply',
       {
         sheets: sheets.slice(0, 2).map((sheet, index) => ({
           id: sheet.id,
@@ -67,7 +69,7 @@ async function run() {
     const names = projectNames();
     const stale = await dispatchCli(
       app,
-      ['sheet.renameMany'],
+      ['sheet.naming.apply'],
       JSON.stringify({
         ...before,
         payload: { sheets: [{ id: firstSheet.id, name: 'Stale' }] },
@@ -80,8 +82,8 @@ async function run() {
     const cleared = app.textPrefetch.status(sheets);
     await app.dispatch({ name: 'project.open', payload: { path } });
     const reopened = app.textPrefetch.status(sheets);
-    await call('sheet.text.prefetch');
-    const cancelled = await call('sheet.text.cancel');
+    await call('sheet.naming.start');
+    const cancelled = await call('sheet.naming.cancel');
     await new Promise((resolve) => setTimeout(resolve, 30));
     const afterCancel = app.textPrefetch.status(sheets);
     return {

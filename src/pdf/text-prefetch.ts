@@ -1,5 +1,5 @@
 import type { Sheet } from '../core/types';
-import type { PageText } from './page-text';
+import { titleBlockRegion, type PageText } from './page-text';
 
 type Entry = {
   sheet: Sheet;
@@ -79,6 +79,7 @@ export class TextPrefetch {
       pageNumber: sheet.pageIndex + 1,
       width: sheet.width,
       height: sheet.height,
+      region: titleBlockRegion(sheet),
       ...(entry?.value
         ? structuredClone(entry.value)
         : { status: entry?.state ?? 'not-cached' }),

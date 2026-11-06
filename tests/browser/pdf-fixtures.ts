@@ -13,11 +13,13 @@ export function sheetTextPdf(): Uint8Array {
     page(10),
     page(11),
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    stream('BT /F1 18 Tf 20 750 Td (A101 NORTH WING FLOOR PLAN) Tj ET'),
-    stream('BT /F1 18 Tf 100 200 Td (S201 STRUCTURAL PLAN) Tj ET'),
+    stream(
+      `BT /F1 0.1 Tf 0.2 TL 10 750 Td ${'(UNRELATED DRAWING NOTES) Tj T*\n'.repeat(2500)} ET BT /F1 18 Tf 650 100 Td (A101 NORTH WING FLOOR PLAN) Tj ET`,
+    ),
+    stream('BT /F1 18 Tf 650 650 Td (S201 STRUCTURAL PLAN) Tj ET'),
     stream('0 0 20 20 re f'),
     stream(
-      `BT /F1 0.1 Tf 0.2 TL 10 750 Td ${`(${'WORD '.repeat(20)}) Tj T*\n`.repeat(400)} ET`,
+      `BT /F1 0.1 Tf 0.2 TL 650 300 Td ${`(${'TITLE BLOCK NOTES '.repeat(10)}) Tj T*\n`.repeat(40)} ET`,
     ),
   ]);
 }

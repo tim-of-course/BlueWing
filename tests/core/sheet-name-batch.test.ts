@@ -32,7 +32,7 @@ void test('reviewed sheet renames save atomically, preserve sheet data, and undo
   };
   const batch = {
     ...observation,
-    name: 'sheet.renameMany',
+    name: 'sheet.naming.apply',
     origin: 'ui',
     payload: {
       sheets: [

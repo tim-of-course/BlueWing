@@ -252,7 +252,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     },
   ],
   [
-    'sheet.renameMany',
+    'sheet.naming.apply',
     'Rename sheets atomically, preserving their other fields.',
     object({
       sheets: {
@@ -908,7 +908,7 @@ export function executeCommandOnDraft(
     case 'sheet.put':
       next.sheets[entityId] = structuredClone(payload) as unknown as Sheet;
       break;
-    case 'sheet.renameMany': {
+    case 'sheet.naming.apply': {
       const entries = payload.sheets as { id: string; name: string }[];
       const seen = new Set<string>();
       for (const entry of entries) {

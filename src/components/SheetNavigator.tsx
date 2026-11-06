@@ -573,8 +573,8 @@ export default function SheetNavigator(props: Props) {
         </h2>
         <button
           type="button"
-          aria-label="Auto-name sheets"
-          title="Auto-name sheets from local PDF text"
+          aria-label="AI Page Naming"
+          title="Name plan pages with an AI using title-block text"
           disabled={
             props.disabled || props.controller.busy() || !sheets().length
           }

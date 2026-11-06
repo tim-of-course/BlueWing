@@ -357,13 +357,13 @@ for (const action of ['release', 'clear'] as const) {
   });
 }
 
-test('sheet naming returns independent suggestions and remains usable after errors, release and clear', async ({
+test('title-block extraction returns independent results and remains usable after errors, release and clear', async ({
   page,
 }) => {
   const errors = await captureErrors(page);
   await page.goto('/tests/browser/pdf-rendering-harness.html');
   const result = await page.evaluate(() => window.pdfRendering.nameCache());
-  expect(result.duplicate.status).toBe('suggested');
+  expect(result.duplicate.status).toBe('text');
   expect(result.unchanged).toEqual(result.duplicate);
   expect(result.recovered).toEqual(result.duplicate);
   expect(result.released).toEqual(result.duplicate);

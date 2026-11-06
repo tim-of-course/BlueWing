@@ -29,16 +29,16 @@ function entry(
 }
 export const applicationCommands = [
   entry(
-    'sheet.text.prefetch',
-    'Start background embedded-text extraction for all sheets or sheetIds (up to 2000). Returns immediately; inspect progress and cached text with sheet.text. No OCR, rendering or project edits.',
+    'sheet.naming.start',
+    'Start the AI Page Naming workflow. Prefetch compact bottom-right title-block text for all sheets or sheetIds and return agent instructions. No names change until sheet.naming.apply.',
     { sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 } },
     [],
     false,
     {},
   ),
   entry(
-    'sheet.text',
-    'Read prefetched page text and progress for AI naming. Paginated (default 5, maximum 20); not-cached pages need sheet.text.prefetch. Includes full-page text, title-block text, positions and explicit truncation/no-text/errors.',
+    'sheet.naming.read',
+    'Read a compact batch of title-block snippets for the AI Page Naming workflow (default 5, maximum 20). Region filtering precedes the 1500-character per-page limit. Missing/unclear text includes crop bounds for agent visual inspection.',
     {
       sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 },
       offset: { type: 'number', minimum: 0 },
@@ -49,7 +49,7 @@ export const applicationCommands = [
     { offset: 0, limit: 5 },
   ),
   entry(
-    'sheet.text.cancel',
+    'sheet.naming.cancel',
     'Cancel queued/in-progress text prefetch, preserving completed cached pages. No project changes.',
     {},
     [],

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import type {} from './sheet-text-harness';
 
-test('CLI prefetch retrieves actual page text and bulk renames atomically without the dialog', async ({
+test('AI Page Naming reads only title blocks, ignoring a large body before the title, and applies names atomically', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -19,22 +19,42 @@ test('CLI prefetch retrieves actual page text and bulk renames atomically withou
           sheets: {
             text?: string;
             status: string;
-            titleBlockText?: string;
+            region?: { x: number; y: number; width: number; height: number };
             truncated?: boolean;
             characterCount?: number;
-            lines?: { x: number; y: number }[];
           }[];
           nextOffset: number | null;
         })
       : undefined;
   expect(data?.sheets[0]?.text).toContain('A101 NORTH WING FLOOR PLAN');
-  expect(data?.sheets[0]?.titleBlockText).toBe('');
-  expect(data?.sheets[0]?.lines?.[0]?.y).toBeCloseTo(50, 0);
+  expect(data?.sheets[0]?.text).not.toContain('UNRELATED');
+  expect(data?.sheets[0]?.region).toEqual({
+    x: 500,
+    y: 400,
+    width: 500,
+    height: 400,
+  });
+  expect(data?.sheets[0]?.truncated).toBe(false);
+  expect(data?.sheets[0]?.characterCount).toBeLessThan(100);
   expect(data?.sheets[1]?.text).toContain('S201 STRUCTURAL PLAN');
-  expect(data?.sheets[2]?.status).toBe('no-embedded-text');
+  expect(data?.sheets[2]?.status).toBe('no-title-block-text');
   expect(data?.sheets[3]?.truncated).toBe(true);
-  expect(data?.sheets[3]?.characterCount).toBeGreaterThan(32768);
+  expect(
+    data?.sheets.every((sheet) => !sheet.text || sheet.text.length <= 1500),
+  ).toBe(true);
+  expect(data?.sheets[3]?.characterCount).toBeGreaterThan(1500);
   expect(data?.nextOffset).toBeNull();
+  expect(JSON.stringify(data).length).toBeLessThan(6000);
+  const started =
+    'data' in result.started.response
+      ? (result.started.response.data as {
+          workflow: string;
+          instructions: string;
+        })
+      : undefined;
+  expect(started?.workflow).toBe('page-naming');
+  expect(started?.instructions).toContain('sheet.naming.apply');
+  expect(started?.instructions).toContain('sheet.render');
   const repeated =
     'data' in result.repeated.response
       ? (result.repeated.response.data as {

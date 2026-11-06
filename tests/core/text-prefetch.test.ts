@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TextPrefetch } from '../../src/pdf/text-prefetch';
-import { pageText, type PageText } from '../../src/pdf/page-text';
+import {
+  pdfTitleBlockBounds,
+  titleBlockRegion,
+  type PageText,
+} from '../../src/pdf/page-text';
 import type { Sheet } from '../../src/core/types';
 
 const sheet: Sheet = {
@@ -15,8 +19,7 @@ const sheet: Sheet = {
 const value: PageText = {
   status: 'text',
   text: 'A101 FLOOR PLAN',
-  titleBlockText: '',
-  lines: [],
+  region: { x: 500, y: 400, width: 500, height: 400 },
   characterCount: 15,
   truncated: false,
 };
@@ -74,6 +77,7 @@ void test('errors remain explicit and can be retried, and rotation changes inval
   cache.prefetch([sheet]);
   await until(() => cache.get(sheet).status === 'error');
   assert.equal(cache.get(sheet).error, 'read failed');
+  assert.deepEqual(cache.get(sheet).region, titleBlockRegion(sheet));
   fail = false;
   cache.prefetch([sheet]);
   await until(() => cache.get(sheet).status === 'text');
@@ -112,23 +116,25 @@ void test('prefetch uses a bounded LRU and reports evicted pages as not cached',
   cache.clear();
   assert.equal(cache.status([sheet]).cacheBytes, 0);
 });
-void test('text geometry includes titles outside the heuristic region and transformed vertical text', () => {
-  const items = [
-    {
-      str: 'A101 FLOOR PLAN',
-      transform: [12, 0, 0, 12, 20, 750],
-      width: 120,
-      height: 12,
-    },
-  ];
-  const result = pageText(items, sheet, 15, false);
-  assert.equal(result.text, 'A101 FLOOR PLAN');
-  assert.equal(result.titleBlockText, '');
-  assert.equal(result.lines[0]?.y, 50);
-  assert.equal(
-    pageText(items, { ...sheet, pdfToPage: [0, 1, 1, 0, 0, 0] }, 15, true)
-      .lines[0]?.x,
-    750,
+void test('title-block bounds follow the displayed bottom-right quarter including rotation and crop', () => {
+  assert.deepEqual(titleBlockRegion(sheet), {
+    x: 500,
+    y: 400,
+    width: 500,
+    height: 400,
+  });
+  assert.deepEqual(pdfTitleBlockBounds(sheet), {
+    left: 500,
+    right: 1000,
+    bottom: -0,
+    top: 400,
+  });
+  assert.deepEqual(
+    pdfTitleBlockBounds({ ...sheet, pdfToPage: [0, 1, 1, 0, -20, -30] }),
+    { left: 430, right: 830, bottom: 520, top: 1020 },
   );
-  assert.equal(pageText([], sheet, 0, false).status, 'no-embedded-text');
+  assert.throws(
+    () => pdfTitleBlockBounds({ ...sheet, pdfToPage: [0, 0, 0, 0, 0, 0] }),
+    /Invalid PDF page transform/,
+  );
 });

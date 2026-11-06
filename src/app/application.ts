@@ -34,6 +34,7 @@ import {
 import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
 import { TextPrefetch } from '../pdf/text-prefetch';
+import { pageNamingInstructions } from './page-naming';
 import { PageImages, PAGE_RENDERER_VERSION } from '../pdf/page-images';
 import { pageImageStore } from '../platform/page-image-store';
 import {
@@ -248,9 +249,9 @@ export class Application {
           : result.data;
       } else
         switch (request.name) {
-          case 'sheet.text.prefetch':
-          case 'sheet.text':
-          case 'sheet.text.cancel': {
+          case 'sheet.naming.start':
+          case 'sheet.naming.read':
+          case 'sheet.naming.cancel': {
             const project = this.project;
             if (!project) throw new Error('Open or create a project first');
             if (
@@ -271,13 +272,21 @@ export class Application {
               : Object.values(project.sheets).sort(
                   (a, b) => (a.order ?? a.pageIndex) - (b.order ?? b.pageIndex),
                 );
-            if (request.name === 'sheet.text.cancel') {
+            if (request.name === 'sheet.naming.cancel') {
               this.textPrefetch.cancel();
               data = this.textPrefetch.status(sheets);
-            } else if (request.name === 'sheet.text.prefetch') {
+            } else if (request.name === 'sheet.naming.start') {
               if (sheets.length > 2000)
                 throw new Error('Prefetch at most 2000 sheetIds at a time');
-              data = this.textPrefetch.prefetch(sheets);
+              data = {
+                workflow: 'page-naming',
+                instructions: pageNamingInstructions,
+                ...this.textPrefetch.prefetch(sheets),
+                next: {
+                  command: 'sheet.naming.read',
+                  payload: { offset: 0, limit: 5 },
+                },
+              };
             } else {
               const offset = (payload.offset as number | undefined) ?? 0;
               const limit = (payload.limit as number | undefined) ?? 5;
