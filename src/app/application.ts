@@ -22,7 +22,9 @@ import { createStorage } from '../platform/storage';
 import { NativeStorage } from '../platform/storage';
 import type { AssetRange } from '../platform/storage-model';
 import { resolveConstruction } from '../core/applied-assemblies';
+import type { CategoryFilter } from '../core/categories';
 import {
+  constructionSceneContext,
   prepareConstructionScene,
   defaultCamera,
   fitCamera,
@@ -463,34 +465,41 @@ export class Application {
               if (!Object.hasOwn(project.sheets, id))
                 throw new Error(`Sheet not found: ${id}`);
             const { scene, sheetIds, alignment, appliedAlignments } =
-              prepareConstructionScene(project, result, {
-                ...(requestedSheets === undefined
-                  ? {}
-                  : { sheetIds: requestedSheets }),
-                alignment:
-                  (payload.alignment as 'saved' | 'none' | undefined) ??
-                  'saved',
-                ...(payload.levelId === undefined
-                  ? {}
-                  : {
-                      levelGeometryIds: [
-                        ...Object.values(resolved.walls),
-                        ...Object.values(resolved.ceilings),
-                        ...Object.values(resolved.materials ?? {}),
-                      ]
-                        .filter((source) => source.levelId === payload.levelId)
-                        .map((source) => source.geometryId),
-                    }),
-                ...(payload.geometryIds === undefined
-                  ? {}
-                  : { geometryIds: payload.geometryIds as string[] }),
-                ...(payload.materialId === undefined
-                  ? {}
-                  : { materialId: payload.materialId as string }),
-                ...(payload.role === undefined
-                  ? {}
-                  : { role: payload.role as string }),
-              });
+              prepareConstructionScene(
+                constructionSceneContext(project),
+                result,
+                {
+                  ...(requestedSheets === undefined
+                    ? {}
+                    : { sheetIds: requestedSheets }),
+                  alignment:
+                    (payload.alignment as 'saved' | 'none' | undefined) ??
+                    'saved',
+                  categories: payload.categories as CategoryFilter,
+                  ...(payload.levelId === undefined
+                    ? {}
+                    : {
+                        levelGeometryIds: [
+                          ...Object.values(resolved.walls),
+                          ...Object.values(resolved.ceilings),
+                          ...Object.values(resolved.materials ?? {}),
+                        ]
+                          .filter(
+                            (source) => source.levelId === payload.levelId,
+                          )
+                          .map((source) => source.geometryId),
+                      }),
+                  ...(payload.geometryIds === undefined
+                    ? {}
+                    : { geometryIds: payload.geometryIds as string[] }),
+                  ...(payload.materialId === undefined
+                    ? {}
+                    : { materialId: payload.materialId as string }),
+                  ...(payload.role === undefined
+                    ? {}
+                    : { role: payload.role as string }),
+                },
+              );
             const camera = {
               ...fitCamera(scene, {
                 ...defaultCamera,
@@ -554,6 +563,7 @@ export class Application {
               camera,
               displayMode,
               complete: result.complete,
+              categories: payload.categories,
               sheetIds,
               alignment,
               appliedAlignments,
@@ -571,6 +581,9 @@ export class Application {
                   kind: '3d',
                   camera,
                   displayMode,
+                  ...(payload.categories === undefined
+                    ? {}
+                    : { categories: payload.categories as (string | null)[] }),
                   sheetIds,
                   alignment,
                   pageMode: 'explicit',
@@ -709,6 +722,9 @@ export class Application {
                   kind: 'plan',
                   sheetId: payload.sheetId as string,
                   bounds: rendered.metadata.bounds,
+                  ...(payload.categories === undefined
+                    ? {}
+                    : { categories: payload.categories as (string | null)[] }),
                   ...(payload.mode === undefined
                     ? {}
                     : {

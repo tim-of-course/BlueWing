@@ -2,9 +2,15 @@ import type { Project } from '../core/types';
 import type { PdfDocuments } from '../pdf/documents';
 import { paintTakeoff } from '../components/canvas/paint';
 import type { PlanSnippet } from '../core/review';
+import {
+  categoryPaintColors,
+  geometryCategories,
+  geometryMatchesCategories,
+} from '../core/categories';
 
 export interface RenderOptions {
   sheetId: string;
+  categories?: (string | null)[];
   maxDimension?: number;
   mode?: 'plan' | 'takeoff' | 'combined';
   bounds?: { x: number; y: number; width: number; height: number };
@@ -55,16 +61,19 @@ export async function renderImage(
   }
   context.scale(scale, scale);
   context.translate(-bounds.x, -bounds.y);
+  const tags = geometryCategories(project);
+  const included = (id: string) =>
+    geometryMatchesCategories(tags[id] ?? [], options.categories);
   if (options.mode !== 'plan') {
-    const colors: Record<string, string> = {};
-    for (const group of Object.values(project.groups))
-      for (const id of group.geometryIds) colors[id] = group.color ?? '#3b82f6';
     paintTakeoff(
       context,
       Object.values(project.geometries).filter(
-        (geometry) => geometry.sheetId === sheet.id,
+        (geometry) => geometry.sheetId === sheet.id && included(geometry.id),
       ),
-      { colors, unitsPerPixel: 1 / scale },
+      {
+        categoryColors: categoryPaintColors(project, options.categories),
+        unitsPerPixel: 1 / scale,
+      },
     );
   }
   if (options.highlightIds?.length) {
@@ -72,7 +81,7 @@ export async function renderImage(
     paintTakeoff(
       context,
       Object.values(project.geometries).filter(
-        (g) => g.sheetId === sheet.id && highlights.has(g.id),
+        (g) => g.sheetId === sheet.id && highlights.has(g.id) && included(g.id),
       ),
       {
         colors: Object.fromEntries(
@@ -128,6 +137,7 @@ export async function renderImage(
     bytes: new Uint8Array(await blob.arrayBuffer()),
     metadata: {
       sheetId: sheet.id,
+      categories: options.categories,
       revision: project.revision,
       width: canvas.width,
       height: canvas.height,

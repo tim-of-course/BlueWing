@@ -723,13 +723,13 @@ export async function modelWorkflow(page: Page) {
     bounds.x + bounds.width / 2,
     bounds.y + bounds.height / 2,
   );
-  await page.mouse.down({ button: 'right' });
+  await page.mouse.down({ button: 'middle' });
   await page.mouse.move(
     bounds.x + bounds.width / 2 + 35,
     bounds.y + bounds.height / 2 + 20,
     { steps: 4 },
   );
-  await page.mouse.up({ button: 'right' });
+  await page.mouse.up({ button: 'middle' });
   await expect
     .poll(async () => (await inspect(page)).data.main.model?.camera.zoom)
     .not.toEqual(fitted.camera.zoom);

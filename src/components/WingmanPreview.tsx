@@ -9,6 +9,12 @@ import type { WorkspaceController } from '../app/contracts';
 import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
+import {
+  categoryColor,
+  geometryCategories,
+  geometryMatchesCategories,
+  matchesCategories,
+} from '../core/categories';
 import { paintTakeoff } from './canvas/paint';
 import {
   prepareConstructionScene,
@@ -109,6 +115,7 @@ export default function WingmanPreview(props: {
             .map((source) => source.geometryId)
         : undefined;
       return {
+        categories: view.categories,
         ...(view.sheetIds === undefined ? {} : { sheetIds: view.sheetIds }),
         alignment: view.alignment ?? 'saved',
         ...(geometryIds ? { geometryIds } : {}),
@@ -234,17 +241,24 @@ export default function WingmanPreview(props: {
         const visible = view.visibleGeometryIds
           ? new Set(view.visibleGeometryIds)
           : null;
+        const tags = geometryCategories(project);
         const geometries = Object.values(project.geometries).filter(
           (item) =>
-            item.sheetId === sheet.id && (!visible || visible.has(item.id)),
+            item.sheetId === sheet.id &&
+            (!visible || visible.has(item.id)) &&
+            geometryMatchesCategories(tags[item.id] ?? [], view.categories),
         );
-        const colors: Record<string, string> = {};
-        for (const group of Object.values(project.groups))
-          for (const id of group.geometryIds)
-            colors[id] = group.color ?? '#3b82f6';
+        const categoryColors = Object.fromEntries(
+          geometries.map((item) => [
+            item.id,
+            (tags[item.id] ?? [])
+              .filter((name) => matchesCategories(name, view.categories))
+              .map((name) => categoryColor(project, name)),
+          ]),
+        );
         if (view.mode !== 'plan')
           paintTakeoff(context, geometries, {
-            colors,
+            categoryColors,
             unitsPerPixel: 1 / scale,
           });
         paintPlanPresentation(context, geometries, view, 1 / scale);

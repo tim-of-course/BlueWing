@@ -3,6 +3,13 @@ import { sheetPointToWorld } from '../core/construction';
 import type { SheetPlacement } from '../core/construction-types';
 import type { Combined3dAlignment, Project, Sheet } from '../core/types';
 import { applySheetAlignment } from '../core/alignment';
+import {
+  categoryColor,
+  categoryContext,
+  categoryName,
+  matchesCategories,
+} from '../core/categories';
+import type { CategoryFilter, CategoryContext } from '../core/categories';
 
 /** Metres in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
 export interface Point3 {
@@ -36,6 +43,8 @@ export interface SceneSource {
   openingId?: string;
   materialId: string;
   role: string;
+  category?: string | null;
+  color?: string;
 }
 export interface SceneMember extends SceneSource {
   start: Point3;
@@ -55,6 +64,7 @@ export interface SceneInput {
   surfaces: readonly SceneSurface[];
 }
 export interface SceneFilter {
+  categories?: CategoryFilter;
   materialId?: string;
   role?: string;
   geometryIds?: readonly string[];
@@ -167,7 +177,22 @@ export function memberFaces(member: SceneMember): SceneFace[] {
 
 export function constructionSceneInput(
   result: ConstructionSnapshot,
+  project?: CategoryContext,
 ): SceneInput {
+  const categorySource = (source: {
+    recipeId?: string;
+    assignmentId?: string;
+  }) => {
+    if (!project) return {};
+    const recipeId =
+      (source.assignmentId &&
+        project.assignments[source.assignmentId]?.recipeId) ||
+      source.recipeId;
+    const category = categoryName(
+      recipeId ? project.recipes[recipeId]?.category : undefined,
+    );
+    return { category, color: categoryColor(project, category) };
+  };
   // Vertical endpoints alone do not encode wall direction. Recover it from the
   // nearest track segment of the same wall, including bent wall paths.
   const tracks = new Map<string, (typeof result.pieces)[number][]>();
@@ -217,6 +242,7 @@ export function constructionSceneInput(
       const axis = piece.widthAxis ?? widthAxis(piece);
       return {
         ...piece,
+        ...categorySource(piece),
         sectionRotation: piece.widthAxis ? 0 : piece.sectionRotation,
         geometryId: piece.geometryId ?? '',
         ...(axis ? { widthAxis: axis } : {}),
@@ -224,17 +250,19 @@ export function constructionSceneInput(
     }),
     surfaces: result.surfaces.map((surface) => ({
       ...surface,
+      ...categorySource(surface),
       geometryId: surface.geometryId ?? '',
       role: surface.face === 'ceiling' ? 'ceiling' : 'finish',
     })),
   };
 }
 
-/** Only ownership and alignment affect scene placement after calculation. */
+/** Only ownership, alignment and categories affect the scene after calculation. */
 export interface ConstructionSceneContext {
   id: string;
   sheets: Record<string, { combined3dAlignment?: Combined3dAlignment }>;
   geometries: Record<string, { sheetId: string }>;
+  categories: CategoryContext;
 }
 
 export function constructionSceneContext(
@@ -256,6 +284,7 @@ export function constructionSceneContext(
         { sheetId: geometry.sheetId },
       ]),
     ),
+    categories: categoryContext(project),
   };
 }
 
@@ -289,7 +318,8 @@ export function sameConstructionSceneContext(
     }) &&
     geometries.every(
       (id) => a.geometries[id]?.sheetId === b.geometries[id]?.sheetId,
-    )
+    ) &&
+    JSON.stringify(a.categories) === JSON.stringify(b.categories)
   );
 }
 
@@ -318,7 +348,7 @@ export function prepareConstructionScene(
       const saved = project.sheets[id]?.combined3dAlignment;
       if (saved) appliedAlignments[id] = structuredClone(saved);
     }
-  const input = constructionSceneInput(result);
+  const input = constructionSceneInput(result, project.categories);
   const owner = (source: SceneSource) =>
     project.geometries[source.geometryId]?.sheetId;
   const include = (source: SceneSource) => scope.has(owner(source) ?? '');
@@ -436,6 +466,7 @@ export function buildConstructionScene(
     if (
       (filter.materialId && source.materialId !== filter.materialId) ||
       (filter.role && source.role !== filter.role) ||
+      !matchesCategories(source.category ?? null, filter.categories) ||
       (selected && !selected.has(source.geometryId)) ||
       (level && !level.has(source.geometryId))
     )

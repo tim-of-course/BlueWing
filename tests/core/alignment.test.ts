@@ -6,7 +6,10 @@ import { calculateSnapshot } from '../../src/core/calculation-state';
 import { ProjectSession } from '../../src/core/session';
 import { reviewFingerprint } from '../../src/core/review';
 import type { Project } from '../../src/core/types';
-import { prepareConstructionScene } from '../../src/three/scene';
+import {
+  constructionSceneContext,
+  prepareConstructionScene,
+} from '../../src/three/scene';
 import type { ConstructionResult } from '../../src/core/construction-types';
 
 function required<T>(value: T | undefined): T {
@@ -291,7 +294,11 @@ void test('scene scope intersects filters, aligns copies and keeps frame when ma
   });
   Object.freeze(model.pieces[0]?.start);
   Object.freeze(model.pieces[0]);
-  const prepared = prepareConstructionScene(p, model, { materialId: 'steel' });
+  const prepared = prepareConstructionScene(
+    constructionSceneContext(p),
+    model,
+    { materialId: 'steel' },
+  );
   const member = prepared.scene.members[0];
   assert.ok(member);
   near(member.start.x, 8);
@@ -303,23 +310,29 @@ void test('scene scope intersects filters, aligns copies and keeps frame when ma
   assert.deepEqual(prepared.sheetIds, ['a', 'b']);
   assert.ok(prepared.scene.bounds.min.x > 7);
   for (const options of [{ sheetIds: ['a'] }, { alignment: 'none' as const }]) {
-    const single = prepareConstructionScene(p, model, options);
+    const single = prepareConstructionScene(
+      constructionSceneContext(p),
+      model,
+      options,
+    );
     assert.deepEqual(single.scene.members[0]?.start, { x: 1, y: 2, z: 3 });
     assert.deepEqual(single.appliedAlignments, {});
   }
   assert.equal(
-    prepareConstructionScene(p, model, { sheetIds: [] }).scene.count,
+    prepareConstructionScene(constructionSceneContext(p), model, {
+      sheetIds: [],
+    }).scene.count,
     0,
   );
   assert.equal(
-    prepareConstructionScene(p, model, {
+    prepareConstructionScene(constructionSceneContext(p), model, {
       sheetIds: ['a', 'gone'],
       geometryIds: ['b'],
     }).scene.count,
     0,
   );
   assert.equal(
-    prepareConstructionScene(p, model, {
+    prepareConstructionScene(constructionSceneContext(p), model, {
       sheetIds: ['a', 'b'],
       levelGeometryIds: ['b'],
       materialId: 'steel',
@@ -327,15 +340,18 @@ void test('scene scope intersects filters, aligns copies and keeps frame when ma
     0,
   );
   assert.equal(
-    prepareConstructionScene(p, model, { sheetIds: ['a'], role: 'finish' })
-      .scene.count,
+    prepareConstructionScene(constructionSceneContext(p), model, {
+      sheetIds: ['a'],
+      role: 'finish',
+    }).scene.count,
     0,
   );
   required(p.sheets.b).combined3dAlignment = {
     offset: { x: -2, y: 7 },
     rotation: Math.PI,
   };
-  const surface = prepareConstructionScene(p, model).scene.surfaces[0];
+  const surface = prepareConstructionScene(constructionSceneContext(p), model)
+    .scene.surfaces[0];
   assert.ok(surface);
   near(surface.points[1]?.x ?? NaN, -3);
   near(surface.points[1]?.y ?? NaN, 7);

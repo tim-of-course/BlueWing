@@ -49,6 +49,7 @@ export function changesCalculation(
   switch (call.name) {
     case 'notes.write':
     case 'project.rename':
+    case 'project.category.put':
     case 'sheet.naming.apply':
     case 'snippet.put':
     case 'snippet.delete':
@@ -67,6 +68,9 @@ export function changesCalculation(
       return !sameExcept(project.geometries[id], payload, ['name']);
     case 'group.put':
       return !sameExcept(project.groups[id], payload, ['name', 'color']);
+    case 'recipe.put':
+    case 'assembly.put':
+      return !sameExcept(project.recipes[id], payload, ['category']);
     default:
       return true;
   }

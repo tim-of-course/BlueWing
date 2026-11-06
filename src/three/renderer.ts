@@ -68,17 +68,6 @@ export interface RendererCallbacks {
 
 const background = '#edf1f5';
 const vector = (p: Point3) => new Vector3(p.x, p.y, p.z);
-function materialColor(material: string): Color {
-  let hash = 0;
-  for (let i = 0; i < material.length; i++)
-    hash = (hash * 31 + material.charCodeAt(i)) | 0;
-  return new Color().setHSL(
-    (Math.abs(hash) % 360) / 360,
-    0.28,
-    0.64,
-    SRGBColorSpace,
-  );
-}
 function selectedColor(
   source: SceneSource,
   options: RenderConstructionOptions,
@@ -88,7 +77,7 @@ function selectedColor(
     ? new Color('#ffbd66')
     : selected.has(source.geometryId)
       ? new Color('#69a9e7')
-      : materialColor(source.materialId);
+      : new Color(source.color ?? '#71889a');
 }
 
 /** Triangulate in the face's own plane, preserving concave boundaries and original IDs. */
@@ -331,7 +320,7 @@ export class ConstructionRenderer {
         );
         matrix.setPosition(vector(frame.center).sub(this.origin));
         mesh.setMatrixAt(index, matrix);
-        mesh.setColorAt(index, materialColor(member.materialId));
+        mesh.setColorAt(index, new Color(member.color ?? '#71889a'));
       }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingBox();
@@ -346,7 +335,7 @@ export class ConstructionRenderer {
         edges: number[] = [];
       for (const source of model.surfaces) {
         const start = positions.length / 3;
-        const color = materialColor(source.materialId);
+        const color = new Color(source.color ?? '#71889a');
         for (const face of surfaceFaces(source)) {
           for (const indices of triangulateFace(face)) {
             for (const index of indices) {

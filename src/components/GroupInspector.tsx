@@ -176,17 +176,6 @@ export default function GroupInspector(props: Props) {
                   }}
                 />
               </label>
-              <label class="field">
-                Highlight color
-                <input
-                  type="color"
-                  value={groupDraft()?.color ?? current().color ?? '#3b82f6'}
-                  disabled={pending()}
-                  onInput={(event) => {
-                    editGroup({ color: event.currentTarget.value });
-                  }}
-                />
-              </label>
               <Show when={groupDraft()}>
                 {(draft) => (
                   <div class="button-row">

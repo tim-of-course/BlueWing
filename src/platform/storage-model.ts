@@ -62,7 +62,12 @@ export function recordChanges(previous: Project | undefined, next: Project) {
           : [{ collection, id, value }];
       }),
     );
-  for (const id of ['construction', 'review', 'notes'] as const)
+  for (const id of [
+    'construction',
+    'review',
+    'categoryColors',
+    'notes',
+  ] as const)
     if (JSON.stringify(previous?.[id]) !== JSON.stringify(next[id]))
       records.push({ collection: 'extensions', id, value: next[id] });
   return records;

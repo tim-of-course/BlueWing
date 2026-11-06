@@ -103,6 +103,7 @@ export default function Wingman(props: Props) {
             ...visibleDrawingIds(
               props.controller.project(),
               saved.context.visibility,
+              saved.context.categories,
             ),
           ],
         }

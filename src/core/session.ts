@@ -44,6 +44,7 @@ interface HistoryEntry {
   records: RecordChange[];
   construction: ExtensionChange<Project['construction']> | undefined;
   review: ExtensionChange<Project['review']> | undefined;
+  categoryColors: ExtensionChange<Project['categoryColors']> | undefined;
   notes: ExtensionChange<Project['notes']> | undefined;
   calculationChanged: boolean;
 }
@@ -99,6 +100,10 @@ function difference(
     calculationChanged,
     construction: extensionChange(before.construction, after.construction),
     review: extensionChange(before.review, after.review),
+    categoryColors: extensionChange(
+      before.categoryColors,
+      after.categoryColors,
+    ),
     notes: extensionChange(before.notes, after.notes),
   };
 }
@@ -119,6 +124,11 @@ function restore(
 ): Project {
   const next = structuredClone(project);
   next.name = direction === 'before' ? entry.beforeName : entry.afterName;
+  if (entry.categoryColors) {
+    const colors = entry.categoryColors[direction];
+    if (colors) next.categoryColors = structuredClone(colors);
+    else delete next.categoryColors;
+  }
   if (entry.construction) {
     const construction = entry.construction[direction];
     if (construction) next.construction = structuredClone(construction);

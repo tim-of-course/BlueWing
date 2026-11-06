@@ -11,6 +11,12 @@ import type { DrawingTool, WorkspaceController } from '../../app/contracts';
 import type { Observation } from '../../app/application';
 import type { Geometry, LengthUnit, Point, Sheet } from '../../core/types';
 import {
+  categoryColor,
+  geometryCategories,
+  geometryMatchesCategories,
+  matchesCategories,
+} from '../../core/categories';
+import {
   distance,
   hitTestGeometry,
   hitTestGeometrySweep,
@@ -243,15 +249,23 @@ export default function DrawingCanvas(props: {
       : null,
   );
   const geometries = createMemo(
-    () =>
-      Object.values(props.controller.project()?.geometries ?? {}).filter(
+    () => {
+      const project = props.controller.project();
+      const tags =
+        project && activePresentation() ? geometryCategories(project) : {};
+      return Object.values(project?.geometries ?? {}).filter(
         (item) =>
           item.sheetId === sheet()?.id &&
           (activePresentation()
-            ? !activePresentation()?.visibleGeometryIds ||
-              activePresentation()?.visibleGeometryIds?.includes(item.id)
+            ? (!activePresentation()?.visibleGeometryIds ||
+                activePresentation()?.visibleGeometryIds?.includes(item.id)) &&
+              geometryMatchesCategories(
+                tags[item.id] ?? [],
+                props.controller.categoryFilter(),
+              )
             : props.controller.visibleGeometryIds().has(item.id)),
-      ),
+      );
+    },
     {
       name: 'canvas.geometries',
       equals: (previous, next) =>
@@ -261,22 +275,24 @@ export default function DrawingCanvas(props: {
   );
   const geometryColors = createMemo(
     () => {
-      const colors: Record<string, string> = {};
-      for (const group of Object.values(
-        props.controller.project()?.groups ?? {},
-      )) {
-        if (!props.controller.isGroupVisible(group.id, sheet()?.id ?? ''))
-          continue;
-        for (const id of group.geometryIds)
-          colors[id] = group.color ?? '#3b82f6';
-      }
-      return colors;
+      const project = props.controller.project();
+      if (!project) return {};
+      const categories = activePresentation()
+        ? geometryCategories(project)
+        : props.controller.visibleCategoryTags();
+      const filter = props.controller.categoryFilter();
+      return Object.fromEntries(
+        Object.keys(project.geometries).map((id) => [
+          id,
+          (categories[id] ?? [])
+            .filter((name) => matchesCategories(name, filter))
+            .map((name) => categoryColor(project, name)),
+        ]),
+      );
     },
     {
       name: 'canvas.geometryColors',
-      equals: (previous, next) =>
-        Object.keys(previous).length === Object.keys(next).length &&
-        Object.entries(previous).every(([id, color]) => next[id] === color),
+      equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     },
   );
   const renderSheet = createMemo(() => sheet(), {
@@ -558,7 +574,7 @@ export default function DrawingCanvas(props: {
     if (state.presentation?.mode === 'plan') displayed = [];
     paintTakeoff(ctx, displayed, {
       selectedIds: state.selected,
-      colors: state.colors,
+      categoryColors: state.colors,
       unitsPerPixel: pixel,
     });
     if (state.presentation)
@@ -1127,6 +1143,7 @@ export default function DrawingCanvas(props: {
             height: size.height / view.zoom,
           },
           visibleGeometryIds: geometries().map((item) => item.id),
+          categories: props.controller.categoryFilter(),
         };
       },
       apply(view) {

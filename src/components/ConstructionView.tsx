@@ -33,6 +33,7 @@ import {
 import type { DisplayMode, ViewPreset } from '../three/scene';
 import type { createConstructionRenderer } from '../three/renderer';
 import './construction-view.css';
+import CategoryFilter from './CategoryFilter';
 
 type ConstructionRenderer = ReturnType<typeof createConstructionRenderer>;
 const viewOptions: readonly { value: ViewPreset; label: string }[] = [
@@ -46,8 +47,7 @@ const viewOptions: readonly { value: ViewPreset; label: string }[] = [
 
 export interface ConstructionViewProps {
   result: ConstructionSnapshot;
-  controller: Pick<WorkspaceController, 'acquireSheet' | 'cachedSheetPreview'> &
-    Partial<Pick<WorkspaceController, 'project'>>;
+  controller: WorkspaceController;
   alignmentController?: WorkspaceController;
   alignmentDisabled?: boolean;
   onDraftChange?: (dirty: boolean) => void;
@@ -125,7 +125,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
     sheetId: string;
     alignment: Combined3dAlignment;
   } | null>(null);
-  const project = createMemo(() => props.controller.project?.() ?? null);
+  const project = createMemo(() => props.controller.project() ?? null);
   const sceneContext = createMemo(
     () => {
       const current = project();
@@ -215,7 +215,9 @@ export default function ConstructionView(props: ConstructionViewProps) {
   });
   const [selectedOnly, setSelectedOnly] = createSignal(false);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
-  const input = createMemo(() => constructionSceneInput(props.result));
+  const input = createMemo(() =>
+    constructionSceneInput(props.result, sceneContext()?.categories),
+  );
   const materials = createMemo(() =>
     [
       ...new Set([
@@ -261,6 +263,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       const geometryIds = isolatedIds();
       const levelIds = levelGeometryIds();
       const filters = {
+        categories: props.controller.categoryFilter(),
         materialId: material(),
         role: role(),
         ...(geometryIds ? { geometryIds } : {}),
@@ -484,6 +487,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
         selectedOnly: selectedOnly(),
         selectedGeometryIds: [...displayIds()],
         selectedPieceId: selectedId(),
+        categories: props.controller.categoryFilter(),
       }),
       apply(view) {
         const mode = view.pageMode ?? (view.sheetIds ? 'explicit' : 'current');
@@ -579,6 +583,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
     >
       <div class="construction-toolbar">
         <strong>Construction · 3D</strong>
+        <CategoryFilter controller={props.controller} />
         <label>
           Pages{' '}
           <select

@@ -68,6 +68,7 @@ for (const browserType of [chromium, firefox, webkit]) {
           notes: '# Scratchpad\n😀 detail',
           name: 'Saved',
           revision: 1,
+          categoryColors: { Special: '#8236DC' },
         };
         await storage.save(initial, next);
         let conflict = false;
@@ -110,6 +111,7 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.ok(result.conflict && result.duplicate && result.createConflict);
       assert.equal(result.saved.name, 'Saved');
       assert.equal(result.saved.revision, 1);
+      assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
       assert.equal(result.saved.formatVersion, 5);
       assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
       assert.equal(result.saved.sheets.s?.assetId, 'pdf');

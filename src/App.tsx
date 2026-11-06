@@ -201,6 +201,7 @@ export default function App(props: { application?: Application }) {
         activeGroupId: null,
         drawingGroupId: null,
         visibility: { hiddenSheets: [], hiddenGroups: {} },
+        categories: next.view.categories,
       });
       setView(next.view.kind);
       setQuantities(false);

@@ -135,6 +135,14 @@ For the simplest first implementation, return an actionable error if the desktop
 
 ## Interface: retain the useful design
 
+Assembly categories supply plan and 3D scope colors and filters. Plan group colors
+are replaced by vivid category strokes, parallel when several categories share a
+trace. Uncategorized traces use thick semitransparent hatched gray-blue strokes.
+Eight standard categories, including Insulation, have fixed colors; additions and their colors belong
+to the project. Each generated 3D object uses its applied assembly's category.
+Framing and drywall must be separate assemblies to filter independently. Category
+display and filtering never change quantities or authored geometry.
+
 Use the current SolidJS interface as the visual reference: dark canvas-centered layout, left sheet navigator, right contextual inspector, tool rail at the far right, collapsible panels, and a bottom status bar. Retain its density, spacing, colors, keyboard affordances, and panel behavior where they help the smaller workflow.
 
 Expose drawing and quantities workspaces, with groups accessible from navigation and recipe assignments in the contextual inspector. Structured Construction and Review panels author walls, openings, header components, levels, sheet placements, ceilings, source snippets, and review marks. Plan, 3D, and split views link source selection; level, material, role, and selection filters affect the view, not the estimate. A session undo stack does not require the existing History workspace. Hide deferred features instead of building inactive navigation around them.
