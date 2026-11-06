@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { connectionPrompt, cliIntroduction } from '../../src/app/cli-guide';
 import { registry } from '../../src/app/registry';
+import { projectFolder } from '../../src/app/estimating-skill';
 
 const project = { id: 'project-1', name: 'Clinic', revision: 3 };
 void test('connection prompts state the selected conversation intent and target the current project', () => {
@@ -89,4 +90,22 @@ void test('short introduction points to real commands without the full schemas',
       assert.ok(names.has(command), command);
   assert.ok(JSON.stringify(guide).length < 3000);
   assert.match(cliIntroduction(null).start, /Open or create/);
+});
+void test('estimating skill resolves the project file folder', () => {
+  assert.equal(
+    projectFolder('C:\\Jobs\\Clinic\\clinic.bluewing'),
+    'C:\\Jobs\\Clinic',
+  );
+  assert.equal(projectFolder('/jobs/clinic/clinic.bluewing'), '/jobs/clinic');
+  assert.equal(projectFolder('/clinic.bluewing'), '/');
+  assert.equal(projectFolder('clinic.bluewing'), '.');
+});
+void test('connection points agents to the estimating skill command', () => {
+  const guide = cliIntroduction(project, 'chat');
+  assert.match(guide.skill, /estimating\.skill/);
+  for (const workflow of Object.values(guide.workflows))
+    assert.ok(
+      registry.some((command) => command.name === workflow.start),
+      workflow.start,
+    );
 });

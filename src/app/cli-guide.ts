@@ -54,7 +54,10 @@ export function cliIntroduction(
     start: project
       ? 'project.inspect reads project metadata and records. Use takeoff.list and takeoff.select to set CLI context (starts on Main, independent of UI). Envelope takeoffId overrides one request; scoped results echo effective identity. Use projectId and the latest expectedRevision for edits.'
       : 'Open or create a project in Bluewing to begin.',
+    skill:
+      'Before any takeoff or estimating work, run estimating.skill and follow it. It holds our scopes, takeoff standards, and handoff document.',
     workflows: {
+      estimating: { title: 'Estimating skill', start: 'estimating.skill' },
       pageNaming: { title: 'AI Page Naming', start: 'sheet.naming.start' },
     },
     commands: {

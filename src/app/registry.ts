@@ -113,6 +113,14 @@ export const applicationCommands = [
     { command: 'messages.send' },
   ),
   entry(
+    'estimating.skill',
+    'Return the company estimating skill (scopes, takeoff standards, handoff document) and projectFolder, the open desktop project file’s folder or null. Read it before any takeoff or estimating work.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
     'connect',
     'Identify the open project and get instructions for Wingman + chat or Chat only.',
     { mode: { type: 'string', enum: ['wingman', 'chat'] } },
