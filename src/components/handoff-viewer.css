@@ -1,0 +1,36 @@
+.dialog.handoff-viewer {
+  width: calc(100vw - 40px);
+  max-width: 1400px;
+  height: calc(100dvh - 40px);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.handoff-viewer::backdrop {
+  background: #0009;
+}
+
+.handoff-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.handoff-toolbar h2 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin: 0;
+}
+
+.handoff-viewer iframe {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #364256;
+  background: white;
+}
