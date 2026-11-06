@@ -10,7 +10,11 @@ import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
 import { paintTakeoff } from './canvas/paint';
-import { prepareConstructionScene } from '../three/scene';
+import {
+  prepareConstructionScene,
+  constructionSceneContext,
+  sameConstructionSceneContext,
+} from '../three/scene';
 import type { acquireConstructionSnapshot } from '../three/renderer';
 import type { RegionImages } from '../pdf/region-images';
 
@@ -78,6 +82,13 @@ export default function WingmanPreview(props: {
   const model = createMemo(() =>
     props.view.kind === '3d' ? props.controller.construction() : null,
   );
+  const sceneContext = createMemo(
+    () => {
+      const project = props.controller.project();
+      return project ? constructionSceneContext(project) : null;
+    },
+    { equals: sameConstructionSceneContext },
+  );
   const modelFilter = createMemo(
     () => {
       const view = props.view;
@@ -110,7 +121,7 @@ export default function WingmanPreview(props: {
   );
   const modelScene = createMemo(() => {
     const result = model();
-    const project = props.controller.project();
+    const project = sceneContext();
     const filter = modelFilter();
     return result && project && filter
       ? prepareConstructionScene(project, result, filter).scene

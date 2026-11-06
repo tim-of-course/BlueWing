@@ -20,6 +20,8 @@ import { PAGE_PREVIEW_DIMENSION, pageImageDimension } from '../pdf/page-images';
 import {
   buildConstructionScene,
   constructionSceneInput,
+  constructionSceneContext,
+  sameConstructionSceneContext,
   prepareConstructionScene,
   defaultCamera,
   fitCamera,
@@ -124,20 +126,32 @@ export default function ConstructionView(props: ConstructionViewProps) {
     alignment: Combined3dAlignment;
   } | null>(null);
   const project = createMemo(() => props.controller.project?.() ?? null);
+  const sceneContext = createMemo(
+    () => {
+      const current = project();
+      return current ? constructionSceneContext(current) : null;
+    },
+    { equals: sameConstructionSceneContext },
+  );
   const sheets = createMemo(() =>
     Object.values(
       project()?.sheets ??
         (props.sheet ? { [props.sheet.id]: props.sheet } : {}),
     ),
   );
-  const scopedIds = createMemo(() =>
-    pageMode() === 'current'
-      ? props.sheet
-        ? [props.sheet.id]
-        : []
-      : (combinedIds() ?? sheets().map((sheet) => sheet.id)).filter((id) =>
-          sheets().some((sheet) => sheet.id === id),
-        ),
+  const scopedIds = createMemo(
+    () =>
+      pageMode() === 'current'
+        ? props.sheet
+          ? [props.sheet.id]
+          : []
+        : (combinedIds() ?? sheets().map((sheet) => sheet.id)).filter((id) =>
+            sheets().some((sheet) => sheet.id === id),
+          ),
+    {
+      equals: (a, b) =>
+        a.length === b.length && a.every((id, index) => id === b[index]),
+    },
   );
   const scopedSheet = createMemo(() =>
     scopedIds().length === 1
@@ -252,7 +266,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
         ...(geometryIds ? { geometryIds } : {}),
         ...(levelIds ? { levelGeometryIds: levelIds } : {}),
       };
-      const current = project();
+      const current = sceneContext();
       if (!current) return buildConstructionScene(input(), filters);
       const draft = alignmentDraft();
       const source = draft ? current.sheets[draft.sheetId] : undefined;

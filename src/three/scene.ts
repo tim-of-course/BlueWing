@@ -230,9 +230,72 @@ export function constructionSceneInput(
   };
 }
 
+/** Only ownership and alignment affect scene placement after calculation. */
+export interface ConstructionSceneContext {
+  id: string;
+  sheets: Record<string, { combined3dAlignment?: Combined3dAlignment }>;
+  geometries: Record<string, { sheetId: string }>;
+}
+
+export function constructionSceneContext(
+  project: Project,
+): ConstructionSceneContext {
+  return {
+    id: project.id,
+    sheets: Object.fromEntries(
+      Object.entries(project.sheets).map(([id, sheet]) => [
+        id,
+        sheet.combined3dAlignment
+          ? { combined3dAlignment: sheet.combined3dAlignment }
+          : {},
+      ]),
+    ),
+    geometries: Object.fromEntries(
+      Object.entries(project.geometries).map(([id, geometry]) => [
+        id,
+        { sheetId: geometry.sheetId },
+      ]),
+    ),
+  };
+}
+
+/** Retain GPU models across names/review edits without retaining an old full project. */
+export function sameConstructionSceneContext(
+  a: ConstructionSceneContext | null,
+  b: ConstructionSceneContext | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.id !== b.id) return false;
+  const sheets = Object.keys(a.sheets),
+    geometries = Object.keys(a.geometries);
+  if (
+    sheets.length !== Object.keys(b.sheets).length ||
+    geometries.length !== Object.keys(b.geometries).length
+  )
+    return false;
+  return (
+    sheets.every((id) => {
+      if (!Object.hasOwn(b.sheets, id)) return false;
+      const x = a.sheets[id]?.combined3dAlignment,
+        y = b.sheets[id]?.combined3dAlignment;
+      return (
+        x === y ||
+        (!!x &&
+          !!y &&
+          x.rotation === y.rotation &&
+          x.offset.x === y.offset.x &&
+          x.offset.y === y.offset.y)
+      );
+    }) &&
+    geometries.every(
+      (id) => a.geometries[id]?.sheetId === b.geometries[id]?.sheetId,
+    )
+  );
+}
+
 /** Page scope determines the frame before any material/selection filters. */
 export function prepareConstructionScene(
-  project: Project,
+  project: ConstructionSceneContext,
   result: ConstructionSnapshot,
   options: SceneFilter & {
     sheetIds?: readonly string[];
