@@ -72,6 +72,7 @@ export default function App(props: { application?: Application }) {
   );
   const [inspectorPeek, setInspectorPeek] = createSignal(0);
   const [sheetDraft, setSheetDraft] = createSignal(false);
+  const [alignmentDraft, setAlignmentDraft] = createSignal(false);
   const [scaleDialog, setScaleDialog] = createSignal<{
     sheet: Sheet;
     expected: Observation;
@@ -119,6 +120,7 @@ export default function App(props: { application?: Application }) {
   const hasDraft = createMemo(
     () =>
       detailDraft() ||
+      alignmentDraft() ||
       draft() ||
       recipeDraft() ||
       inspectorDraft() ||
@@ -231,6 +233,7 @@ export default function App(props: { application?: Application }) {
         return;
       if (
         recipeOpen() ||
+        alignmentDraft() ||
         constructionOpen() ||
         reviewOpen() ||
         updateOpen() ||
@@ -651,7 +654,9 @@ export default function App(props: { application?: Application }) {
                   tool={tool()}
                   onError={setError}
                   onDraftChange={setDraft}
-                  interactionDisabled={inspectorDraft() || selectionDraft()}
+                  interactionDisabled={
+                    inspectorDraft() || selectionDraft() || alignmentDraft()
+                  }
                 />
               </div>
               <Show
@@ -664,6 +669,10 @@ export default function App(props: { application?: Application }) {
                 {(result) => (
                   <ConstructionView
                     controller={controller}
+                    alignmentController={controller}
+                    alignmentDisabled={hasDraft() || controller.busy()}
+                    onDraftChange={setAlignmentDraft}
+                    interactionDisabled={alignmentDraft()}
                     sheet={
                       controller.project()?.sheets[
                         controller.activeSheetId() ?? ''

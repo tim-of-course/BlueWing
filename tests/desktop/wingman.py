@@ -139,6 +139,27 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
                             'height': 3, 'studSpacing': 0.5, 'stud': member,
                             'bottomAllowance': 0, 'topAllowance': 0,
                             'track': dict(member, materialId='track'), 'finishes': []}, True)
+        # Alignment is saved in the project but only changes multi-sheet 3D.
+        source_sheet = command('project.inspect')['sheets'][sheet]
+        other_sheet = dict(source_sheet, id='alignment-reference', name='Alignment reference')
+        command('sheet.put', other_sheet, True)
+        quantities_before = command('quantities.inspect')['totals']
+        render_options = {'path': str(EVIDENCE / 'alignment.png'), 'width': 400,
+                          'height': 300, 'sheetIds': [sheet], 'view': 'top'}
+        original = command('construction.render', render_options)
+        png(original)
+        command('construction.alignment.put', {'sheetId': sheet, 'offset': {'x': 3, 'y': 4},
+                                                'rotation': 0}, True)
+        single = command('construction.render', render_options)
+        assert single['camera'] == original['camera'] and single['appliedAlignments'] == {}
+        combined = command('construction.render', dict(render_options, sheetIds=[sheet, other_sheet['id']]))
+        png(combined)
+        assert abs(combined['camera']['target']['x'] - single['camera']['target']['x'] - 3) < 1e-8
+        assert abs(combined['camera']['target']['y'] - single['camera']['target']['y'] - 4) < 1e-8
+        assert combined['appliedAlignments'][sheet]['offset'] == {'x': 3, 'y': 4}
+        assert command('quantities.inspect')['totals'] == quantities_before
+        command('construction.alignment.delete', {'sheetId': sheet}, True)
+        command('sheet.delete', {'id': other_sheet['id']}, True)
         bounds = {'x': 60, 'y': 120, 'width': 330, 'height': 100}
         annotations = [{'points': [{'x': 100, 'y': 170}, {'x': 200, 'y': 170}],
                         'label': 'Check wall', 'color': '#ff8800'}]

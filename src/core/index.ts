@@ -3,3 +3,4 @@ export * from './geometry';
 export * from './calculations';
 export * from './commands';
 export * from './session';
+export * from './alignment';

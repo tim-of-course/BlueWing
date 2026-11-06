@@ -141,6 +141,20 @@ Construction physical lengths and world positions use metres, areas use square m
 
 `construction.render` uses the same Three.js renderer as the interactive 3D view and Wingman. Its payload supports:
 
+`sheetIds` limits the page scope: omit it for all project sheets, pass one ID for a single page, or pass `[]` for an empty scene. Unknown sheet IDs fail the request. `alignment` is `saved` by default, or `none` to ignore combined 3D transforms. Saved transforms apply only when the scope contains at least two sheets, before the other filters. Single-page views retain their original placement. The result includes resolved `sheetIds`, `alignment`, and `appliedAlignments` alongside the camera. Wingman receives this explicit scope and shows construction without an unrelated active PDF background.
+
+Combined 3D alignment is a saved presentation transform after calibration and construction placement. It does not change source geometry, placement, quantities, or single-page views. Numeric offsets use world XY metres and rotation uses radians about world Z. Set it with `construction.alignment.put`, remove it with `construction.alignment.delete`, or solve it with `construction.alignment.match`. These project mutations require the usual project identity and expected revision.
+
+```sh
+bluewing construction.alignment.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheetId":"SOURCE_SHEET_ID","offset":{"x":2,"y":-1},"rotation":0.1}}'
+bluewing construction.alignment.match '{"projectId":"PROJECT_ID","expectedRevision":13,"payload":{"sheetId":"SOURCE_SHEET_ID","referenceSheetId":"REFERENCE_SHEET_ID","sourcePoints":[{"x":72,"y":144},{"x":216,"y":144}],"referencePoints":[{"x":100,"y":200},{"x":244,"y":200}]}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/combined.png","sheetIds":["SOURCE_SHEET_ID","REFERENCE_SHEET_ID"],"alignment":"saved","view":"top"}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/original.png","alignment":"none","view":"top"}}'
+bluewing construction.alignment.delete '{"projectId":"PROJECT_ID","expectedRevision":14,"payload":{"sheetId":"SOURCE_SHEET_ID"}}'
+```
+
+Match points are corresponding source and reference **page coordinates**, in the order supplied, on distinct calibrated sheets. One pair preserves the source's saved rotation and solves translation; two pairs solve rigid rotation and translation without scaling. The reference's saved combined transform is included. The result reports `alignment`, `sourceDistance`, `referenceDistance`, `residual`, and per-pair `residuals` in metres (distances are null for one pair). A distance mismatch remains visible as residual error; matching never recalibrates either sheet.
+
 | Option                                         | Meaning                                                                                                                                                    |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `width`, `height`                              | PNG dimensions, default 1600 × 1000. Each side supports 64–8192 pixels, subject to the GPU's render-buffer limit. Requests beyond a limit fail explicitly. |

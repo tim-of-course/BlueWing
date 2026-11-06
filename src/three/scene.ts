@@ -1,7 +1,8 @@
 import type { ConstructionSnapshot } from '../core/calculation-state';
 import { sheetPointToWorld } from '../core/construction';
 import type { SheetPlacement } from '../core/construction-types';
-import type { Sheet } from '../core/types';
+import type { Combined3dAlignment, Project, Sheet } from '../core/types';
+import { applySheetAlignment } from '../core/alignment';
 
 /** Metres in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
 export interface Point3 {
@@ -226,6 +227,73 @@ export function constructionSceneInput(
       geometryId: surface.geometryId ?? '',
       role: surface.face === 'ceiling' ? 'ceiling' : 'finish',
     })),
+  };
+}
+
+/** Page scope determines the frame before any material/selection filters. */
+export function prepareConstructionScene(
+  project: Project,
+  result: ConstructionSnapshot,
+  options: SceneFilter & {
+    sheetIds?: readonly string[];
+    alignment?: 'saved' | 'none';
+  } = {},
+): {
+  scene: ConstructionScene;
+  sheetIds: string[];
+  alignment: 'saved' | 'none';
+  appliedAlignments: Record<string, Combined3dAlignment>;
+} {
+  const sheetIds = [
+    ...new Set(options.sheetIds ?? Object.keys(project.sheets)),
+  ].filter((id) => Object.hasOwn(project.sheets, id));
+  const scope = new Set(sheetIds);
+  const alignment = options.alignment ?? 'saved';
+  const appliedAlignments: Record<string, Combined3dAlignment> = {};
+  if (alignment === 'saved' && scope.size >= 2)
+    for (const id of sheetIds) {
+      const saved = project.sheets[id]?.combined3dAlignment;
+      if (saved) appliedAlignments[id] = structuredClone(saved);
+    }
+  const input = constructionSceneInput(result);
+  const owner = (source: SceneSource) =>
+    project.geometries[source.geometryId]?.sheetId;
+  const include = (source: SceneSource) => scope.has(owner(source) ?? '');
+  const transform = (point: Point3, saved: Combined3dAlignment): Point3 => ({
+    ...applySheetAlignment(point, saved),
+    z: point.z,
+  });
+  const members = input.members.filter(include).map((member) => {
+    const saved = appliedAlignments[owner(member) ?? ''];
+    if (!saved) return member;
+    return {
+      ...member,
+      start: transform(member.start, saved),
+      end: transform(member.end, saved),
+      ...(member.widthAxis
+        ? {
+            widthAxis: transform(member.widthAxis, {
+              ...saved,
+              offset: { x: 0, y: 0 },
+            }),
+          }
+        : {}),
+    };
+  });
+  const surfaces = input.surfaces.filter(include).map((surface) => {
+    const saved = appliedAlignments[owner(surface) ?? ''];
+    return saved
+      ? {
+          ...surface,
+          points: surface.points.map((point) => transform(point, saved)),
+        }
+      : surface;
+  });
+  return {
+    scene: buildConstructionScene({ members, surfaces }, options),
+    sheetIds,
+    alignment,
+    appliedAlignments,
   };
 }
 

@@ -222,12 +222,14 @@ export const applicationCommands = [
   ),
   entry(
     'construction.render',
-    'Render calculated construction as a depth-tested 3D PNG, up to 8192 pixels per side. Use a named view or explicit azimuth/elevation in radians. Returns the resolved camera and display mode for Wingman or another export.',
+    'Render calculated construction as a depth-tested 3D PNG, up to 8192 pixels per side. Use a named view or explicit azimuth/elevation in radians. Returns the resolved camera, page scope, alignment and display mode for Wingman or another export.',
     {
       path: string,
       caption: string,
       width: { type: 'number', minimum: 64 },
       height: { type: 'number', minimum: 64 },
+      sheetIds: { type: 'array', items: string },
+      alignment: { type: 'string', enum: ['saved', 'none'] },
       geometryIds: { type: 'array', items: string },
       levelId: string,
       materialId: string,

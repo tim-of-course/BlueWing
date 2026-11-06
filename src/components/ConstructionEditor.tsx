@@ -17,7 +17,7 @@ const kinds: { kind: Kind; command: string; label: string }[] = [
   { kind: 'headers', command: 'header', label: 'Header details' },
   { kind: 'ceilings', command: 'ceiling', label: 'Ceilings' },
   { kind: 'levels', command: 'level', label: 'Levels' },
-  { kind: 'placements', command: 'placement', label: 'Sheet alignment' },
+  { kind: 'placements', command: 'placement', label: 'Construction placement' },
 ];
 const title = (key: string) =>
   key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());

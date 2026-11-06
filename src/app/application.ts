@@ -22,8 +22,7 @@ import { NativeStorage } from '../platform/storage';
 import type { AssetRange } from '../platform/storage-model';
 import { resolveConstruction } from '../core/applied-assemblies';
 import {
-  buildConstructionScene,
-  constructionSceneInput,
+  prepareConstructionScene,
   defaultCamera,
   fitCamera,
   viewPresets,
@@ -429,9 +428,18 @@ export class Application {
               throw new Error('Level not found');
             const result = this.calculate().model;
             const resolved = resolveConstruction(project);
-            const scene = buildConstructionScene(
-              constructionSceneInput(result),
-              {
+            const requestedSheets = payload.sheetIds as string[] | undefined;
+            for (const id of requestedSheets ?? [])
+              if (!Object.hasOwn(project.sheets, id))
+                throw new Error(`Sheet not found: ${id}`);
+            const { scene, sheetIds, alignment, appliedAlignments } =
+              prepareConstructionScene(project, result, {
+                ...(requestedSheets === undefined
+                  ? {}
+                  : { sheetIds: requestedSheets }),
+                alignment:
+                  (payload.alignment as 'saved' | 'none' | undefined) ??
+                  'saved',
                 ...(payload.levelId === undefined
                   ? {}
                   : {
@@ -452,8 +460,7 @@ export class Application {
                 ...(payload.role === undefined
                   ? {}
                   : { role: payload.role as string }),
-              },
-            );
+              });
             const camera = {
               ...fitCamera(scene, {
                 ...defaultCamera,
@@ -517,6 +524,9 @@ export class Application {
               camera,
               displayMode,
               complete: result.complete,
+              sheetIds,
+              alignment,
+              appliedAlignments,
               diagnostics: result.diagnostics,
               displayedObjects:
                 scene.members.length +
@@ -531,6 +541,10 @@ export class Application {
                   kind: '3d',
                   camera,
                   displayMode,
+                  sheetIds,
+                  alignment,
+                  pageMode: 'explicit',
+                  showPlan: false,
                   ...(payload.geometryIds === undefined
                     ? {}
                     : { geometryIds: payload.geometryIds as string[] }),

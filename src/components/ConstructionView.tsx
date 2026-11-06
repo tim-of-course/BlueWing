@@ -3,19 +3,24 @@ import {
   createMemo,
   createSignal,
   For,
+  onCleanup,
   onSettled,
   Show,
+  untrack,
 } from 'solid-js';
 import type { ModelView, ViewportPort } from '../app/wingman-types';
 import type { WorkspaceController } from '../app/contracts';
 import type { ConstructionSnapshot } from '../core/calculation-state';
 import type { SheetPlacement } from '../core/construction-types';
-import type { Sheet } from '../core/types';
+import type { Sheet, Combined3dAlignment } from '../core/types';
+import { resolveConstruction } from '../core/applied-assemblies';
+import AlignmentEditor from './AlignmentEditor';
 import type { RasterLease } from '../pdf/raster';
 import { PAGE_PREVIEW_DIMENSION, pageImageDimension } from '../pdf/page-images';
 import {
   buildConstructionScene,
   constructionSceneInput,
+  prepareConstructionScene,
   defaultCamera,
   fitCamera,
   orbitCamera,
@@ -39,7 +44,11 @@ const viewOptions: readonly { value: ViewPreset; label: string }[] = [
 
 export interface ConstructionViewProps {
   result: ConstructionSnapshot;
-  controller: Pick<WorkspaceController, 'acquireSheet' | 'cachedSheetPreview'>;
+  controller: Pick<WorkspaceController, 'acquireSheet' | 'cachedSheetPreview'> &
+    Partial<Pick<WorkspaceController, 'project'>>;
+  alignmentController?: WorkspaceController;
+  alignmentDisabled?: boolean;
+  onDraftChange?: (dirty: boolean) => void;
   sheet: Sheet | undefined;
   placement: SheetPlacement | undefined;
   showPlan: boolean;
@@ -76,13 +85,77 @@ export default function ConstructionView(props: ConstructionViewProps) {
   const [rendererStatus, setRendererStatus] =
     createSignal('Loading 3D viewer…');
   const [displayMode, setDisplayMode] = createSignal<DisplayMode>('solid');
-  const [camera, setCamera] = createSignal(defaultCamera);
+  const [cameraState, setCameraState] = createSignal<{
+    value: ModelView['camera'];
+    scope?: string;
+  }>({ value: defaultCamera });
+  const camera = () =>
+    cameraState().scope === scopeKey() ? cameraState().value : defaultCamera;
+  function setCamera(
+    value:
+      | ModelView['camera']
+      | ((previous: ModelView['camera']) => ModelView['camera']),
+  ) {
+    setCameraState({
+      value: typeof value === 'function' ? value(camera()) : value,
+      scope: scopeKey(),
+    });
+  }
   const [viewport, setViewport] = createSignal({
     width: 640,
     height: 480,
     pixelRatio: 1,
   });
   const [presentation, setPresentation] = createSignal<ModelView | null>(null);
+  const [pageMode, setPageMode] = createSignal<
+    'current' | 'combined' | 'explicit'
+  >('current');
+  const [combinedIds, setCombinedIds] = createSignal<string[] | undefined>(
+    undefined,
+  );
+  const [alignment, setAlignment] = createSignal<'saved' | 'none'>('saved');
+  const [aligning, setAligning] = createSignal(false);
+  let alignmentBeforeEdit: 'saved' | 'none' = 'saved';
+  onCleanup(() => {
+    props.onDraftChange?.(false);
+  });
+  const [alignmentDraft, setAlignmentDraft] = createSignal<{
+    sheetId: string;
+    alignment: Combined3dAlignment;
+  } | null>(null);
+  const project = createMemo(() => props.controller.project?.() ?? null);
+  const sheets = createMemo(() =>
+    Object.values(
+      project()?.sheets ??
+        (props.sheet ? { [props.sheet.id]: props.sheet } : {}),
+    ),
+  );
+  const scopedIds = createMemo(() =>
+    pageMode() === 'current'
+      ? props.sheet
+        ? [props.sheet.id]
+        : []
+      : (combinedIds() ?? sheets().map((sheet) => sheet.id)).filter((id) =>
+          sheets().some((sheet) => sheet.id === id),
+        ),
+  );
+  const scopedSheet = createMemo(() =>
+    scopedIds().length === 1
+      ? sheets().find((sheet) => sheet.id === scopedIds()[0])
+      : undefined,
+  );
+  const scopeKey = () => JSON.stringify([pageMode(), scopedIds()]);
+  const planVisible = () =>
+    props.showPlan &&
+    !(props.presentationActive && presentation()?.showPlan === false);
+  const scopedPlacement = createMemo(() => {
+    const current = project();
+    return current
+      ? Object.values(resolveConstruction(current).placements).find(
+          (item) => item.sheetId === scopedSheet()?.id,
+        )
+      : props.placement;
+  });
   const displayIds = () => props.selectedGeometryIds;
   const [material, setMaterial] = createSignal('');
   const [role, setRole] = createSignal('');
@@ -92,10 +165,10 @@ export default function ConstructionView(props: ConstructionViewProps) {
     request: { sheet: Sheet };
   } | null>(null);
   const imageRequest = createMemo(
-    () =>
-      props.showPlan && props.sheet?.calibration
-        ? { sheet: props.sheet }
-        : undefined,
+    () => {
+      const sheet = scopedSheet();
+      return planVisible() && sheet?.calibration ? { sheet } : undefined;
+    },
     {
       equals: (a, b) =>
         a === b ||
@@ -111,7 +184,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
   );
   const plan = createMemo(() => {
     const loaded = planImage();
-    const sheet = props.showPlan ? props.sheet : undefined;
+    const sheet = planVisible() ? scopedSheet() : undefined;
     if (!loaded || loaded.request !== imageRequest() || !sheet)
       return undefined;
     const matching =
@@ -119,7 +192,11 @@ export default function ConstructionView(props: ConstructionViewProps) {
     const level =
       props.levels?.find((item) => item.id === levelId()) ??
       (matching.length === 1 ? matching[0] : undefined);
-    const corners = sheetPlanCorners(sheet, props.placement, level?.elevation);
+    const corners = sheetPlanCorners(
+      sheet,
+      scopedPlacement(),
+      level?.elevation,
+    );
     return corners ? { image: loaded.image, corners } : undefined;
   });
   const [selectedOnly, setSelectedOnly] = createSignal(false);
@@ -169,12 +246,34 @@ export default function ConstructionView(props: ConstructionViewProps) {
     () => {
       const geometryIds = isolatedIds();
       const levelIds = levelGeometryIds();
-      return buildConstructionScene(input(), {
+      const filters = {
         materialId: material(),
         role: role(),
         ...(geometryIds ? { geometryIds } : {}),
         ...(levelIds ? { levelGeometryIds: levelIds } : {}),
-      });
+      };
+      const current = project();
+      if (!current) return buildConstructionScene(input(), filters);
+      const draft = alignmentDraft();
+      const source = draft ? current.sheets[draft.sheetId] : undefined;
+      const preview =
+        draft && source
+          ? {
+              ...current,
+              sheets: {
+                ...current.sheets,
+                [draft.sheetId]: {
+                  ...source,
+                  combined3dAlignment: draft.alignment,
+                },
+              },
+            }
+          : current;
+      return prepareConstructionScene(preview, props.result, {
+        ...filters,
+        sheetIds: scopedIds(),
+        alignment: alignment(),
+      }).scene;
     },
     { name: 'construction.scene' },
   );
@@ -225,7 +324,11 @@ export default function ConstructionView(props: ConstructionViewProps) {
       .then(({ createConstructionRenderer }) => {
         if (cancelled) return;
         active = createConstructionRenderer(element, {
-          onCameraChange: (value) => setCamera(value),
+          onCameraChange: (value) => {
+            untrack(() => {
+              setCamera(value);
+            });
+          },
           onSelect: (source) => {
             setSelectedId(source?.id ?? null);
             if (source?.geometryId)
@@ -345,6 +448,9 @@ export default function ConstructionView(props: ConstructionViewProps) {
         camera: { ...camera() },
         displayMode: displayMode(),
         showPlan: props.showPlan,
+        sheetIds: [...scopedIds()],
+        alignment: alignment(),
+        pageMode: pageMode(),
         ...((
           props.presentationActive
             ? presentation()?.geometryIds
@@ -366,8 +472,24 @@ export default function ConstructionView(props: ConstructionViewProps) {
         selectedPieceId: selectedId(),
       }),
       apply(view) {
+        const mode = view.pageMode ?? (view.sheetIds ? 'explicit' : 'current');
+        const ids =
+          mode === 'current'
+            ? props.sheet
+              ? [props.sheet.id]
+              : []
+            : (view.sheetIds ?? sheets().map((sheet) => sheet.id)).filter(
+                (id) => sheets().some((sheet) => sheet.id === id),
+              );
+        setCameraState({
+          scope: JSON.stringify([mode, ids]),
+          value: { ...view.camera },
+        });
         setPresentation(view);
-        setCamera({ ...view.camera });
+        setPageMode(mode);
+        if (mode !== 'current')
+          setCombinedIds(view.sheetIds ? [...view.sheetIds] : undefined);
+        setAlignment(view.alignment ?? 'saved');
         setDisplayMode(view.displayMode ?? 'solid');
         if (view.showPlan !== undefined) props.onShowPlanChange(view.showPlan);
         setMaterial(view.materialId ?? '');
@@ -400,11 +522,13 @@ export default function ConstructionView(props: ConstructionViewProps) {
     };
   });
   function reset() {
-    setCamera(fitCamera(fittingScene(), defaultCamera));
+    untrack(() => {
+      setCamera(fitCamera(fittingScene(), defaultCamera));
+    });
   }
   function focusSelection() {
-    setCamera((current) =>
-      fitCamera(fittingScene(), current, displayIds(), selected()?.id),
+    setCamera(
+      fitCamera(fittingScene(), camera(), displayIds(), selected()?.id),
     );
   }
   function applyPreset(value: ViewPreset) {
@@ -441,6 +565,90 @@ export default function ConstructionView(props: ConstructionViewProps) {
     >
       <div class="construction-toolbar">
         <strong>Construction · 3D</strong>
+        <label>
+          Pages{' '}
+          <select
+            aria-label="3D page scope"
+            value={pageMode()}
+            onChange={(event) => {
+              setPageMode(
+                event.currentTarget.value as
+                  'current' | 'combined' | 'explicit',
+              );
+            }}
+          >
+            <option value="current">Current page</option>
+            <option value="combined">Combined pages</option>
+            <Show when={pageMode() === 'explicit'}>
+              <option value="explicit">Agent pages</option>
+            </Show>
+          </select>
+        </label>
+        <Show when={pageMode() !== 'current'}>
+          <details class="construction-pages">
+            <summary>Pages ({scopedIds().length})</summary>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCombinedIds(undefined);
+                }}
+              >
+                All
+              </button>
+              <button type="button" onClick={() => setCombinedIds([])}>
+                Clear
+              </button>
+              <For each={sheets()}>
+                {(sheet) => (
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={scopedIds().includes(sheet.id)}
+                      onChange={(event) => {
+                        const ids = scopedIds();
+                        setCombinedIds(
+                          event.currentTarget.checked
+                            ? [...ids, sheet.id]
+                            : ids.filter((id) => id !== sheet.id),
+                        );
+                      }}
+                    />
+                    {sheet.name}
+                  </label>
+                )}
+              </For>
+            </div>
+          </details>
+          <label>
+            Alignment{' '}
+            <select
+              value={alignment()}
+              onChange={(event) =>
+                setAlignment(event.currentTarget.value as 'saved' | 'none')
+              }
+            >
+              <option value="saved">Saved alignment</option>
+              <option value="none">Construction placement</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={
+              !props.alignmentController ||
+              props.alignmentDisabled ||
+              sheets().length < 2 ||
+              aligning()
+            }
+            onClick={() => {
+              alignmentBeforeEdit = alignment();
+              setAligning(true);
+              props.onDraftChange?.(true);
+            }}
+          >
+            Align pages
+          </button>
+        </Show>
         <label>
           View{' '}
           <select
@@ -538,6 +746,24 @@ export default function ConstructionView(props: ConstructionViewProps) {
         </button>
       </div>
       <div class="construction-viewport">
+        <Show when={aligning() ? props.alignmentController : undefined}>
+          {(controller) => (
+            <AlignmentEditor
+              controller={controller()}
+              sheetIds={scopedIds()}
+              onPreview={(draft) => {
+                setAlignment('saved');
+                setAlignmentDraft(draft);
+              }}
+              onClose={(saved) => {
+                if (!saved) setAlignment(alignmentBeforeEdit);
+                setAligning(false);
+                setAlignmentDraft(null);
+                props.onDraftChange?.(false);
+              }}
+            />
+          )}
+        </Show>
         <canvas
           ref={(element) => {
             canvas = element;

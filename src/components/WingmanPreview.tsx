@@ -10,7 +10,7 @@ import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
 import { paintTakeoff } from './canvas/paint';
-import { buildConstructionScene, constructionSceneInput } from '../three/scene';
+import { prepareConstructionScene } from '../three/scene';
 import type { acquireConstructionSnapshot } from '../three/renderer';
 import type { RegionImages } from '../pdf/region-images';
 
@@ -78,10 +78,6 @@ export default function WingmanPreview(props: {
   const model = createMemo(() =>
     props.view.kind === '3d' ? props.controller.construction() : null,
   );
-  const modelInput = createMemo(() => {
-    const result = model();
-    return result ? constructionSceneInput(result) : null;
-  });
   const modelFilter = createMemo(
     () => {
       const view = props.view;
@@ -102,6 +98,8 @@ export default function WingmanPreview(props: {
             .map((source) => source.geometryId)
         : undefined;
       return {
+        ...(view.sheetIds === undefined ? {} : { sheetIds: view.sheetIds }),
+        alignment: view.alignment ?? 'saved',
         ...(geometryIds ? { geometryIds } : {}),
         ...(levelGeometryIds ? { levelGeometryIds } : {}),
         ...(view.materialId ? { materialId: view.materialId } : {}),
@@ -111,9 +109,12 @@ export default function WingmanPreview(props: {
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
   const modelScene = createMemo(() => {
-    const input = modelInput();
+    const result = model();
+    const project = props.controller.project();
     const filter = modelFilter();
-    return input && filter ? buildConstructionScene(input, filter) : null;
+    return result && project && filter
+      ? prepareConstructionScene(project, result, filter).scene
+      : null;
   });
   onCleanup(() => {
     snapshot?.dispose();
