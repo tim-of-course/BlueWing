@@ -121,6 +121,27 @@ Recordings now include `canvas.pointer`, `canvas.paint`, `canvas.commit`, `page.
 
 ## Detailed takeoff
 
+### Assembly category filters
+
+`sheet.render`, `construction.render`, and `construction.inspect` accept optional
+`categories`, an array of assembly category names. Omit it for all categories,
+use `[]` for no matches, and include `null` for Uncategorized. Matching trims names
+and ignores case, recognizes legacy starter labels, and uses OR across categories.
+Other filters intersect. Explicit CLI filters are independent of UI preferences.
+
+```sh
+bluewing construction.render '{"payload":{"path":"/absolute/path/drywall.png","categories":["Drywall hang/finish"]}}'
+bluewing construction.inspect '{"payload":{"categories":["Light-gauge metal framing"]}}'
+bluewing sheet.render '{"payload":{"sheetId":"SHEET_ID","path":"/absolute/path/scopes.png","categories":["Drywall hang/finish","Light-gauge metal framing"]}}'
+bluewing project.category.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"name":"Specialty scope","color":"#8236DC"}}'
+```
+
+Project inspection exposes custom colors in `categoryColors`. Standard categories
+use fixed vivid colors. Published Wingman views retain render category filters.
+Sheet filters affect takeoff strokes/highlights, leaving the PDF layer unchanged.
+Quantity inspection and exports remain unfiltered. Separately filtering framing
+and drywall requires separate assemblies, even when they share a trace.
+
 The structured Construction and Review panels use the same commands below. Consult `commands.list` for complete required fields. Most `put` commands replace full records; `wall.put` and `ceiling.put` accept a resolved specification and store its local differences from the applied project assembly. All examples use the usual `payload` envelope, with project identity and expected revision on mutations.
 
 | Commands                                          | Purpose                                                                                                                                                                                            |

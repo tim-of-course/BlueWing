@@ -9,6 +9,13 @@ import type { WorkspaceController } from '../app/contracts';
 import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
+import {
+  categoryColor,
+  categoryContext,
+  geometryCategories,
+  geometryMatchesCategories,
+  matchesCategories,
+} from '../core/categories';
 import { paintTakeoff } from './canvas/paint';
 import { buildConstructionScene, constructionSceneInput } from '../three/scene';
 import type { acquireConstructionSnapshot } from '../three/renderer';
@@ -78,9 +85,19 @@ export default function WingmanPreview(props: {
   const model = createMemo(() =>
     props.view.kind === '3d' ? props.controller.construction() : null,
   );
+  const scopeContext = createMemo(
+    () => {
+      const project = props.controller.project();
+      return project ? categoryContext(project) : undefined;
+    },
+    {
+      name: 'wingman.categoryContext',
+      equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    },
+  );
   const modelInput = createMemo(() => {
     const result = model();
-    return result ? constructionSceneInput(result) : null;
+    return result ? constructionSceneInput(result, scopeContext()) : null;
   });
   const modelFilter = createMemo(
     () => {
@@ -102,6 +119,7 @@ export default function WingmanPreview(props: {
             .map((source) => source.geometryId)
         : undefined;
       return {
+        categories: view.categories,
         ...(geometryIds ? { geometryIds } : {}),
         ...(levelGeometryIds ? { levelGeometryIds } : {}),
         ...(view.materialId ? { materialId: view.materialId } : {}),
@@ -222,17 +240,24 @@ export default function WingmanPreview(props: {
         const visible = view.visibleGeometryIds
           ? new Set(view.visibleGeometryIds)
           : null;
+        const tags = geometryCategories(project);
         const geometries = Object.values(project.geometries).filter(
           (item) =>
-            item.sheetId === sheet.id && (!visible || visible.has(item.id)),
+            item.sheetId === sheet.id &&
+            (!visible || visible.has(item.id)) &&
+            geometryMatchesCategories(tags[item.id] ?? [], view.categories),
         );
-        const colors: Record<string, string> = {};
-        for (const group of Object.values(project.groups))
-          for (const id of group.geometryIds)
-            colors[id] = group.color ?? '#3b82f6';
+        const categoryColors = Object.fromEntries(
+          geometries.map((item) => [
+            item.id,
+            (tags[item.id] ?? [])
+              .filter((name) => matchesCategories(name, view.categories))
+              .map((name) => categoryColor(project, name)),
+          ]),
+        );
         if (view.mode !== 'plan')
           paintTakeoff(context, geometries, {
-            colors,
+            categoryColors,
             unitsPerPixel: 1 / scale,
           });
         paintPlanPresentation(context, geometries, view, 1 / scale);

@@ -18,6 +18,7 @@ import {
 } from './calculations';
 import { calibrationFromRatio, type PaperScale } from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
+import { validateCategoryColor } from './categories';
 import { validateWallTemplate, validateCeilingTemplate } from './wall-template';
 import {
   copyApplicationDetails,
@@ -230,6 +231,13 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     {},
   ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
+  [
+    'project.category.put',
+    'Add or recolor a project-only assembly category.',
+    object({ name: string, color: string }),
+    true,
+    { name: 'Specialty scope', color: '#8A36D1' },
+  ],
   [
     'project.rename',
     'Rename the project.',
@@ -718,6 +726,7 @@ export function validateProject(input: unknown): asserts input is Project {
         assignments: { type: 'object', additionalProperties: assignment },
         construction: constructionSchema,
         review: reviewSchema,
+        categoryColors: { type: 'object', additionalProperties: string },
       },
       [
         'formatVersion',
@@ -735,6 +744,8 @@ export function validateProject(input: unknown): asserts input is Project {
     'project',
   );
   const project = input as Project;
+  for (const [name, color] of Object.entries(project.categoryColors ?? {}))
+    validateCategoryColor(name, color);
   validateDetailed(project);
   if (!Number.isInteger(project.revision) || project.revision < 0)
     throw new Error('Unsupported project format or revision');
@@ -882,6 +893,20 @@ export function executeCommandOnDraft(
     case 'project.inspect':
       data = next;
       break;
+    case 'project.category.put': {
+      const name = (payload.name as string).trim();
+      const color = payload.color as string;
+      validateCategoryColor(name, color);
+      const existing = Object.keys(next.categoryColors ?? {}).find(
+        (key) => key.toLowerCase() === name.toLowerCase(),
+      );
+      next.categoryColors = {
+        ...next.categoryColors,
+        [existing ?? name]: color,
+      };
+      data = next.categoryColors;
+      break;
+    }
     case 'pieces.inspect':
       data = pieceSchedule(next, calculation());
       break;

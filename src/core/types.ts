@@ -161,6 +161,8 @@ export interface Assignment {
 }
 export interface Project {
   formatVersion: 4;
+  /** Project-only category names and their display colors. */
+  categoryColors?: Record<string, string>;
   id: string;
   name: string;
   revision: number;

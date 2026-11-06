@@ -114,7 +114,9 @@ export class NativeStorage extends StagedStorage implements ProjectStorage {
     );
     for (const record of extensions) {
       if (
-        (record.id === 'construction' || record.id === 'review') &&
+        (record.id === 'construction' ||
+          record.id === 'review' ||
+          record.id === 'categoryColors') &&
         typeof record.data === 'string'
       )
         project[record.id] = JSON.parse(record.data) as unknown;

@@ -13,6 +13,7 @@ import type { Messaging } from './messaging';
 import type { CliConnection } from './cli-guide';
 import type { ViewBounds, WingmanPresentation } from './wingman-types';
 import type { DrawingVisibility } from './visibility';
+import type { CategoryFilter } from '../core/categories';
 import type { PreparationStatus } from '../pdf/page-images';
 import type { RasterLease } from '../pdf/raster';
 import type {
@@ -37,6 +38,7 @@ export interface WorkspaceContext {
   activeGroupId: string | null;
   drawingGroupId: string | null;
   visibility: DrawingVisibility;
+  categories?: CategoryFilter;
 }
 export interface WorkspaceController {
   preparationStatus: Accessor<PreparationStatus>;
@@ -83,6 +85,9 @@ export interface WorkspaceController {
   selection: Accessor<string[]>;
   setSelection(ids: string[]): void;
   visibleGeometryIds: Accessor<ReadonlySet<string>>;
+  visibleCategoryTags: Accessor<Record<string, string[]>>;
+  categoryFilter: Accessor<CategoryFilter>;
+  setCategoryFilter(filter: CategoryFilter): void;
   isSheetVisible(sheetId: string): boolean;
   setSheetVisible(sheetId: string, visible: boolean): void;
   isGroupVisible(groupId: string, sheetId: string): boolean;

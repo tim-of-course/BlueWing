@@ -15,6 +15,7 @@ import type { Observation } from '../app/application';
 import type { Group, Sheet } from '../core/types';
 import { convertQuantity, measureGeometry } from '../core/geometry';
 import ToolIcon from './ToolIcon';
+import CategoryFilter from './CategoryFilter';
 import { SheetThumbnails } from './sheet-thumbnails';
 import './sheet-navigator.css';
 
@@ -537,11 +538,6 @@ export default function SheetNavigator(props: Props) {
               {(total) => <small title={total.title}>{total.text}</small>}
             </For>
           </span>
-          <span
-            class="group-color"
-            style={{ 'background-color': row.group.color ?? '#3b82f6' }}
-            aria-hidden="true"
-          />
         </button>
         <Show when={row.sheetId} fallback={<span class="visibility-spacer" />}>
           {(id) => (
@@ -600,6 +596,7 @@ export default function SheetNavigator(props: Props) {
         </button>
       </div>
       <div class="navigator-filter">
+        <CategoryFilter controller={props.controller} />
         <input
           type="search"
           aria-label="Filter sheets and groups"

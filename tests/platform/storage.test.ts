@@ -150,6 +150,24 @@ void test('SQLite persists changed records only and rejects stale revisions atom
   database.close();
 });
 
+void test('project-only category colors survive SQLite reopen and extension removal', async () => {
+  const { storage, database } = fixture();
+  await storage.open('categories', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next = {
+    ...initial,
+    revision: 1,
+    categoryColors: { Special: '#8236DC' },
+  };
+  await storage.save(initial, next);
+  assert.deepEqual(await storage.load(), next);
+  const removed = { ...initial, revision: 2 };
+  await storage.save(next, removed);
+  assert.deepEqual(await storage.load(), removed);
+  database.close();
+});
+
 void test('PDF bytes and records roll back together; staged bytes survive a failed save', async () => {
   const { storage, transactions, setFailure, database } = fixture();
   await storage.open('test', true);

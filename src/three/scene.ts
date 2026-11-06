@@ -2,6 +2,12 @@ import type { ConstructionSnapshot } from '../core/calculation-state';
 import { sheetPointToWorld } from '../core/construction';
 import type { SheetPlacement } from '../core/construction-types';
 import type { Sheet } from '../core/types';
+import {
+  categoryColor,
+  categoryName,
+  matchesCategories,
+} from '../core/categories';
+import type { CategoryFilter, CategoryContext } from '../core/categories';
 
 /** Metres in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
 export interface Point3 {
@@ -35,6 +41,8 @@ export interface SceneSource {
   openingId?: string;
   materialId: string;
   role: string;
+  category?: string | null;
+  color?: string;
 }
 export interface SceneMember extends SceneSource {
   start: Point3;
@@ -54,6 +62,7 @@ export interface SceneInput {
   surfaces: readonly SceneSurface[];
 }
 export interface SceneFilter {
+  categories?: CategoryFilter;
   materialId?: string;
   role?: string;
   geometryIds?: readonly string[];
@@ -166,7 +175,22 @@ export function memberFaces(member: SceneMember): SceneFace[] {
 
 export function constructionSceneInput(
   result: ConstructionSnapshot,
+  project?: CategoryContext,
 ): SceneInput {
+  const categorySource = (source: {
+    recipeId?: string;
+    assignmentId?: string;
+  }) => {
+    if (!project) return {};
+    const recipeId =
+      (source.assignmentId &&
+        project.assignments[source.assignmentId]?.recipeId) ||
+      source.recipeId;
+    const category = categoryName(
+      recipeId ? project.recipes[recipeId]?.category : undefined,
+    );
+    return { category, color: categoryColor(project, category) };
+  };
   // Vertical endpoints alone do not encode wall direction. Recover it from the
   // nearest track segment of the same wall, including bent wall paths.
   const tracks = new Map<string, (typeof result.pieces)[number][]>();
@@ -216,6 +240,7 @@ export function constructionSceneInput(
       const axis = piece.widthAxis ?? widthAxis(piece);
       return {
         ...piece,
+        ...categorySource(piece),
         sectionRotation: piece.widthAxis ? 0 : piece.sectionRotation,
         geometryId: piece.geometryId ?? '',
         ...(axis ? { widthAxis: axis } : {}),
@@ -223,6 +248,7 @@ export function constructionSceneInput(
     }),
     surfaces: result.surfaces.map((surface) => ({
       ...surface,
+      ...categorySource(surface),
       geometryId: surface.geometryId ?? '',
       role: surface.face === 'ceiling' ? 'ceiling' : 'finish',
     })),
@@ -305,6 +331,7 @@ export function buildConstructionScene(
     if (
       (filter.materialId && source.materialId !== filter.materialId) ||
       (filter.role && source.role !== filter.role) ||
+      !matchesCategories(source.category ?? null, filter.categories) ||
       (selected && !selected.has(source.geometryId)) ||
       (level && !level.has(source.geometryId))
     )

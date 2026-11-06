@@ -11,6 +11,7 @@ import {
   createConstructionRenderer,
 } from '../../src/three/renderer';
 import { captureViewport } from '../../src/platform/capture';
+import { paintTakeoff } from '../../src/components/canvas/paint';
 
 const width = 600;
 const height = 600;
@@ -30,6 +31,7 @@ const stud: SceneMember = {
   wallId: 'wall',
   materialId: 'steel-stud',
   role: 'stud',
+  color: '#0077CC',
   start: { x: 0, y: 0, z: 0 },
   end: { x: 0, y: 0, z: 10 },
   widthAxis: { x: 0, y: 1, z: 0 },
@@ -41,6 +43,7 @@ const tee: SceneMember = {
   geometryId: 'ceiling-trace',
   materialId: 'ceiling-grid',
   role: 'cross-tee',
+  color: '#D18A00',
   start: { x: -0.6, y: -2, z: 7 },
   end: { x: -0.6, y: 2, z: 7 },
   width: 0.2,
@@ -413,6 +416,48 @@ function readNavigation() {
   return navigationCamera;
 }
 
+function categoryStrokes(zoom: number, colors: string[]) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 100;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas unavailable');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.scale(zoom, zoom);
+  paintTakeoff(
+    context,
+    [
+      {
+        id: 'wall',
+        name: '',
+        sheetId: 'sheet',
+        kind: 'path',
+        points: [
+          { x: 20 / zoom, y: 50 / zoom },
+          { x: 220 / zoom, y: 50 / zoom },
+        ],
+      },
+    ],
+    { categoryColors: { wall: colors }, unitsPerPixel: 1 / zoom },
+  );
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  let blue = 0,
+    magenta = 0,
+    hatch = 0,
+    pale = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i] ?? 255,
+      g = pixels[i + 1] ?? 255,
+      b = pixels[i + 2] ?? 255;
+    if (b > r * 1.3 && b > g * 1.2 && r < 100) blue++;
+    if (r > g * 1.8 && b > g * 1.5 && r > 100) magenta++;
+    if (b > r && r < 170 && g < 190) hatch++;
+    if (b > r && r >= 170 && r < 245) pale++;
+  }
+  return { blue, magenta, hatch, pale };
+}
+
 Object.assign(window, {
   constructionRendering: {
     setupNavigation,
@@ -422,6 +467,7 @@ Object.assign(window, {
     batching,
     screenshotCapture,
     planPlane,
+    categoryStrokes,
   },
 });
 export type ConstructionRenderingHarness = {
@@ -432,4 +478,5 @@ export type ConstructionRenderingHarness = {
   batching: typeof batching;
   screenshotCapture: typeof screenshotCapture;
   planPlane: typeof planPlane;
+  categoryStrokes: typeof categoryStrokes;
 };

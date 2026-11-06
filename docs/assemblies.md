@@ -16,6 +16,24 @@ Replacing an estimate assignment with a modeled assembly replaces that assignmen
 
 ## Desktop use
 
+### Scope categories
+
+Each assembly has one category covering all its outputs and generated objects.
+Assign separate framing and drywall assemblies to the same trace to filter them
+independently. A combined framing/drywall assembly remains one categorized scope;
+studs and track in a framing assembly stay together. Component systems use the
+applied system's category.
+
+Standard scope colors are vivid for visibility over blueprints. Additional
+category names and editable colors belong to the project; library copies retain
+names without transferring project color preferences.
+
+Plan traces use category colors instead of group colors. Shared traces show
+parallel strokes, one per distinct category. Uncategorized traces use a thick,
+semitransparent hatched gray-blue stroke. The Categories control filters plan and
+3D. Each 3D object follows its generating assembly, even when its source trace has
+other scopes. Category filters never change geometry, quantities, or exports.
+
 1. Open **Assemblies**, then **Global library**, choose a starter, and import it into the project. Alternatively create a project definition.
 2. Set the actual products, dimensions, and detail reference. Give distinct products, gauges, or stock lengths distinct material identifiers.
 3. For a modeled assembly, edit its material settings and apply it to a group or trace. **Material values** edits standalone finishes, member runs, and joist/furring layouts at group or individual-trace scope. Use **Construction** for framed wall openings, project headers, levels, sheet alignment, and local wall/ceiling details.

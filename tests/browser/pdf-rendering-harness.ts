@@ -77,7 +77,31 @@ async function cappedExport() {
       id: 'group',
       name: 'Group',
       geometryIds: ['overlay'],
-      color: '#00ff00',
+    };
+    project.categoryColors = { Export: '#00ff00' };
+    project.recipes.overlay = {
+      id: 'overlay',
+      name: 'Export overlay',
+      category: 'Export',
+      geometryKinds: ['path'],
+      inputs: [],
+      outputs: [
+        {
+          id: 'length',
+          name: 'Length',
+          materialId: 'overlay',
+          unit: 'm',
+          formula: 'length',
+          allowance: { wastePercent: 0 },
+        },
+      ],
+    };
+    project.assignments.overlay = {
+      id: 'overlay',
+      groupId: 'group',
+      recipeId: 'overlay',
+      inputs: {},
+      allowances: {},
     };
     const result = await renderImage(project, documents, {
       sheetId: sheet.id,

@@ -21,6 +21,7 @@ import { createStorage } from '../platform/storage';
 import { NativeStorage } from '../platform/storage';
 import type { AssetRange } from '../platform/storage-model';
 import { resolveConstruction } from '../core/applied-assemblies';
+import type { CategoryFilter } from '../core/categories';
 import {
   buildConstructionScene,
   constructionSceneInput,
@@ -430,8 +431,9 @@ export class Application {
             const result = this.calculate().model;
             const resolved = resolveConstruction(project);
             const scene = buildConstructionScene(
-              constructionSceneInput(result),
+              constructionSceneInput(result, project),
               {
+                categories: payload.categories as CategoryFilter,
                 ...(payload.levelId === undefined
                   ? {}
                   : {
@@ -517,6 +519,7 @@ export class Application {
               camera,
               displayMode,
               complete: result.complete,
+              categories: payload.categories,
               diagnostics: result.diagnostics,
               displayedObjects:
                 scene.members.length +
@@ -531,6 +534,9 @@ export class Application {
                   kind: '3d',
                   camera,
                   displayMode,
+                  ...(payload.categories === undefined
+                    ? {}
+                    : { categories: payload.categories as (string | null)[] }),
                   ...(payload.geometryIds === undefined
                     ? {}
                     : { geometryIds: payload.geometryIds as string[] }),
@@ -665,6 +671,9 @@ export class Application {
                   kind: 'plan',
                   sheetId: payload.sheetId as string,
                   bounds: rendered.metadata.bounds,
+                  ...(payload.categories === undefined
+                    ? {}
+                    : { categories: payload.categories as (string | null)[] }),
                   ...(payload.mode === undefined
                     ? {}
                     : {

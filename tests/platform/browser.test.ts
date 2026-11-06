@@ -63,7 +63,12 @@ for (const browserType of [chromium, firefox, webkit]) {
         await storage.close();
         await storage.open('project', false);
         const bytes = Array.from(await storage.readAsset('pdf'));
-        const next = { ...initial, name: 'Saved', revision: 1 };
+        const next = {
+          ...initial,
+          name: 'Saved',
+          revision: 1,
+          categoryColors: { Special: '#8236DC' },
+        };
         await storage.save(initial, next);
         let conflict = false;
         try {
@@ -105,6 +110,7 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.ok(result.conflict && result.duplicate && result.createConflict);
       assert.equal(result.saved.name, 'Saved');
       assert.equal(result.saved.revision, 1);
+      assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
       assert.equal(result.saved.sheets.s?.assetId, 'pdf');
     } finally {
       await browser.close();

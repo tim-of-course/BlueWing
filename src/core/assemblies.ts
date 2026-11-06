@@ -7,6 +7,7 @@ import type {
 } from './types';
 import { validateAssembly } from './commands';
 import { modeledStarters } from './modeled-starters';
+import { categoryName } from './categories';
 
 const number = (
   name: string,
@@ -384,7 +385,10 @@ export function starterAssemblies(): Record<string, Assembly> {
   )?.wallTemplate;
   if (wall) assemblies.push(...modeledStarters(wall));
   return Object.fromEntries(
-    assemblies.map((assembly) => [assembly.id, assembly]),
+    assemblies.map((assembly) => [
+      assembly.id,
+      { ...assembly, category: categoryName(assembly.category) ?? '' },
+    ]),
   );
 }
 export function createLibrary(): AssemblyLibrary {
