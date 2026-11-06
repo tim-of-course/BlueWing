@@ -7,7 +7,6 @@ import type {
 } from './types';
 import { validateAssembly } from './commands';
 import { modeledStarters } from './modeled-starters';
-import { categoryName } from './categories';
 
 const number = (
   name: string,
@@ -44,7 +43,7 @@ function ceilingGrid(square: boolean): Assembly {
   return {
     id: `ceiling-grid-${size}`,
     name: `Acoustical ceiling ${size} layout`,
-    category: 'Acoustical ceilings',
+    category: 'Acoustical ceilings/acoustical work',
     description:
       'Modeled grid and tile area clipped to the traced room. Starter elevation is 9 ft at the finished underside, with mains parallel to world X and the grid origin at world 0,0. Edit these settings to match the plan. Nominal starter sections are 15/16 in wide by 1-1/2 in deep; wall angle is 7/8 by 7/8 in. Set the specified products and dimensions. Members use rectangular envelopes with their lower edges at the ceiling elevation; entered tile thickness extends upward from the same datum. Counts and cuts come from the displayed members; tile purchasing uses net area. Hangers, connector tabs, tegular offsets and offcut reuse are not included.',
     geometryKinds: ['area'],
@@ -102,7 +101,7 @@ function ceilingGridEstimate(square: boolean): Assembly {
   return {
     id: `ceiling-grid-${size}-estimate`,
     name: `Acoustical ceiling ${size} grid estimate`,
-    category: 'Acoustical ceilings',
+    category: 'Acoustical ceilings/acoustical work',
     description:
       'Unmodeled area/perimeter estimate; it creates no 3D material objects. Uses mains at 4 ft and cross tees at 2 ft centers. Tile and grid deductions are independent totals. Wall angle uses perimeter plus added edges less excluded edges. Counts round after group totals and waste. Set actual product IDs, including main/angle stock lengths. Use a ceiling layout assembly for positioned members and border cuts.',
     reference:
@@ -162,7 +161,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'steel-wall',
       name: 'Steel wall with drywall',
-      category: 'Light gauge framing',
+      category: 'Light-gauge metal framing',
       description:
         'Modeled wall framing and finishes. Enter the wall height before quantities are available. Starter members use 3-5/8 in studs with 1-5/8 in flanges at 16 in spacing, 12 ft stud stock, and 10 ft track stock. Two optional finish faces start with one layer of 5/8 in drywall each. Edit the specified products, member dimensions, allowances and finish layers; remove finishes for framing-only work or add positioned backing rows. Openings and project header details are entered on each applied wall.',
       geometryKinds: ['path'],
@@ -199,7 +198,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'drywall-face',
       name: 'Drywall wall face estimate',
-      category: 'Drywall',
+      category: 'Drywall hang/finish',
       description:
         'Unmodeled estimate for one wall face. Set the material ID for its board type and thickness. Deduction is area per layer; layers apply after deduction. Use a modeled wall finish for material surfaces in 3D.',
       geometryKinds: ['path'],
@@ -221,7 +220,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'steel-straight-run',
       name: 'Steel studs straight run estimate',
-      category: 'Light gauge framing',
+      category: 'Light-gauge metal framing',
       description:
         'Unmodeled spacing estimate for an uninterrupted run, plus explicitly entered extra studs. Set the material ID to the required stud designation. Opening and junction framing require separate assignments. Use a modeled steel wall for positioned members in 3D.',
       geometryKinds: ['path'],
@@ -252,7 +251,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'header-components',
       name: 'Header component estimate',
-      category: 'Light gauge framing',
+      category: 'Light-gauge metal framing',
       description:
         'Unmodeled estimate of one component of the specified header detail per opening. Add outputs for other components. No structural detail is assumed. Positioned headers belong to openings on a modeled wall.',
       geometryKinds: ['count'],
@@ -285,7 +284,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'ceiling-finish',
       name: 'Acoustical ceiling area estimate',
-      category: 'Acoustical ceilings',
+      category: 'Acoustical ceilings/acoustical work',
       description:
         'Unmodeled net finish area and perimeter estimate. Use a ceiling layout assembly for positioned grid and tile surfaces.',
       geometryKinds: ['area'],
@@ -314,7 +313,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'frp-face',
       name: 'FRP / wall sheathing face estimate',
-      category: 'FRP and sheathing',
+      category: 'Sheathing/FRP',
       description:
         'Unmodeled surface estimate. Set the material ID to the specified panel product. Deduction is area per layer. Add this product as a modeled wall finish when its physical surfaces are needed in 3D.',
       geometryKinds: ['path'],
@@ -336,7 +335,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'blocking-runs',
       name: 'Blocking / backing run estimate',
-      category: 'Blocking and rough carpentry',
+      category: 'Wood blocking/backing',
       description:
         'Unmodeled run estimate. Measure the backing run and supply the number of rows. Set the material ID to its section and specification. Add positioned backing rows to a modeled wall for actual cuts and 3D members.',
       geometryKinds: ['path'],
@@ -354,7 +353,7 @@ export function starterAssemblies(): Record<string, Assembly> {
     {
       id: 'acoustical-panels',
       name: 'Acoustical wall panel estimate',
-      category: 'Acoustical wall panels',
+      category: 'Acoustical ceilings/acoustical work',
       description:
         'Unmodeled panel estimate. Count panels of one type and enter their dimensions. Use separate assignments for different products. This does not infer panel positions, elevation or orientation.',
       geometryKinds: ['count'],
@@ -385,10 +384,7 @@ export function starterAssemblies(): Record<string, Assembly> {
   )?.wallTemplate;
   if (wall) assemblies.push(...modeledStarters(wall));
   return Object.fromEntries(
-    assemblies.map((assembly) => [
-      assembly.id,
-      { ...assembly, category: categoryName(assembly.category) ?? '' },
-    ]),
+    assemblies.map((assembly) => [assembly.id, assembly]),
   );
 }
 export function createLibrary(): AssemblyLibrary {

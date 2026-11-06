@@ -70,7 +70,9 @@ function surface(
       layers: 1,
       thickness: thickness * inch,
       ...(height === undefined ? {} : { height: height * inch }),
-      ...(category === 'Acoustical wall panels' ? {} : { packageSize: sheet }),
+      ...(category === 'Acoustical ceilings/acoustical work'
+        ? {}
+        : { packageSize: sheet }),
       openings: [],
     },
   );
@@ -119,7 +121,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     {
       id: 'steel-framing',
       name: 'Steel framing wall',
-      category: 'Light gauge framing',
+      category: 'Light-gauge metal framing',
       description:
         'Modeled 3-5/8 in framing wall without finishes. Enter height, specified sections, stud spacing, stock lengths and end allowances. Openings, project header details and backing rows produce actual members. Starter dimensions are editable examples, not a structural specification.',
       geometryKinds: ['path'],
@@ -130,7 +132,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     layout(
       'steel-track-run',
       'Steel track run',
-      'Light gauge framing',
+      'Light-gauge metal framing',
       'Modeled track along each traced segment at its entered centreline elevation. Starter section is 3-5/8 by 1-1/4 in with 10 ft stock. Trace actual joints or separate lengths; long members are flagged rather than silently spliced. No stud or fastener quantities are added.',
       {
         kind: 'path-members',
@@ -147,7 +149,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     layout(
       'steel-box-header',
       'Steel box header',
-      'Light gauge framing',
+      'Light-gauge metal framing',
       'Modeled example with two 6 in stud sections and top/bottom track in a 3-5/8 in wide envelope. Starter bottom elevation is 7 ft, with zero end extensions. Enter the actual detail: section sizes, orientation, offsets, stock and bearing extensions. This is not a load-rated header design. For a wall opening, copy its components into a project Header detail and assign that detail to the opening; do not also apply a separate header trace for that same material.',
       {
         kind: 'path-members',
@@ -168,7 +170,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     layout(
       'steel-joists',
       'Steel joist layout',
-      'Light gauge framing',
+      'Light-gauge metal framing',
       'Modeled parallel joists clipped to the traced area, including separate spans at concave boundaries. Starter centrelines are 9 ft high at 16 in spacing, parallel to world X with origin 0,0; sections are 6 by 1-5/8 in with 20 ft stock. Set actual direction, origin, spacing, elevation and specified sections. Border/rim members, bridging, bearing extensions and connections must be entered separately. Members are not silently spliced.',
       {
         kind: 'area-members',
@@ -183,7 +185,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     layout(
       'steel-kick',
       'Steel kick brace',
-      'Light gauge framing',
+      'Light-gauge metal framing',
       'Modeled diagonal brace following a traced plan path. Starter centreline elevations rise from 9 ft to 12 ft; enter the actual attachment elevations and horizontal run. Cut length is the true 3D distance plus entered end extensions. Starter section is 3-5/8 by 1-5/8 in with 10 ft stock. Each path segment is a separate piece; connections and fastening are separate scope.',
       {
         kind: 'path-members',
@@ -201,7 +203,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     layout(
       'steel-furring',
       'Ceiling furring layout',
-      'Light gauge framing',
+      'Light-gauge metal framing',
       'Modeled parallel furring clipped to a traced ceiling area. Starter centrelines are 9 ft high at 24 in spacing, parallel to world X with origin 0,0; envelopes are 2-5/8 in wide by 7/8 in deep with 12 ft stock. Replace these example dimensions, spacing and orientation with the specified system. Carrier channels, hangers and connections are separate scope. Trace joints where required; no automatic splicing.',
       {
         kind: 'area-members',
@@ -216,7 +218,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     layout(
       'wood-blocking',
       'Wood blocking pieces',
-      'Blocking and rough carpentry',
+      'Wood blocking/backing',
       'Modeled blocks measured from individual path segments. Trace the actual ends of each block and enter its centreline elevation. Starter 2x6 uses actual 1-1/2 by 5-1/2 in dimensions and 8 ft stock. Set the specified size, orientation and product. No inferred between-stud cuts, fasteners or offcut reuse.',
       {
         kind: 'path-members',
@@ -233,7 +235,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'plywood-backing',
       'Plywood backing strip',
-      'Blocking and rough carpentry',
+      'Wood blocking/backing',
       'plywood-backing-3-4-unspecified',
       0.75,
       'Starts with an 8 in high strip of 3/4 in plywood and editable 4x8 sheet coverage. Set its mounting elevation and actual strip width; trace separate rows separately.',
@@ -242,7 +244,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'frp-wall',
       'FRP wall finish',
-      'FRP',
+      'Sheathing/FRP',
       'frp-unspecified',
       0.09,
       'Starts with 0.090 in FRP and editable 4x8 sheet coverage. Adhesive and trim are separate scope.',
@@ -250,7 +252,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'acoustical-wall-surface',
       'Acoustical wall panel layout',
-      'Acoustical wall panels',
+      'Acoustical ceilings/acoustical work',
       'acoustical-wall-panel-unspecified',
       1,
       'Starts with 1 in thick panels. Trace each panel for visible gaps, or trace continuous treatment for coverage. Installed quantities are area; enter the selected panel coverage for package purchasing. Mounting hardware is separate scope.',
@@ -258,7 +260,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'drywall-wall-surface',
       'Drywall wall finish',
-      'Drywall',
+      'Drywall hang/finish',
       'drywall-5-8-unspecified',
       0.625,
       'Starts with 5/8 in board and editable 4x8 sheet coverage. Use separate assignments for different board products.',
@@ -266,7 +268,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     horizontal(
       'drywall-ceiling',
       'Drywall ceiling finish',
-      'Drywall',
+      'Drywall hang/finish',
       'drywall-5-8-unspecified',
       0.625,
       9,
@@ -275,7 +277,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'plywood-wall-surface',
       'Plywood wall sheathing',
-      'Other sheathing',
+      'Sheathing/FRP',
       'plywood-3-4-unspecified',
       0.75,
       'Starts with 3/4 in plywood and editable 4x8 sheet coverage. Enter the specified grade, thickness and treatment.',
@@ -283,7 +285,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'gypsum-sheathing-wall',
       'Gypsum wall sheathing',
-      'Other sheathing',
+      'Sheathing/FRP',
       'gypsum-sheathing-5-8-unspecified',
       0.625,
       'Starts with 5/8 in gypsum sheathing and editable 4x8 sheet coverage. Enter the specified sheathing product and thickness.',
@@ -291,7 +293,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     surface(
       'cement-board-wall',
       'Cement board wall finish',
-      'Other sheathing',
+      'Sheathing/FRP',
       'cement-board-1-2-unspecified',
       0.5,
       'Starts with 1/2 in cement board. Change package coverage to the selected board size; the editable starter is 4x8.',
@@ -299,7 +301,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     horizontal(
       'plywood-deck',
       'Plywood horizontal sheathing',
-      'Other sheathing',
+      'Sheathing/FRP',
       'plywood-3-4-unspecified',
       0.75,
       0,
@@ -308,7 +310,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
     horizontal(
       'acoustical-ceiling-tile',
       'Acoustical ceiling tile area',
-      'Acoustical ceilings',
+      'Acoustical ceilings/acoustical work',
       'ceiling-tile-unspecified',
       0.625,
       9,

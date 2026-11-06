@@ -126,7 +126,7 @@ Recordings now include `canvas.pointer`, `canvas.paint`, `canvas.commit`, `page.
 `sheet.render`, `construction.render`, and `construction.inspect` accept optional
 `categories`, an array of assembly category names. Omit it for all categories,
 use `[]` for no matches, and include `null` for Uncategorized. Matching trims names
-and ignores case, recognizes legacy starter labels, and uses OR across categories.
+and ignores case, and uses OR across categories.
 Other filters intersect. Explicit CLI filters are independent of UI preferences.
 
 ```sh

@@ -156,10 +156,10 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         command('project.category.put', {'name': 'Specialty scope', 'color': '#8236DC'}, True)
         category_baseline = command('project.inspect')
         quantity_baseline = command('quantities.inspect')
-        drywall_model = command('construction.inspect', {'categories': ['Drywall']})
+        drywall_model = command('construction.inspect', {'categories': ['Drywall hang/finish']})
         assert not drywall_model['pieces'] and drywall_model['surfaces']
         assert all(surface['recipeId'] == 'drywall-scope' for surface in drywall_model['surfaces'])
-        for categories, expected in [(['Drywall'], True), (['Light gauge framing'], True), ([], False)]:
+        for categories, expected in [(['Drywall hang/finish'], True), (['Light-gauge metal framing'], True), ([], False)]:
             image = command('construction.render', {'path': str(EVIDENCE / ('category-' + str(len(categories)) + '-' + str(expected) + '.png')),
                                                     'width': 320, 'height': 240, 'categories': categories, 'caption': 'Category review'})
             png(image)
@@ -167,10 +167,10 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
             assert image['categories'] == categories
             assert visual('3d', 'Category review')['categories'] == categories
         category_plan = command('sheet.render', {'sheetId': sheet, 'path': str(EVIDENCE / 'drywall-plan.png'),
-                                                 'categories': ['Drywall'], 'mode': 'takeoff', 'maxDimension': 640, 'caption': 'Category plan'})
+                                                 'categories': ['Drywall hang/finish'], 'mode': 'takeoff', 'maxDimension': 640, 'caption': 'Category plan'})
         png(category_plan)
-        assert category_plan['categories'] == ['Drywall']
-        assert visual('plan', 'Category plan')['categories'] == ['Drywall']
+        assert category_plan['categories'] == ['Drywall hang/finish']
+        assert visual('plan', 'Category plan')['categories'] == ['Drywall hang/finish']
         assert command('project.inspect') == category_baseline
         assert command('quantities.inspect') == quantity_baseline
         annotations = [{'points': [{'x': 100, 'y': 170}, {'x': 200, 'y': 170}],

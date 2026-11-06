@@ -37,15 +37,6 @@ export const standardCategories = [
   { name: 'Acoustical ceilings/acoustical work', color: '#D18A00' },
   { name: 'Demo', color: '#E03131' },
 ] as const;
-const aliases: Record<string, string> = {
-  'light gauge framing': standardCategories[0].name,
-  'blocking and rough carpentry': standardCategories[1].name,
-  'frp and sheathing': standardCategories[2].name,
-  'other sheathing': standardCategories[2].name,
-  drywall: standardCategories[4].name,
-  'acoustical ceilings': standardCategories[5].name,
-  'acoustical wall panels': standardCategories[5].name,
-};
 
 export function categoryName(value?: string | null): string | null {
   const name = value?.trim();
@@ -53,10 +44,7 @@ export function categoryName(value?: string | null): string | null {
   return (
     standardCategories.find(
       (entry) => entry.name.toLowerCase() === name.toLowerCase(),
-    )?.name ??
-    (Object.hasOwn(aliases, name.toLowerCase())
-      ? (aliases[name.toLowerCase()] ?? name)
-      : name)
+    )?.name ?? name
   );
 }
 

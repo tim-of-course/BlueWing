@@ -15,6 +15,7 @@ import {
   categoryColor,
   categoryName,
   categoryOptions,
+  standardCategories,
   geometryCategories,
   geometryMatchesCategories,
   filterConstructionCategories,
@@ -72,24 +73,32 @@ function fixture() {
   return project;
 }
 
-void test('standards resolve legacy names while custom colors remain project-only', () => {
+void test('category matching trims names and ignores case while custom colors remain project-only', () => {
   const project = createProject('Categories');
   project.categoryColors = { 'Special scope': '#961DCB' };
-  assert.equal(categoryName(' Drywall '), 'Drywall hang/finish');
+  assert.equal(categoryName(' DRYWALL HANG/FINISH '), 'Drywall hang/finish');
   assert.equal(
-    categoryName('acoustical wall panels'),
+    categoryName('acoustical ceilings/acoustical work'),
     'Acoustical ceilings/acoustical work',
   );
   assert.equal(categoryName(' '), null);
   assert.equal(categoryColor(project, 'special SCOPE'), '#961DCB');
   assert.equal(
-    categoryColor(project, 'Drywall'),
+    categoryColor(project, 'DRYWALL HANG/FINISH'),
     categoryColor({}, 'Drywall hang/finish'),
   );
   assert.equal(categoryColor({}, 'Other'), categoryColor({}, ' other '));
   assert.ok(
     categoryOptions(project).some((entry) => entry.name === 'Special scope'),
   );
+  const standards = new Set<string>(
+    standardCategories.map((entry) => entry.name),
+  );
+  for (const assembly of Object.values(starterAssemblies()))
+    assert.ok(
+      standards.has(assembly.category ?? ''),
+      `${assembly.id} must declare a standard category directly`,
+    );
 });
 
 void test('one shared trace derives distinct assembly scopes without duplicates or quantity changes', () => {
@@ -100,12 +109,15 @@ void test('one shared trace derives distinct assembly scopes without duplicates 
     'Drywall hang/finish',
     'Light-gauge metal framing',
   ]);
-  assert.equal(geometryMatchesCategories(tags.line, ['Drywall']), true);
+  assert.equal(
+    geometryMatchesCategories(tags.line, ['Drywall hang/finish']),
+    true,
+  );
   assert.equal(geometryMatchesCategories(tags.line, ['Demo']), false);
   assert.equal(geometryMatchesCategories([], [null]), true);
   assert.equal(geometryMatchesCategories([], []), false);
   const drywall = filterConstructionCategories(project, before.model, [
-    'Drywall',
+    'Drywall hang/finish',
   ]);
   assert.equal(drywall.pieces.length, 0);
   assert.ok(drywall.surfaces.length > 0);
@@ -115,23 +127,24 @@ void test('one shared trace derives distinct assembly scopes without duplicates 
     ),
   );
   const framing = filterConstructionCategories(project, before.model, [
-    'Light gauge framing',
+    'Light-gauge metal framing',
   ]);
   assert.ok(framing.pieces.length > 0);
   assert.equal(framing.surfaces.length, 0);
   const sceneInput = constructionSceneInput(before.model, project);
   const drywallScene = buildConstructionScene(sceneInput, {
-    categories: ['Drywall'],
+    categories: ['Drywall hang/finish'],
   });
   assert.equal(drywallScene.members.length, 0);
   assert.equal(drywallScene.surfaces.length, drywall.surfaces.length);
   assert.ok(
     drywallScene.surfaces.every(
-      (source) => source.color === categoryColor(project, 'Drywall'),
+      (source) =>
+        source.color === categoryColor(project, 'Drywall hang/finish'),
     ),
   );
   const framingScene = buildConstructionScene(sceneInput, {
-    categories: ['Light gauge framing'],
+    categories: ['Light-gauge metal framing'],
   });
   assert.equal(framingScene.surfaces.length, 0);
   assert.ok(
@@ -150,7 +163,11 @@ void test('hidden groups cannot supply a category through another visible group 
   const project = fixture();
   delete project.groups.g;
   project.groups.f = { id: 'f', name: 'Framing', geometryIds: ['line'] };
-  project.groups.d = { id: 'd', name: 'Drywall', geometryIds: ['line'] };
+  project.groups.d = {
+    id: 'd',
+    name: 'Drywall hang/finish',
+    geometryIds: ['line'],
+  };
   const framing = project.assignments['steel-framing'];
   const drywall = project.assignments['drywall-wall-surface'];
   assert.ok(framing && drywall);
@@ -161,13 +178,16 @@ void test('hidden groups cannot supply a category through another visible group 
     'Drywall hang/finish',
   ]);
   assert.equal(
-    visibleDrawingIds(project, visibility, ['Light gauge framing']).size,
+    visibleDrawingIds(project, visibility, ['Light-gauge metal framing']).size,
     0,
   );
-  assert.equal(visibleDrawingIds(project, visibility, ['Drywall']).size, 1);
+  assert.equal(
+    visibleDrawingIds(project, visibility, ['Drywall hang/finish']).size,
+    1,
+  );
   assert.equal(
     visibleDrawingIds(project, { hiddenSheets: ['s'], hiddenGroups: {} }, [
-      'Drywall',
+      'Drywall hang/finish',
     ]).size,
     0,
   );
@@ -177,7 +197,7 @@ void test('inspection keeps unresolved matching applications and ignores local f
   const project = fixture();
   const report = executeCommand(project, {
     name: 'construction.inspect',
-    payload: { categories: ['Drywall'] },
+    payload: { categories: ['Drywall hang/finish'] },
   }).data as {
     pieces: unknown[];
     surfaces: unknown[];
@@ -196,7 +216,7 @@ void test('inspection keeps unresolved matching applications and ignores local f
   delete framing.wallTemplate.height;
   const unresolved = executeCommand(project, {
     name: 'construction.inspect',
-    payload: { categories: ['Light gauge framing'] },
+    payload: { categories: ['Light-gauge metal framing'] },
   }).data as {
     diagnostics: unknown[];
     applications: { walls: Record<string, unknown> };
@@ -253,7 +273,7 @@ void test('project custom color changes persist, undo and redo without recalcula
   assert.throws(() =>
     executeCommand(project, {
       name: 'project.category.put',
-      payload: { name: 'Drywall', color: '#112233' },
+      payload: { name: 'Drywall hang/finish', color: '#112233' },
     }),
   );
   assert.throws(() =>
@@ -267,7 +287,7 @@ void test('project custom color changes persist, undo and redo without recalcula
 void test('render/inspect category payloads support All, none and Uncategorized', () => {
   validateCommand({
     name: 'construction.inspect',
-    payload: { categories: [null, 'Drywall'] },
+    payload: { categories: [null, 'Drywall hang/finish'] },
   });
   for (const name of ['sheet.render', 'construction.render']) {
     const command = registry.find((entry) => entry.name === name);
@@ -278,7 +298,7 @@ void test('render/inspect category payloads support All, none and Uncategorized'
         : { path: 'a.png' };
     validatePayload(command.schema, {
       ...payload,
-      categories: [null, 'Drywall'],
+      categories: [null, 'Drywall hang/finish'],
     });
     validatePayload(command.schema, { ...payload, categories: [] });
   }
