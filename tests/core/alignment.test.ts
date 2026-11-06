@@ -16,7 +16,7 @@ function required<T>(value: T | undefined): T {
 
 function fixture(): Project {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     id: 'p',
     name: 'Alignment',
     revision: 0,

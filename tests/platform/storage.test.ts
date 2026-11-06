@@ -119,7 +119,7 @@ function fixture() {
   };
 }
 const project = (): Project => ({
-  formatVersion: 4,
+  formatVersion: 5,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -220,12 +220,12 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   database.close();
 });
 
-void test('format 4 saves assembly fields atomically and retains them on reopen', async () => {
+void test('assembly fields save atomically and survive reopen', async () => {
   const { storage, database, setFailure } = fixture();
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 4);
+  assert.equal((await storage.load()).formatVersion, 5);
   const next: Project = {
     ...initial,
     revision: 1,
@@ -264,7 +264,7 @@ void test('format 4 saves assembly fields atomically and retains them on reopen'
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    4,
+    5,
   );
   database.close();
 });
@@ -273,7 +273,7 @@ void test('old project formats are rejected without changing the saved file', as
   const { storage, database, backups } = fixture();
   await storage.open('unsupported', true);
   await storage.initialize(project());
-  for (const version of [1, 2, 3]) {
+  for (const version of [1, 2, 3, 4]) {
     database.prepare('UPDATE project SET format_version=?').run(version);
     await assert.rejects(storage.load(), /format|version/i);
     assert.equal(
@@ -286,7 +286,7 @@ void test('old project formats are rejected without changing the saved file', as
   database.close();
 });
 
-void test('format 4 extensions survive reopen and backups run only when requested', async () => {
+void test('extensions survive reopen and backups run only when requested', async () => {
   const { storage, database, backups, setBackupFailure } = fixture();
   await storage.open('detailed', true);
   const initial = project();
@@ -375,5 +375,37 @@ void test('native asset readers stream from immutable snapshots and release them
   await range.close?.();
   assert.equal(snapshots.size, 0);
   await assert.rejects(range.read(0, 1), /Missing snapshot/);
+  database.close();
+});
+
+void test('SQLite notes saves and clearing are atomic and survive reopen', async () => {
+  const { storage, database, setFailure } = fixture();
+  await storage.open('notes', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next: Project = {
+    ...initial,
+    notes: '# 😀\nA101 detail.*',
+    revision: 1,
+  };
+  setFailure(true);
+  await assert.rejects(storage.save(initial, next), /disk full/);
+  assert.deepEqual(await storage.load(), initial);
+  setFailure(false);
+  await storage.save(initial, next);
+  await storage.close();
+  await storage.open('notes', false);
+  assert.deepEqual(await storage.load(), next);
+  await assert.rejects(
+    storage.save(initial, { ...next, notes: 'Stale' }),
+    /CHECK/,
+  );
+  assert.deepEqual(await storage.load(), next);
+  const cleared = { ...next, revision: 2 };
+  delete cleared.notes;
+  await storage.save(next, cleared);
+  await storage.close();
+  await storage.open('notes', false);
+  assert.deepEqual(await storage.load(), cleared);
   database.close();
 });

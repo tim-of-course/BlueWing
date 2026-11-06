@@ -166,7 +166,8 @@ export interface Assignment {
   >;
 }
 export interface Project {
-  formatVersion: 4;
+  formatVersion: 5;
+  notes?: string;
   id: string;
   name: string;
   revision: number;

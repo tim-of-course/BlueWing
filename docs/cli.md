@@ -53,6 +53,12 @@ bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
 
+## Project scratchpad
+
+`notes.read` returns `{markdown}`. `notes.write` replaces the full Markdown string using `{markdown}` and the normal project identity/expected revision; an empty string clears it. Read before writing and preserve unrelated text. `notes.search` accepts a nonempty `{query}` and returns matching `lines` with 1-based `line` numbers and `text`, plus `totalMatches` (occurrences). Search is case-insensitive literal substring matching in accepted text, without regex or an index. Notes use shared Undo/Redo, batch, preview, saving, and Pause CLI behavior.
+
+The right inspector has an alternate **Notes** view with a plain multiline editor, draft Find/previous/next, explicit Save/Cancel, and Ctrl/Cmd+S. Save failures and revision conflicts retain the draft; inspect changes before cancelling and reapplying it. Notes are freeform Markdown, separate from review, snippets, chat, and structured reports. Sheet/detail names and snippet IDs/bounds are ordinary prose references and are never rewritten automatically.
+
 ## AI Page Naming workflow
 
 Choose **AI Page Naming** (the **Aa** button beside Sheets) to prepare title blocks
@@ -210,7 +216,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 4 is supported. Recreate older development takeoffs; the app does not load or migrate them. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
+Only project format 5 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

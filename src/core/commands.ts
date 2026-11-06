@@ -1,3 +1,4 @@
+import { searchNotes } from './notes';
 import type {
   Assignment,
   CommandCall,
@@ -268,6 +269,27 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     },
   ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
+  [
+    'notes.read',
+    'Read the project Markdown scratchpad before editing.',
+    object({}),
+    false,
+    {},
+  ],
+  [
+    'notes.write',
+    'Replace the full scratchpad. Read first and preserve unrelated text.',
+    object({ markdown: string }),
+    true,
+    { markdown: '# Notes\nCheck A101 detail 2.' },
+  ],
+  [
+    'notes.search',
+    'Find case-insensitive literal text in accepted notes; returns matching lines and total occurrences.',
+    object({ query: string }),
+    false,
+    { query: 'detail' },
+  ],
   [
     'project.rename',
     'Rename the project.',
@@ -737,7 +759,7 @@ export function validateProject(input: unknown): asserts input is Project {
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 4
+    input.formatVersion !== 5
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -745,7 +767,7 @@ export function validateProject(input: unknown): asserts input is Project {
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [4] },
+        formatVersion: { type: 'number', enum: [5] },
         id: string,
         name: string,
         revision: { type: 'number', minimum: 0 },
@@ -756,6 +778,7 @@ export function validateProject(input: unknown): asserts input is Project {
         assignments: { type: 'object', additionalProperties: assignment },
         construction: constructionSchema,
         review: reviewSchema,
+        notes: string,
       },
       [
         'formatVersion',
@@ -916,6 +939,16 @@ export function executeCommandOnDraft(
   switch (call.name) {
     case 'commands.list':
       data = commandRegistry;
+      break;
+    case 'notes.read':
+      data = { markdown: next.notes ?? '' };
+      break;
+    case 'notes.search':
+      data = searchNotes(next.notes ?? '', payload.query as string);
+      break;
+    case 'notes.write':
+      if (payload.markdown === '') delete next.notes;
+      else next.notes = payload.markdown as string;
       break;
     case 'project.inspect':
       data = next;

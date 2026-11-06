@@ -100,7 +100,7 @@ void test('wall definitions stay independent from the library while applied wall
     name: 'assembly.put',
     payload: imported,
   }).project;
-  assert.equal(next.formatVersion, 4);
+  assert.equal(next.formatVersion, 5);
   next = executeCommand(next, {
     name: 'wall.fromAssembly',
     payload: { assemblyId: 'imported', id: 'first', geometryId: 'a' },

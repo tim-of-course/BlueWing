@@ -28,7 +28,7 @@ function near(actual: number, expected: number) {
 
 function baseProject(): Project {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     id: 'reuse-project',
     name: 'Calculation reuse',
     revision: 0,
