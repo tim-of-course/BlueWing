@@ -5,6 +5,8 @@ import { NativeStorage } from '../../src/platform/storage';
 import type { NativeInvoke } from '../../src/platform/storage';
 import type { Statement } from '../../src/platform/storage-model';
 import type { Project } from '../../src/core/types';
+import { ProjectSession } from '../../src/core/session';
+import { takeoffProject } from '../../src/core/takeoffs';
 
 function fixture() {
   const database = new DatabaseSync(':memory:');
@@ -118,8 +120,91 @@ function fixture() {
     },
   };
 }
+void test('SQLite stores independent takeoff ownership, shared page calibration and copy provenance through session saves', async () => {
+  const { storage, database, setFailure } = fixture();
+  await storage.open('takeoffs', true);
+  const initial = project();
+  initial.sheets.s = {
+    id: 's',
+    name: 'Plan',
+    assetId: 'pdf',
+    pageIndex: 0,
+    width: 100,
+    height: 100,
+    calibration: { metresPerUnit: 1 },
+  };
+  initial.geometries.g = {
+    id: 'g',
+    name: 'Count',
+    sheetId: 's',
+    kind: 'count',
+    points: [{ x: 1, y: 1 }],
+  };
+  await storage.initialize(initial);
+  const session = new ProjectSession(initial, storage);
+  await session.dispatch({
+    ...session.observation,
+    name: 'takeoff.create',
+    payload: { id: 'co', name: 'CO 1', kind: 'change-order' },
+  });
+  const before = session.project;
+  setFailure(true);
+  await assert.rejects(
+    session.dispatch({
+      ...session.observation,
+      name: 'takeoff.copyItems',
+      takeoffId: 'co',
+      payload: {
+        sourceTakeoffId: 'main',
+        geometryIds: ['g'],
+        direction: 'deduct',
+      },
+    }),
+  );
+  assert.deepEqual(await storage.load(), before);
+  setFailure(false);
+  await session.dispatch({
+    ...session.observation,
+    name: 'takeoff.copyItems',
+    takeoffId: 'co',
+    payload: {
+      sourceTakeoffId: 'main',
+      geometryIds: ['g'],
+      direction: 'deduct',
+    },
+  });
+  const loaded = await storage.load();
+  assert.deepEqual(loaded, session.project);
+  assert.equal(Object.keys(takeoffProject(loaded, 'co').geometries).length, 1);
+  assert.equal(loaded.takeoffs.co?.copies?.[0]?.sourceRevision, 1);
+  assert.ok(loaded.takeoffs.co);
+  assert.equal(loaded.sheets.s?.calibration?.metresPerUnit, 1);
+  assert.equal(
+    takeoffProject(loaded, 'co').sheets.s?.calibration?.metresPerUnit,
+    1,
+  );
+  await session.dispatch({
+    ...session.observation,
+    name: 'takeoff.delete',
+    payload: { id: 'co' },
+  });
+  await session.dispatch({ ...session.observation, name: 'history.undo' });
+  assert.equal(
+    Object.keys(takeoffProject(await storage.load(), 'co').geometries).length,
+    1,
+  );
+  database.close();
+});
 const project = (): Project => ({
-  formatVersion: 5,
+  takeoffs: {
+    main: {
+      id: 'main',
+      name: 'Main',
+      kind: 'main',
+      owned: {},
+    },
+  },
+  formatVersion: 6,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -243,7 +328,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 5);
+  assert.equal((await storage.load()).formatVersion, 6);
   const next: Project = {
     ...initial,
     revision: 1,
@@ -282,7 +367,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    5,
+    6,
   );
   database.close();
 });
@@ -291,7 +376,7 @@ void test('old project formats are rejected without changing the saved file', as
   const { storage, database, backups } = fixture();
   await storage.open('unsupported', true);
   await storage.initialize(project());
-  for (const version of [1, 2, 3, 4]) {
+  for (const version of [1, 2, 3, 4, 5]) {
     database.prepare('UPDATE project SET format_version=?').run(version);
     await assert.rejects(storage.load(), /format|version/i);
     assert.equal(

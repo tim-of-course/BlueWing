@@ -158,6 +158,6 @@ void test('projects own fresh starter recipe copies and stable UUID identity', (
   assert.notEqual(a.id, b.id);
   assert.match(a.id, /^[0-9a-f-]{36}$/);
   assert.notEqual(a.recipes, b.recipes);
-  assert.equal(a.formatVersion, 5);
+  assert.equal(a.formatVersion, 6);
   assert.equal(a.revision, 0);
 });

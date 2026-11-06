@@ -37,6 +37,7 @@ export function sheetPlanCorners(
   }) as [Point3, Point3, Point3, Point3];
 }
 export interface SceneSource {
+  direction?: 'add' | 'deduct';
   id: string;
   geometryId: string;
   wallId?: string;

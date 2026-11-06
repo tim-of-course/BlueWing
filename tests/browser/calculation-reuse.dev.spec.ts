@@ -22,7 +22,15 @@ async function mutate(page: Page, name: string, payload: unknown) {
   const { projectId, revision } = (await cli(page, 'project.inspect')).response;
   const result = await page.evaluate(
     async ({ name, request }) => window.wingmanCli(name, request),
-    { name, request: { projectId, expectedRevision: revision, payload } },
+    {
+      name,
+      request: {
+        projectId,
+        expectedRevision: revision,
+        payload,
+        takeoffId: 'main',
+      },
+    },
   );
   expect(result.exitCode, JSON.stringify(result.response)).toBe(0);
 }

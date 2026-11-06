@@ -17,7 +17,12 @@ export function quantityChanges(
     const a = previous.get(id),
       b = next.get(id);
     const delta = (b?.amount ?? 0) - (a?.amount ?? 0);
-    return delta || a?.complete !== b?.complete
+    const additionDelta = (b?.additions ?? 0) - (a?.additions ?? 0);
+    const deductionDelta = (b?.deductions ?? 0) - (a?.deductions ?? 0);
+    return delta ||
+      additionDelta ||
+      deductionDelta ||
+      a?.complete !== b?.complete
       ? [
           {
             materialId: (b ?? a)?.materialId,
@@ -26,6 +31,9 @@ export function quantityChanges(
             before: a?.amount ?? 0,
             after: b?.amount ?? 0,
             delta,
+            takeoffId: after.context?.takeoffId,
+            additionDelta,
+            deductionDelta,
             complete: b?.complete ?? true,
           },
         ]

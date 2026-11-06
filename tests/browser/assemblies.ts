@@ -191,7 +191,7 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
     .click();
   // WebKit replaces spaces with underscores in suggested download names.
   expect((await download).suggestedFilename()).toMatch(
-    /^Workflow[ _]fixture-pieces\.csv$/,
+    /^Workflow[ _]fixture-main-pieces\.csv$/,
   );
 }
 

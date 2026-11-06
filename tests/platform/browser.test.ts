@@ -34,7 +34,15 @@ for (const browserType of [chromium, firefox, webkit]) {
         )) as typeof StorageModule;
         const storage = new BrowserStorage();
         const initial = {
-          formatVersion: 5 as const,
+          takeoffs: {
+            main: {
+              id: 'main',
+              name: 'Main',
+              kind: 'main' as const,
+              owned: {},
+            },
+          },
+          formatVersion: 6 as const,
           id: 'p',
           name: 'Original',
           revision: 0,
@@ -46,6 +54,7 @@ for (const browserType of [chromium, firefox, webkit]) {
               pageIndex: 0,
               width: 100,
               height: 100,
+              calibration: { metresPerUnit: 2 },
             },
           },
           geometries: {},
@@ -65,9 +74,28 @@ for (const browserType of [chromium, firefox, webkit]) {
         const bytes = Array.from(await storage.readAsset('pdf'));
         const next = {
           ...initial,
-          notes: '# Scratchpad\n😀 detail',
           name: 'Saved',
           revision: 1,
+          takeoffs: {
+            ...initial.takeoffs,
+            co: {
+              id: 'co',
+              name: 'CO 1',
+              kind: 'change-order' as const,
+              mainTakeoffId: 'main',
+              owned: { geometries: ['copy'] },
+            },
+          },
+          geometries: {
+            copy: {
+              id: 'copy',
+              name: 'Copied count',
+              sheetId: 's',
+              kind: 'count' as const,
+              points: [{ x: 2, y: 3 }],
+            },
+          },
+          notes: '# Scratchpad\n😀 detail',
           categoryColors: { Special: '#8236DC' },
         };
         await storage.save(initial, next);
@@ -111,10 +139,15 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.ok(result.conflict && result.duplicate && result.createConflict);
       assert.equal(result.saved.name, 'Saved');
       assert.equal(result.saved.revision, 1);
+      assert.equal(result.saved.takeoffs.co?.name, 'CO 1');
+      assert.ok(result.saved.takeoffs.co);
+      assert.equal(result.saved.sheets.s?.calibration?.metresPerUnit, 2);
+      assert.ok(!('calibrations' in result.saved.takeoffs.co));
+      assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
+      assert.equal(result.saved.sheets.s.assetId, 'pdf');
       assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
-      assert.equal(result.saved.formatVersion, 5);
+      assert.equal(result.saved.formatVersion, 6);
       assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
-      assert.equal(result.saved.sheets.s?.assetId, 'pdf');
     } finally {
       await browser.close();
     }

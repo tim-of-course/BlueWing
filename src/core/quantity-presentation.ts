@@ -1,6 +1,8 @@
 import type { CalculationSnapshot } from './calculation-state';
 import type { LengthUnit, Project, Quantity } from './types';
 import { assemblyOutputs } from './systems';
+import { takeoffProject, takeoffContext } from './takeoffs';
+import type { Takeoff } from './types';
 
 type Output = CalculationSnapshot['outputs'][number];
 export interface PhysicalLength {
@@ -22,6 +24,8 @@ export interface QuantitySourceRef {
   surfaceId: string | null;
 }
 export interface TakeoffRow {
+  direction: 'add' | 'deduct';
+  grossQuantity: number;
   lineId: string;
   baseDescription: string;
   description: string;
@@ -43,6 +47,7 @@ export interface TakeoffRow {
 }
 /** Producer issues for Bluewing's UI; these never become imported placeholder items. */
 export interface QuantityIssue {
+  direction: 'add' | 'deduct';
   lineId: string | null;
   baseDescription: string;
   description: string;
@@ -68,7 +73,8 @@ export interface QuantityIssue {
 }
 export interface TakeoffEnvelope {
   kind: 'bluewing.takeoff';
-  version: 1;
+  version: 2;
+  takeoff: Pick<Takeoff, 'id' | 'name' | 'kind'>;
   project: { id: string; name: string; revision: string };
   exportedAt: string;
   calculationComplete: boolean;
@@ -122,7 +128,12 @@ export function presentQuantities(
   project: Project,
   result: CalculationSnapshot,
 ) {
+  project = takeoffProject(project);
+  const takeoff = takeoffContext(project);
+  if (result.context && result.context.takeoffId !== takeoff.id)
+    throw new Error('Calculation belongs to another takeoff');
   return result.outputs.map((output) => {
+    const direction = output.direction ?? 'add';
     const label = quantityLabel(project, output);
     const source: QuantitySourceIdentity = {
       groupId: output.groupId || null,
@@ -140,13 +151,14 @@ export function presentQuantities(
       surfaceId: entry.surfaceId ?? null,
     }));
     const lineId = output.quantityKey
-      ? `bwq1:${encodeURIComponent(output.quantityKey)}`
+      ? `bwq2:${encodeURIComponent(takeoff.id)}:${encodeURIComponent(output.quantityKey)}`
       : null;
     const skip = (code: QuantityIssue['code'], reason: string) => ({
       output,
       ...label,
       row: null,
       issue: {
+        direction,
         lineId,
         baseDescription: label.description,
         description: label.description,
@@ -239,6 +251,8 @@ export function presentQuantities(
             ? 'count'
             : 'LF';
       const row: TakeoffRow = {
+        direction,
+        grossQuantity: 0,
         lineId,
         baseDescription: label.description,
         description: `${label.description} (missing quantity)`,
@@ -342,10 +356,13 @@ export function presentQuantities(
         'Converted purchased quantity is not finite.',
       );
     const row: TakeoffRow = {
+      direction,
+      grossQuantity: quantity,
       lineId,
       baseDescription: label.description,
       description,
-      quantity,
+      quantity:
+        quantity === 0 ? 0 : quantity * (direction === 'deduct' ? -1 : 1),
       unit,
       category: label.category,
       source,
@@ -369,6 +386,7 @@ export function estiMakerTakeoff(
   exportedAt = new Date().toISOString(),
 ): TakeoffEnvelope {
   const entries = presentQuantities(project, result);
+  const takeoff = takeoffContext(project);
   if (!project.id.trim())
     throw new Error('EstiMaker export requires a project identity.');
   const issues = entries.flatMap((entry) => (entry.issue ? [entry.issue] : []));
@@ -381,7 +399,8 @@ export function estiMakerTakeoff(
     throw new Error('EstiMaker export contains duplicate line identities.');
   return {
     kind: 'bluewing.takeoff',
-    version: 1,
+    version: 2,
+    takeoff: { id: takeoff.id, name: takeoff.name, kind: takeoff.kind },
     project: {
       id: project.id,
       name: project.name,

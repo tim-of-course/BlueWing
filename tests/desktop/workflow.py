@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
 
     def call(name, payload=None, mutates=False, expected=None, succeeds=True):
         global project_id, revision
-        request = {"payload": payload or {}}
+        request = {"payload": payload or {}, "takeoffId": "main"}
         if mutates:
             request.update(projectId=project_id, expectedRevision=revision if expected is None else expected)
         result = subprocess.run([str(BIN / "bluewing"), name, "--stdin"], input=json.dumps(request),

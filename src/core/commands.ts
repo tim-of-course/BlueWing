@@ -1,3 +1,11 @@
+import {
+  takeoffCommands,
+  manageTakeoff,
+  takeoffProject,
+  mergeTakeoff,
+  mainId,
+  ownedCollections,
+} from './takeoffs';
 import { searchNotes } from './notes';
 import type {
   Assignment,
@@ -197,6 +205,7 @@ const inputValues: PayloadSchema = {
 };
 const assignment = object(
   {
+    direction: { type: 'string', enum: ['add', 'deduct'] },
     id: string,
     groupId: string,
     recipeId: string,
@@ -569,6 +578,7 @@ export const commandRegistry: readonly CommandDefinition[] = [
     examples: [{ name, payload }],
   })),
   ...detailedCommands,
+  ...takeoffCommands,
 ];
 function record(item: unknown): item is Record<string, unknown> {
   return typeof item === 'object' && item !== null && !Array.isArray(item);
@@ -762,12 +772,15 @@ export function validateAssemblyInputs(
   }
 }
 
-export function validateProject(input: unknown): asserts input is Project {
+export function validateProject(
+  input: unknown,
+  view = false,
+): asserts input is Project {
   if (
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 5
+    input.formatVersion !== 6
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -775,7 +788,36 @@ export function validateProject(input: unknown): asserts input is Project {
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [5] },
+        formatVersion: { type: 'number', enum: [6] },
+        takeoffs: {
+          type: 'object',
+          additionalProperties: object(
+            {
+              id: string,
+              name: string,
+              kind: { type: 'string', enum: ['main', 'phase', 'change-order'] },
+              mainTakeoffId: string,
+              owned: {
+                type: 'object',
+                properties: Object.fromEntries(
+                  ownedCollections.map((key) => [key, array(string)]),
+                ),
+                additionalProperties: false,
+              },
+              construction: constructionSchema,
+              review: reviewSchema,
+              copies: array(
+                object({
+                  sourceTakeoffId: string,
+                  sourceRevision: number,
+                  ids: { type: 'object', additionalProperties: string },
+                }),
+              ),
+            },
+            ['id', 'name', 'kind', 'owned'],
+          ),
+        },
+        takeoffId: string,
         id: string,
         name: string,
         revision: { type: 'number', minimum: 0 },
@@ -791,6 +833,7 @@ export function validateProject(input: unknown): asserts input is Project {
       },
       [
         'formatVersion',
+        'takeoffs',
         'id',
         'name',
         'revision',
@@ -805,6 +848,44 @@ export function validateProject(input: unknown): asserts input is Project {
     'project',
   );
   const project = input as Project;
+  if (project.takeoffId && !view)
+    throw new Error('Derived takeoff views cannot be persisted');
+  if (
+    Object.values(project.takeoffs).filter((t) => t.kind === 'main').length !==
+    1
+  )
+    throw new Error('Exactly one Main takeoff is required');
+  if (!project.takeoffId) {
+    for (const takeoff of Object.values(project.takeoffs)) {
+      if (
+        takeoff.id !==
+          Object.keys(project.takeoffs).find(
+            (key) => project.takeoffs[key] === takeoff,
+          ) ||
+        !takeoff.name.trim() ||
+        !['main', 'phase', 'change-order'].includes(takeoff.kind)
+      )
+        throw new Error('Invalid takeoff');
+      if (
+        takeoff.kind === 'change-order' &&
+        takeoff.mainTakeoffId !== mainId(project)
+      )
+        throw new Error('Change order must reference Main');
+      const view = takeoffProject(project, takeoff.id);
+      validateProject(view, true);
+    }
+    for (const collection of ownedCollections) {
+      const ids = Object.values(project.takeoffs).flatMap(
+        (t) => t.owned[collection] ?? [],
+      );
+      if (
+        new Set(ids).size !== ids.length ||
+        ids.some((id) => !project[collection][id])
+      )
+        throw new Error('Invalid takeoff ownership');
+    }
+    return;
+  }
   for (const [name, color] of Object.entries(project.categoryColors ?? {}))
     validateCategoryColor(name, color);
   validateDetailed(project);
@@ -847,6 +928,12 @@ export function validateProject(input: unknown): asserts input is Project {
   for (const entry of Object.values(project.recipes)) validateAssembly(entry);
   for (const entry of Object.values(project.assignments)) {
     requireEntity(project.groups, entry.groupId, 'Group');
+    if (
+      entry.direction === 'deduct' &&
+      project.takeoffs[project.takeoffId ?? mainId(project)]?.kind !==
+        'change-order'
+    )
+      throw new Error('Only change orders can deduct');
     const definition = requireEntity(project.recipes, entry.recipeId, 'Recipe');
     for (const geometryId of Object.keys(entry.geometryDetails ?? {}))
       if (!project.groups[entry.groupId]?.geometryIds.includes(geometryId))
@@ -937,9 +1024,49 @@ export function executeCommandOnDraft(
   next: Project,
   call: CommandCall,
   validateResult = true,
-  calculation: () => CalculationSnapshot = () => calculateProject(next),
+  calculation: () => CalculationSnapshot = () =>
+    calculateProject(takeoffProject(next, call.takeoffId)),
 ): { project: Project; data: unknown; changed: boolean } {
   const definition = validateCommand(call);
+  if (!next.takeoffId) {
+    if (call.name.startsWith('takeoff.') && call.name !== 'takeoff.inspect') {
+      const data = manageTakeoff(next, call);
+      if (definition.mutates) validateProject(next);
+      return {
+        project: next,
+        data: structuredClone(data),
+        changed: definition.mutates,
+      };
+    }
+    if (
+      ![
+        'commands.list',
+        'project.rename',
+        'project.inspect',
+        'project.category.put',
+        'notes.read',
+        'notes.write',
+        'notes.search',
+        'sheet.put',
+        'sheet.delete',
+        'sheet.naming.apply',
+      ].includes(call.name)
+    ) {
+      const view = takeoffProject(next, call.takeoffId ?? mainId(next));
+      const before = structuredClone(view);
+      const result = executeCommandOnDraft(
+        view,
+        call,
+        validateResult,
+        calculation,
+      );
+      if (result.changed) {
+        mergeTakeoff(next, view, before);
+        if (validateResult) validateProject(next, next.takeoffId !== undefined);
+      }
+      return { ...result, project: next };
+    }
+  }
   if (['batch', 'preview', 'history.undo', 'history.redo'].includes(call.name))
     throw new Error(`${call.name} must run through ProjectSession`);
   const payload = (call.payload ?? {}) as Record<string, unknown>;
@@ -963,6 +1090,20 @@ export function executeCommandOnDraft(
       break;
     case 'project.inspect':
       data = next;
+      break;
+    case 'takeoff.inspect':
+      data = {
+        projectId: next.id,
+        revision: next.revision,
+        takeoff: next.takeoffs[next.takeoffId ?? mainId(next)],
+        sheets: next.sheets,
+        geometries: next.geometries,
+        groups: next.groups,
+        recipes: next.recipes,
+        assignments: next.assignments,
+        construction: next.construction,
+        review: next.review,
+      };
       break;
     case 'project.category.put': {
       const name = (payload.name as string).trim();
@@ -989,7 +1130,7 @@ export function executeCommandOnDraft(
       );
       break;
     case 'quantities.inspect':
-      data = quantityReport(calculation());
+      data = quantityReport(calculation(), next);
       break;
     case 'quantities.export':
       data = exportQuantities(
@@ -1062,6 +1203,16 @@ export function executeCommandOnDraft(
       break;
     case 'sheet.delete':
       requireEntity(next.sheets, entityId, 'Sheet');
+      if (
+        Object.values(next.geometries).some(
+          (g) =>
+            g.sheetId === entityId &&
+            Object.values(next.takeoffs).some(
+              (t) => t.kind !== 'main' && t.owned.geometries?.includes(g.id),
+            ),
+        )
+      )
+        throw new Error('Remove takeoff work before deleting a shared sheet');
       for (const entry of Object.values(next.geometries))
         if (entry.sheetId === entityId) removeGeometry(next, entry.id);
       Reflect.deleteProperty(next.sheets, entityId);
@@ -1154,6 +1305,11 @@ export function executeCommandOnDraft(
       Reflect.deleteProperty(next.recipes, entityId);
       break;
     case 'assignment.put':
+      if (
+        payload.direction === 'deduct' &&
+        next.takeoffs[next.takeoffId ?? mainId(next)]?.kind !== 'change-order'
+      )
+        throw new Error('Only change orders can deduct');
       next.assignments[entityId] = structuredClone(
         payload,
       ) as unknown as Assignment;
@@ -1187,7 +1343,15 @@ export function executeCommandOnDraft(
     )
       pruneObjectInputs(next);
   }
-  if (definition.mutates && validateResult) validateProject(next);
+  if (definition.mutates && !next.takeoffId)
+    for (const takeoff of Object.values(next.takeoffs))
+      for (const collection of ownedCollections)
+        if (takeoff.owned[collection])
+          takeoff.owned[collection] = takeoff.owned[collection].filter(
+            (id) => next[collection][id],
+          );
+  if (definition.mutates && validateResult)
+    validateProject(next, next.takeoffId !== undefined);
   // Capture results now, before another batch command edits the same draft.
   return {
     project: next,

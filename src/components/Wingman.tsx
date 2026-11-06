@@ -133,6 +133,7 @@ export default function Wingman(props: Props) {
   }
   function publish(next: WingmanVisual) {
     if (next.projectId !== props.controller.project()?.id) return;
+    if (next.takeoffId !== props.controller.project()?.takeoffId) return;
     setVisual(structuredClone(next));
     if (swapped()) {
       if (props.navigationDisabled || changingView()) setPendingView(true);
@@ -217,6 +218,17 @@ export default function Wingman(props: Props) {
     };
   });
   const projectId = createMemo(() => props.controller.project()?.id ?? null);
+  createEffect(
+    () => props.controller.project()?.takeoffId,
+    () => {
+      planImages.clear();
+      setVisual(null);
+      setReturnView(null);
+      setSwapped(false);
+      setPendingView(false);
+    },
+    { name: 'wingman.takeoff' },
+  );
   createEffect(
     () => projectId(),
     () => {

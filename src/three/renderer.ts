@@ -9,6 +9,7 @@ import {
   Float32BufferAttribute,
   Group,
   InstancedBufferGeometry,
+  InstancedBufferAttribute,
   InstancedMesh,
   LineBasicMaterial,
   LineSegments,
@@ -78,6 +79,32 @@ function selectedColor(
     : selected.has(source.geometryId)
       ? new Color('#69a9e7')
       : new Color(source.color ?? '#71889a');
+}
+
+/** Screen-space hatching marks deductions without taking over material/category color. */
+function markDeductions(material: MeshLambertMaterial): MeshLambertMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float deduction;\nvarying float vDeduction;',
+      )
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvDeduction = deduction;',
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nvarying float vDeduction;',
+      )
+      .replace(
+        '#include <clipping_planes_fragment>',
+        '#include <clipping_planes_fragment>\nif (vDeduction > 0.5 && mod(gl_FragCoord.x + gl_FragCoord.y, 10.0) > 5.0) discard;',
+      );
+  };
+  material.customProgramCacheKey = () => 'bluewing-deduction-hatching';
+  return material;
 }
 
 /** Triangulate in the face's own plane, preserving concave boundaries and original IDs. */
@@ -304,11 +331,22 @@ export class ConstructionRenderer {
     );
     if (model.members.length) {
       const box = new BoxGeometry(1, 1, 1);
-      const material = new MeshLambertMaterial({
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-      });
+      box.setAttribute(
+        'deduction',
+        new InstancedBufferAttribute(
+          Float32Array.from(model.members, (member) =>
+            member.direction === 'deduct' ? 1 : 0,
+          ),
+          1,
+        ),
+      );
+      const material = markDeductions(
+        new MeshLambertMaterial({
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+        }),
+      );
       const mesh = new InstancedMesh(box, material, model.members.length);
       const matrix = new Matrix4();
       for (const [index, member] of model.members.entries()) {
@@ -331,6 +369,7 @@ export class ConstructionRenderer {
     }
     if (model.surfaces.length) {
       const positions: number[] = [],
+        deductions: number[] = [],
         colors: number[] = [],
         edges: number[] = [];
       for (const source of model.surfaces) {
@@ -344,6 +383,7 @@ export class ConstructionRenderer {
               const point = vector(vertex).sub(this.origin);
               positions.push(point.x, point.y, point.z);
               colors.push(color.r, color.g, color.b);
+              deductions.push(source.direction === 'deduct' ? 1 : 0);
             }
             this.surfaceTriangles.push(source);
           }
@@ -368,17 +408,23 @@ export class ConstructionRenderer {
         new Float32BufferAttribute(positions, 3),
       );
       geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
+      geometry.setAttribute(
+        'deduction',
+        new Float32BufferAttribute(deductions, 1),
+      );
       geometry.computeVertexNormals();
       geometry.computeBoundingSphere();
       this.finishes = new Mesh(
         geometry,
-        new MeshLambertMaterial({
-          vertexColors: true,
-          side: DoubleSide,
-          polygonOffset: true,
-          polygonOffsetFactor: 1,
-          polygonOffsetUnits: 1,
-        }),
+        markDeductions(
+          new MeshLambertMaterial({
+            vertexColors: true,
+            side: DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 1,
+          }),
+        ),
       );
       const edgeGeometry = new BufferGeometry();
       edgeGeometry.setAttribute(

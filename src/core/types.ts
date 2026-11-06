@@ -146,6 +146,7 @@ export interface AssemblyLibrary {
   assemblies: Record<string, Assembly>;
 }
 export interface Assignment {
+  direction?: 'add' | 'deduct';
   id: string;
   groupId: string;
   recipeId: string;
@@ -165,8 +166,25 @@ export interface Assignment {
     }
   >;
 }
+export interface Takeoff {
+  id: string;
+  name: string;
+  kind: 'main' | 'phase' | 'change-order';
+  mainTakeoffId?: string;
+  owned: Record<string, string[]>;
+  construction?: ConstructionContext;
+  review?: ReviewData;
+  copies?: {
+    sourceTakeoffId: string;
+    sourceRevision: number;
+    ids: Record<string, string>;
+  }[];
+}
 export interface Project {
-  formatVersion: 5;
+  formatVersion: 6;
+  takeoffs: Record<string, Takeoff>;
+  /** Derived view context; never written by the session. */
+  takeoffId?: string;
   /** Project-only category names and their display colors. */
   categoryColors?: Record<string, string>;
   notes?: string;
@@ -189,6 +207,7 @@ export interface Measurement {
   diagnostic?: string;
 }
 export interface CalculationSource {
+  direction?: 'add' | 'deduct';
   pieceId?: string;
   surfaceId?: string;
   pieceRole?: string;
@@ -202,6 +221,7 @@ export interface CalculationSource {
 export interface CalculationOutput {
   /** Semantic formula/purchase bucket identity; independent of public output indexes. */
   quantityKey?: string;
+  direction?: 'add' | 'deduct';
   /** Formula estimates have no invented material geometry. */
   modeling: 'modeled' | 'estimate' | 'unresolved';
   groupId: string;
@@ -225,6 +245,8 @@ export interface CalculationOutput {
   diagnostics: string[];
 }
 export interface QuantityTotal {
+  additions: number;
+  deductions: number;
   cutLength?: Quantity;
   stockLength?: Quantity;
   materialId: string;
@@ -233,6 +255,12 @@ export interface QuantityTotal {
   complete: boolean;
 }
 export interface CalculationResult {
+  context?: {
+    projectId: string;
+    takeoffId: string;
+    name: string;
+    kind: Takeoff['kind'];
+  };
   model: ConstructionResult;
   coverage: {
     modeledOutputs: number;
@@ -247,6 +275,7 @@ export interface PersistencePort {
   save(previousProject: Project, nextProject: Project): Promise<void>;
 }
 export interface CommandCall {
+  takeoffId?: string;
   name: string;
   payload?: unknown;
 }

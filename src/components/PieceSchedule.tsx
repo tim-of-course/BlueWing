@@ -55,7 +55,7 @@ export default function PieceSchedule(props: {
               {(row) => (
                 <tr>
                   <td>
-                    {row().sheet} / {row().location}
+                    {row().sheet} / {row().location} ({row().direction})
                   </td>
                   <td>
                     {row().materialId} / {row().role}

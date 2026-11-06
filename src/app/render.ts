@@ -1,3 +1,4 @@
+import { takeoffContext, deductionGeometryIds } from '../core/takeoffs';
 import type { Project } from '../core/types';
 import type { PdfDocuments } from '../pdf/documents';
 import { paintTakeoff } from '../components/canvas/paint';
@@ -23,6 +24,13 @@ export async function renderImage(
   pdf: PdfDocuments,
   options: RenderOptions,
 ) {
+  const takeoff = takeoffContext(project);
+  options = {
+    ...options,
+    label: [takeoff.name, takeoff.kind, takeoff.id, options.label]
+      .filter(Boolean)
+      .join(' · '),
+  };
   const sheet = project.sheets[options.sheetId];
   if (!sheet) throw new Error('Sheet not found');
   const bounds = options.bounds ?? {
@@ -71,6 +79,7 @@ export async function renderImage(
         (geometry) => geometry.sheetId === sheet.id && included(geometry.id),
       ),
       {
+        deductionIds: deductionGeometryIds(project),
         categoryColors: categoryPaintColors(project, options.categories),
         unitsPerPixel: 1 / scale,
       },
@@ -87,6 +96,7 @@ export async function renderImage(
         colors: Object.fromEntries(
           options.highlightIds.map((id) => [id, '#f59e0b']),
         ),
+        deductionIds: deductionGeometryIds(project),
         unitsPerPixel: 2 / scale,
       },
     );
@@ -136,6 +146,16 @@ export async function renderImage(
   return {
     bytes: new Uint8Array(await blob.arrayBuffer()),
     metadata: {
+      projectId: project.id,
+      takeoffId: takeoff.id,
+      takeoffName: takeoff.name,
+      takeoffKind: takeoff.kind,
+      directions: Object.fromEntries(
+        Object.values(project.assignments).map((a) => [
+          a.id,
+          a.direction ?? 'add',
+        ]),
+      ),
       sheetId: sheet.id,
       categories: options.categories,
       revision: project.revision,

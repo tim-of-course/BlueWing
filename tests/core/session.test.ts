@@ -5,7 +5,15 @@ import type { CommandCall, Project } from '../../src/core/types';
 
 function project(): Project {
   return {
-    formatVersion: 5,
+    takeoffs: {
+      main: {
+        id: 'main',
+        name: 'Main',
+        kind: 'main',
+        owned: {},
+      },
+    },
+    formatVersion: 6,
     id: 'project',
     name: 'Original',
     revision: 0,

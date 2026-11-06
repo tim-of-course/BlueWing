@@ -10,6 +10,7 @@ import {
 } from 'solid-js';
 import { createWorkspace } from './app/controller';
 import type { DrawingTool } from './app/contracts';
+import TakeoffControls from './components/TakeoffControls';
 import DrawingCanvas from './components/canvas/DrawingCanvas';
 import GroupInspector from './components/GroupInspector';
 import SelectionInspector from './components/SelectionInspector';
@@ -169,6 +170,7 @@ export default function App(props: { application?: Application }) {
     if (!project) return null;
     return structuredClone({
       projectId: project.id,
+      takeoffId: project.takeoffId ?? 'main',
       mode: view(),
       plan: planViewport?.read() ?? null,
       model: view() !== 'plan' ? (modelViewport?.read() ?? null) : null,
@@ -181,6 +183,8 @@ export default function App(props: { application?: Application }) {
     const project = controller.project();
     if (!project || next.projectId !== project.id)
       throw new Error('This view belongs to another project');
+    if (next.takeoffId !== project.takeoffId)
+      throw new Error('This view belongs to another takeoff');
     if (hasDraft() || controller.busy())
       throw new Error('Finish your current edit before swapping views');
     if ('context' in next) {
@@ -215,7 +219,11 @@ export default function App(props: { application?: Application }) {
         resolve();
       }),
     );
-    if (controller.project()?.id !== project.id) return;
+    if (
+      controller.project()?.id !== project.id ||
+      controller.project()?.takeoffId !== next.takeoffId
+    )
+      return;
     if ('context' in next) {
       if (next.plan && project.sheets[next.plan.sheetId])
         planViewport?.apply(next.plan);
@@ -427,6 +435,10 @@ export default function App(props: { application?: Application }) {
         <Show when={controller.project()}>
           {(project) => (
             <>
+              <TakeoffControls
+                controller={controller}
+                disabled={controller.busy() || hasDraft()}
+              />
               <button
                 class="project-title"
                 type="button"

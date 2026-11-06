@@ -10,11 +10,11 @@ bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate
 
 The command returns `{path,text}`: text exactly matches the file; path is null on UI cancellation. It adds no revision, Undo step, review gate or native command.
 
-## Version 1
+## Version 2
 
-Checked examples: [sized pieces](../tests/fixtures/estimaker-takeoff-v1.json) and [counts/missing dimensions](../tests/fixtures/estimaker-counts-and-missing-v1.json). `TakeoffEnvelope` and `TakeoffRow` define the contract. `QuantityIssue` is internal to Bluewing.
+Checked examples: [sized pieces](../tests/fixtures/estimaker-takeoff-v2.json) and [counts/missing dimensions](../tests/fixtures/estimaker-counts-and-missing-v2.json). `TakeoffEnvelope` and `TakeoffRow` define the contract. `QuantityIssue` is internal to Bluewing.
 
-The envelope contains kind `bluewing.takeoff`, version 1, project `{id,name,revision}` (revision string), ISO exportedAt, informational calculationComplete and coverage, and rows. There is no exported skipped list or consumer unresolved state.
+The envelope contains kind `bluewing.takeoff`, version 2, project `{id,name,revision}` (revision string), takeoff `{id,name,kind}`, ISO exportedAt, informational calculationComplete and coverage, and rows. There is no exported skipped list or consumer unresolved state.
 
 Each row contains:
 
@@ -44,4 +44,6 @@ Line IDs are versioned, URI-encoded semantic engine bucket keys, independent of 
 
 The consumer may group material parents by genuine material ID and unit, keep length children by lineId, and intentionally update them through the existing CSV import/update/Bulk Update interaction. It need not strip description suffixes. No prices, narrative, screenshots or handoff-document content enter the file.
 
-This version exports the current project. Separate takeoff ownership and additions/deductions remain separate work: no fake takeoff IDs or direction fields. Future support must pass the selected calculation into this projection and apply sign after purchasing.
+This version exports one selected takeoff and applies its contribution directions after positive purchasing and conversion.
+
+Version 2 exports the CLI current takeoff (Main initially, changed with `takeoff.select`) or the one-request envelope `takeoffId` override, independently of UI selection, and adds `takeoff: {id,name,kind}`. Each row retains `direction` and positive `grossQuantity`; `quantity` applies the sign only after the existing purchasing/conversion. Counts, missing-quantity zero rows, fractional purchases, ordering and producer failures retain the producer semantics above. No skipped list is exported. Line IDs use `bwq2:<takeoffId>:` followed by the encoded purchase key, so takeoff renaming never changes identity. Default filenames include the takeoff ID. See [named takeoffs](named-takeoffs.md) for scoping and handoff context.

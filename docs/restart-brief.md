@@ -12,19 +12,21 @@ The previous PlanVyper application is a reference. **Its code, documentation, te
 
 ## A small useful MVP
 
+Projects contain one independent Main plus named phases and change orders, with stable takeoff IDs. PDF sources, page calibration and the reusable library are shared; authored work, applied definitions, construction and review are takeoff-local. Change orders add/deduct independent copies. See [the implemented takeoff contract](named-takeoffs.md).
+
 Complete this workflow: create a project, import a PDF, choose and calibrate a sheet, draw lengths/areas/counts, apply a simple calculation, inspect its sources, export quantities, close, and reopen. An agent can inspect the same project and make the same edits through the CLI while the desktop app shows the results.
 
 The first usable MVP targeted macOS. Windows is now supported with a WebView2 desktop shell and NSIS installer; local Windows verification is recorded in `docs/validation.md`.
 
 Initial scope:
 
-- One open project session, multiple sheets, local project storage, and one base calibration per sheet.
+- One open project session, multiple sheets, local project storage, and one shared calibration per sheet.
 - Paths, explicit area polygons, and count markers; selection, point editing, move, copy, and delete.
 - Reusable groups with editable recipes, traceable quantities, waste allowances, whole-package rounding, and CSV/JSON export.
 - One command path for UI and CLI, reliable saving, and session undo/redo.
 - The existing layout adapted to these features, with offline use after the web application has been installed/cached.
 
-Confirmed deferrals include automatic shared junctions, Layers and nested groups, a permanent historical timeline, and recipe publishing/version migration. Also recommended for later are automatic room finding, scale regions, overlays, alternate estimates, collaboration, and cloud project synchronization. Add these when a real workflow requires them, without implementing placeholder systems in advance.
+Confirmed deferrals include automatic shared junctions, Layers and nested groups, a permanent historical timeline, and recipe publishing/version migration. Also recommended for later are automatic room finding, scale regions, overlays, collaboration, and cloud project synchronization. Add these when a real workflow requires them, without implementing placeholder systems in advance.
 
 ## Ownership and runtime
 
@@ -75,7 +77,7 @@ A later scale-region implementation can extend measurement without changing geom
 
 For example, one wall can belong to an assembly group for framing and insulation and a second group for an additional finish. Both reference the same wall. Their distinct assignments intentionally contribute quantities; matching geometry IDs across groups are not a reason to discard one calculation. Deleting geometry removes its memberships as part of the same undoable command. Deleting a group removes its assignments and memberships while preserving the drawing.
 
-**Confirmed simplification: flat named groups, with Layers and nesting deferred.** The proposed organization is project-level groups that can reference geometry on several sheets. Alternate-estimate relationships can follow. A group name and optional highlight color are organization and presentation; they do not control geometry ownership or whether an object exists. Duplicating a group can copy its assignments and memberships while retaining references to the same geometry.
+**Confirmed simplification: flat named groups, with Layers and nesting deferred.** The proposed organization is takeoff-local groups that can reference geometry on several sheets. A group name and optional highlight color are organization and presentation; they do not control geometry ownership or whether an object exists. Duplicating a group can copy its assignments and memberships while retaining references to the same geometry.
 
 A recipe consumes measured metrics and explicit inputs, then returns outputs with units and an explanation. Keep recipe definitions as project data. **The confirmed authoring scope includes editable named inputs and formulas, multiple outputs, units/dimension checks, and source explanations.** Use a constrained evaluator over declared metrics and inputs, with ordinary arithmetic and useful functions such as rounding, minimum/maximum, and conditions.
 
@@ -119,7 +121,7 @@ Store the current project, not an event-sourced reconstruction of every past ent
 
 SQLite is a reasonable proposed container for current records and imported source assets. Keep SQL mapping and project-format validation in TypeScript; Rust executes generic, bounded transactions on an opened project connection. Ordinary edits update affected records without copying PDFs or all history. Use one writable application session per project in the MVP. Opening the same project in another writer is outside that scope.
 
-The implementation uses a `.bluewing` SQLite container. Only project format 5 is supported. Bluewing is pre-alpha and changes may be breaking; incompatible development projects must be recreated. Backward compatibility and migrations are deferred until production use is declared. `project.backup` creates an explicitly requested recovery copy of a current project. Generic native bridge 8 supplies backups, bounded file/BLOB transfers, immutable BLOB-to-tempfile snapshots for fast PDF reads, and local image exports for Wingman messages. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
+The implementation uses a `.bluewing` SQLite container. Only project format 6 is supported. Bluewing is pre-alpha and changes may be breaking; incompatible development projects must be recreated. Backward compatibility and migrations are deferred until production use is declared. `project.backup` creates an explicitly requested recovery copy of a current project. Generic native bridge 8 supplies backups, bounded file/BLOB transfers, immutable BLOB-to-tempfile snapshots for fast PDF reads, and local image exports for Wingman messages. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
 
 The device-local global library uses its own current format and namespace. This development reset starts it with the new built-in catalog rather than upgrading old definitions. Recovery during development comes from useful Git checkpoints; it does not require preserving obsolete takeoff data.
 

@@ -1,6 +1,7 @@
 {
   "kind": "bluewing.takeoff",
-  "version": 1,
+  "version": 2,
+  "takeoff": { "id": "main", "name": "Main", "kind": "main" },
   "project": {
     "id": "contract-project",
     "name": "Quantity contract",
@@ -16,7 +17,9 @@
   },
   "rows": [
     {
-      "lineId": "bwq1:%5B%22formula%22%2C%22a%22%2C%22tee%22%2C%22%5B%5C%220.609600000000%5C%22%2Cnull%5D%22%5D",
+      "lineId": "bwq2:main:%5B%22formula%22%2C%22a%22%2C%22tee%22%2C%22%5B%5C%220.609600000000%5C%22%2Cnull%5D%22%5D",
+      "direction": "add",
+      "grossQuantity": 150,
       "description": "Tee · 2ft (75pc)",
       "baseDescription": "Tee",
       "quantity": 150,

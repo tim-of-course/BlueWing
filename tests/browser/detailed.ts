@@ -294,7 +294,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await review.getByRole('button', { name: 'Export PNG', exact: true }).click();
   // WebKit replaces spaces with underscores in suggested download names.
   expect((await downloaded).suggestedFilename()).toMatch(
-    /^Wall[ _]W1[ _]plan\.png$/,
+    /^Wall[ _]W1[ _]plan-main\.png$/,
   );
   await review.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Close', exact: true }).click();

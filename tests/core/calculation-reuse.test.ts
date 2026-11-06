@@ -28,7 +28,15 @@ function near(actual: number, expected: number) {
 
 function baseProject(): Project {
   return {
-    formatVersion: 5,
+    takeoffs: {
+      main: {
+        id: 'main',
+        name: 'Main',
+        kind: 'main',
+        owned: {},
+      },
+    },
+    formatVersion: 6,
     id: 'reuse-project',
     name: 'Calculation reuse',
     revision: 0,

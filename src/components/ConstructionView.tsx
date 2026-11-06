@@ -218,21 +218,33 @@ export default function ConstructionView(props: ConstructionViewProps) {
   const input = createMemo(() =>
     constructionSceneInput(props.result, sceneContext()?.categories),
   );
-  const materials = createMemo(() =>
-    [
-      ...new Set([
-        ...input().members.map((piece) => piece.materialId),
-        ...input().surfaces.map((surface) => surface.materialId),
-      ]),
-    ].sort(),
+  const materials = createMemo(
+    () =>
+      [
+        ...new Set([
+          ...input().members.map((piece) => piece.materialId),
+          ...input().surfaces.map((surface) => surface.materialId),
+        ]),
+      ].sort(),
+    {
+      name: 'construction.materials',
+      equals: (a, b) =>
+        a.length === b.length && a.every((value, index) => value === b[index]),
+    },
   );
-  const roles = createMemo(() =>
-    [
-      ...new Set([
-        ...input().members.map((piece) => piece.role),
-        ...input().surfaces.map((surface) => surface.role),
-      ]),
-    ].sort(),
+  const roles = createMemo(
+    () =>
+      [
+        ...new Set([
+          ...input().members.map((piece) => piece.role),
+          ...input().surfaces.map((surface) => surface.role),
+        ]),
+      ].sort(),
+    {
+      name: 'construction.roles',
+      equals: (a, b) =>
+        a.length === b.length && a.every((value, index) => value === b[index]),
+    },
   );
   const isolatedIds = createMemo(() => {
     const isolated = props.presentationActive
@@ -582,7 +594,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       aria-label="3D construction viewer"
     >
       <div class="construction-toolbar">
-        <strong>Construction · 3D</strong>
+        <strong>Construction · 3D · deductions hatched</strong>
         <CategoryFilter controller={props.controller} />
         <label>
           Pages{' '}

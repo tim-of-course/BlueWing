@@ -91,6 +91,6 @@ void test('notes save atomically, retain cache/review, and share history', async
     validateProject({ ...project, formatVersion: 3 });
   }, /Unsupported/);
   assert.throws(() => {
-    validateProject({ ...project, formatVersion: 6 });
+    validateProject({ ...project, formatVersion: 5 });
   }, /Unsupported/);
 });

@@ -1,3 +1,4 @@
+import { takeoffProject } from '../core/takeoffs';
 import {
   createEffect,
   createMemo,
@@ -340,6 +341,7 @@ export function createWorkspace(
   });
   let pending = 0;
   let publishedId: string | null = null;
+  let publishedTakeoffId: string | undefined;
   let publishedSession: Application['session'] = null;
   let publishedRevision: number | null = null;
   onCleanup(
@@ -350,13 +352,19 @@ export function createWorkspace(
       setCanRedo(app.session?.canRedo ?? false);
       const session = app.session;
       const revision = session?.observation.expectedRevision ?? null;
-      if (session === publishedSession && revision === publishedRevision)
+      if (
+        session === publishedSession &&
+        revision === publishedRevision &&
+        app.project?.takeoffId === publishedTakeoffId
+      )
         return;
       const current = app.project;
       publishedSession = session;
       publishedRevision = revision;
+      const switchedTakeoff = publishedTakeoffId !== current?.takeoffId;
+      publishedTakeoffId = current?.takeoffId;
       setProject(current);
-      if (publishedId !== (current?.id ?? null)) {
+      if (publishedId !== (current?.id ?? null) || switchedTakeoff) {
         resetHistory();
         setVisibility(readVisibility(current?.id ?? null));
         let savedCategories: CategoryFilter;
@@ -434,6 +442,7 @@ export function createWorkspace(
         name,
         payload: payload ?? {},
         ...observation,
+        ...(app.activeTakeoffId ? { takeoffId: app.activeTakeoffId } : {}),
         origin: 'ui',
       }),
     );
@@ -499,6 +508,16 @@ export function createWorkspace(
     return command('batch', { commands }, expected);
   }
   return {
+    takeoffSources: () => {
+      project();
+      const root = app.session?.project;
+      return root
+        ? Object.keys(root.takeoffs).map((id) => takeoffProject(root, id))
+        : [];
+    },
+    selectTakeoff: (id) => {
+      app.selectTakeoff(id);
+    },
     preparationStatus,
     setPreparationPaused(paused) {
       app.pageImages.setPreparationPaused(paused);
@@ -587,14 +606,18 @@ export function createWorkspace(
           highlightIds: snippet.geometryIds,
           label: `${current.sheets[snippet.sheetId]?.name ?? ''} · ${snippet.name}`,
         });
-        await writeOutput(app.native, `${snippet.name}.png`, image.bytes);
+        await writeOutput(
+          app.native,
+          `${snippet.name}-${current.takeoffId ?? 'main'}.png`,
+          image.bytes,
+        );
       });
     },
     async exportConstruction(format, schedule) {
       await run(() =>
         writeOutput(
           app.native,
-          `${requireProject().name}-${schedule}.${format}`,
+          `${requireProject().name}-${requireProject().takeoffId ?? 'main'}-${schedule}.${format}`,
           new TextEncoder().encode(
             exportConstruction(
               requireProject(),
@@ -627,7 +650,7 @@ export function createWorkspace(
       await run(() =>
         writeOutput(
           app.native,
-          `${project.name}-pieces.csv`,
+          `${project.name}-${project.takeoffId ?? 'main'}-pieces.csv`,
           new TextEncoder().encode(
             exportPieces(project, 'csv', app.calculate()),
           ),
@@ -920,7 +943,7 @@ export function createWorkspace(
       await run(() =>
         writeOutput(
           app.native,
-          `${current.name}.${format}`,
+          `${current.name}-${current.takeoffId ?? 'main'}.${format}`,
           new TextEncoder().encode(content),
         ),
       );

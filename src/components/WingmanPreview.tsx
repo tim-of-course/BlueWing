@@ -9,6 +9,7 @@ import type { WorkspaceController } from '../app/contracts';
 import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
+import { deductionGeometryIds } from '../core/takeoffs';
 import {
   categoryColor,
   geometryCategories,
@@ -30,6 +31,7 @@ export function paintPlanPresentation(
   geometries: Geometry[],
   view: PlanView,
   pixel: number,
+  deductionIds: readonly string[] = [],
 ) {
   context.save();
   const highlights = new Set(view.highlightIds ?? []);
@@ -39,6 +41,7 @@ export function paintPlanPresentation(
     {
       colors: Object.fromEntries([...highlights].map((id) => [id, '#f59e0b'])),
       unitsPerPixel: pixel * 2,
+      deductionIds,
     },
   );
   for (const annotation of view.annotations ?? []) {
@@ -258,10 +261,17 @@ export default function WingmanPreview(props: {
         );
         if (view.mode !== 'plan')
           paintTakeoff(context, geometries, {
+            deductionIds: deductionGeometryIds(project),
             categoryColors,
             unitsPerPixel: 1 / scale,
           });
-        paintPlanPresentation(context, geometries, view, 1 / scale);
+        paintPlanPresentation(
+          context,
+          geometries,
+          view,
+          1 / scale,
+          deductionGeometryIds(project),
+        );
         context.restore();
       };
       if (view.mode === 'takeoff') draw();
