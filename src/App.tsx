@@ -27,6 +27,7 @@ import type { Application, Observation } from './app/application';
 import ConstructionView from './components/ConstructionView';
 import ConstructionEditor from './components/ConstructionEditor';
 import ReviewPanel from './components/ReviewPanel';
+import NotesPanel from './components/NotesPanel';
 import { formatScale } from './core/scale';
 import { resolveConstruction } from './core/applied-assemblies';
 import Wingman from './components/Wingman';
@@ -105,6 +106,8 @@ export default function App(props: { application?: Application }) {
   const [draft, setDraft] = createSignal(false);
   const [recipeDraft, setRecipeDraft] = createSignal(false);
   const [inspectorDraft, setInspectorDraft] = createSignal(false);
+  const [notesView, setNotesView] = createSignal(false);
+  const [notesDraft, setNotesDraft] = createSignal(false);
   const [selectionDraft, setSelectionDraft] = createSignal(false);
   const [updateOpen, setUpdateOpen] = createSignal(false);
   const [projectAction, setProjectAction] = createSignal<
@@ -118,6 +121,7 @@ export default function App(props: { application?: Application }) {
   };
   const hasDraft = createMemo(
     () =>
+      notesDraft() ||
       detailDraft() ||
       draft() ||
       recipeDraft() ||
@@ -239,6 +243,7 @@ export default function App(props: { application?: Application }) {
         scaleDialog() ||
         sheetNamesDialog() ||
         inspectorDraft() ||
+        notesDraft() ||
         selectionDraft()
       )
         return;
@@ -536,6 +541,7 @@ export default function App(props: { application?: Application }) {
                 type="button"
                 disabled={
                   !controller.canUndo() ||
+                  notesDraft() ||
                   controller.busy() ||
                   selectionDraft() ||
                   inspectorDraft()
@@ -550,6 +556,7 @@ export default function App(props: { application?: Application }) {
                 type="button"
                 disabled={
                   !controller.canRedo() ||
+                  notesDraft() ||
                   controller.busy() ||
                   selectionDraft() ||
                   inspectorDraft()
@@ -769,115 +776,134 @@ export default function App(props: { application?: Application }) {
           peekRequest={inspectorPeek()}
         >
           <div class="panel-heading">
-            <h2>Inspector</h2>
-          </div>
-          <Show when={controller.project()}>
-            <Show
-              when={
-                tool() === 'path' || tool() === 'area' || tool() === 'count'
-              }
+            <h2>{notesView() ? 'Notes' : 'Inspector'}</h2>
+            <button
+              type="button"
+              onClick={() => setNotesView((value) => !value)}
             >
-              <section class="panel-section new-work stack">
-                <h3>New {tool() === 'path' ? 'path' : tool()}</h3>
-                <label class="field">
-                  Group for new drawing
-                  <select
-                    aria-label="Group for new drawing"
-                    value={controller.drawingGroupId() ?? ''}
-                    disabled={draft()}
-                    onChange={(event) => {
-                      controller.setDrawingGroupId(
-                        event.currentTarget.value || null,
-                      );
+              {notesView() ? 'Inspector' : 'Notes'}
+            </button>
+          </div>
+          <div hidden={!notesView()}>
+            <NotesPanel
+              controller={controller}
+              onDraftChange={setNotesDraft}
+              onError={setError}
+            />
+          </div>
+          <div hidden={notesView()}>
+            <Show when={controller.project()}>
+              <Show
+                when={
+                  tool() === 'path' || tool() === 'area' || tool() === 'count'
+                }
+              >
+                <section class="panel-section new-work stack">
+                  <h3>New {tool() === 'path' ? 'path' : tool()}</h3>
+                  <label class="field">
+                    Group for new drawing
+                    <select
+                      aria-label="Group for new drawing"
+                      value={controller.drawingGroupId() ?? ''}
+                      disabled={draft()}
+                      onChange={(event) => {
+                        controller.setDrawingGroupId(
+                          event.currentTarget.value || null,
+                        );
+                      }}
+                    >
+                      <option value="">No group</option>
+                      <For
+                        each={Object.values(controller.project()?.groups ?? {})}
+                      >
+                        {(group) => (
+                          <option value={group.id}>{group.name}</option>
+                        )}
+                      </For>
+                    </select>
+                  </label>
+                  <p class="hint">New drawings join this group.</p>
+                  <button
+                    type="button"
+                    disabled={draft() || inspectorDraft()}
+                    onClick={() => {
+                      controller.setDrawingGroupId(null);
+                      controller.setActiveGroupId(null);
                     }}
                   >
-                    <option value="">No group</option>
-                    <For
-                      each={Object.values(controller.project()?.groups ?? {})}
+                    Clear context
+                  </button>
+                </section>
+              </Show>
+              <section class="create-group-section">
+                <h3>
+                  {controller.selection().length
+                    ? 'Group selected drawing'
+                    : 'Create group'}
+                </h3>
+                <Show when={controller.project()}>
+                  <form
+                    class="new-group"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      run(async () => {
+                        const id = await controller.createGroup(
+                          groupName().trim(),
+                          nextGroupColor(),
+                        );
+                        setGroupName('');
+                        controller.setActiveGroupId(id);
+                      });
+                    }}
+                  >
+                    <input
+                      aria-label="New group name"
+                      placeholder="New group name"
+                      value={groupName()}
+                      onInput={(event) =>
+                        setGroupName(event.currentTarget.value)
+                      }
+                    />
+                    <button
+                      type="submit"
+                      disabled={
+                        !groupName().trim() ||
+                        controller.busy() ||
+                        draft() ||
+                        inspectorDraft()
+                      }
                     >
-                      {(group) => (
-                        <option value={group.id}>{group.name}</option>
-                      )}
-                    </For>
-                  </select>
-                </label>
-                <p class="hint">New drawings join this group.</p>
-                <button
-                  type="button"
-                  disabled={draft() || inspectorDraft()}
-                  onClick={() => {
-                    controller.setDrawingGroupId(null);
-                    controller.setActiveGroupId(null);
-                  }}
-                >
-                  Clear context
-                </button>
+                      Add
+                    </button>
+                  </form>
+                </Show>
               </section>
             </Show>
-            <section class="create-group-section">
-              <h3>
-                {controller.selection().length
-                  ? 'Group selected drawing'
-                  : 'Create group'}
-              </h3>
-              <Show when={controller.project()}>
-                <form
-                  class="new-group"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    run(async () => {
-                      const id = await controller.createGroup(
-                        groupName().trim(),
-                        nextGroupColor(),
-                      );
-                      setGroupName('');
-                      controller.setActiveGroupId(id);
-                    });
-                  }}
+            <Show
+              when={controller.activeGroupId()}
+              fallback={
+                <Show
+                  when={
+                    tool() === 'select' && controller.selection().length > 0
+                  }
                 >
-                  <input
-                    aria-label="New group name"
-                    placeholder="New group name"
-                    value={groupName()}
-                    onInput={(event) => setGroupName(event.currentTarget.value)}
+                  <SelectionInspector
+                    controller={controller}
+                    onError={setError}
+                    onDraftChange={setSelectionDraft}
+                    navigationDisabled={draft()}
                   />
-                  <button
-                    type="submit"
-                    disabled={
-                      !groupName().trim() ||
-                      controller.busy() ||
-                      draft() ||
-                      inspectorDraft()
-                    }
-                  >
-                    Add
-                  </button>
-                </form>
-              </Show>
-            </section>
-          </Show>
-          <Show
-            when={controller.activeGroupId()}
-            fallback={
-              <Show
-                when={tool() === 'select' && controller.selection().length > 0}
-              >
-                <SelectionInspector
-                  controller={controller}
-                  onError={setError}
-                  onDraftChange={setSelectionDraft}
-                  navigationDisabled={draft()}
-                />
-              </Show>
-            }
-          >
-            <GroupInspector
-              controller={controller}
-              onError={setError}
-              onDraftChange={setInspectorDraft}
-              navigationDisabled={draft()}
-            />
-          </Show>
+                </Show>
+              }
+            >
+              <GroupInspector
+                controller={controller}
+                onError={setError}
+                onDraftChange={setInspectorDraft}
+                navigationDisabled={draft()}
+              />
+            </Show>
+          </div>
         </WorkspacePanel>
         <nav class="tool-rail" aria-label="Drawing tools">
           <For each={tools}>

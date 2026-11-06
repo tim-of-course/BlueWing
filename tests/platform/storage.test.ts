@@ -344,3 +344,40 @@ void test('native asset readers stream from immutable snapshots and release them
   await assert.rejects(range.read(0, 1), /Missing snapshot/);
   database.close();
 });
+
+void test('SQLite notes upgrade and clearing are atomic and reopen without downgrade', async () => {
+  const { storage, database, setFailure } = fixture();
+  await storage.open('notes', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next: Project = {
+    ...initial,
+    formatVersion: 5,
+    notes: '# 😀\nA101 detail.*',
+    revision: 1,
+  };
+  setFailure(true);
+  await assert.rejects(storage.save(initial, next), /disk full/);
+  assert.deepEqual(await storage.load(), initial);
+  setFailure(false);
+  await storage.save(initial, next);
+  await storage.close();
+  await storage.open('notes', false);
+  assert.deepEqual(await storage.load(), next);
+  await assert.rejects(
+    storage.save(initial, { ...next, notes: 'Stale' }),
+    /CHECK/,
+  );
+  assert.deepEqual(await storage.load(), next);
+  const cleared = { ...next, revision: 2 };
+  delete cleared.notes;
+  await storage.save(next, cleared);
+  await storage.close();
+  await storage.open('notes', false);
+  assert.deepEqual(await storage.load(), cleared);
+  await assert.rejects(
+    storage.save(cleared, { ...initial, revision: 3 }),
+    /downgraded/,
+  );
+  database.close();
+});

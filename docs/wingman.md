@@ -111,3 +111,5 @@ Five independent Banana Split worker contexts completed successfully, with no de
 | Native workflow authoring   | `wf_423a62bf-e4eb-4885-9e47-3e8ebd8d9f0d` | `agt_a9717f80-9d33-4d41-9de7-f0b1e3e1afae` | Completed / success         |
 
 Recorded managed-tool rejections: two `banana_send:not_found` attempts by roots trying to address a parent. Neither blocked implementation. No recorded formal revisions, child acceptances, or turns without disposition. The host approved the exact screenshot dependency installation and the native workflow's Python syntax check under existing task authorization. One host follow-up reached an already completed worker and was rejected; the host completed that integration directly. All build/browser/native execution remains host-owned and serialized.
+
+The project **Notes** inspector is a separate freeform Markdown scratchpad. Agents use `notes.read`, `notes.search`, and `notes.write`; read before replacing text and preserve unrelated notes. Chat remains separate from project notes and Undo.

@@ -62,13 +62,15 @@ export function recordChanges(previous: Project | undefined, next: Project) {
           : [{ collection, id, value }];
       }),
     );
-  for (const id of ['construction', 'review'] as const)
+  for (const id of ['construction', 'review', 'notes'] as const)
     if (JSON.stringify(previous?.[id]) !== JSON.stringify(next[id]))
       records.push({ collection: 'extensions', id, value: next[id] });
   return records;
 }
 export function checkSave(previous: Project, next: Project): void {
   validateProject(next);
+  if (next.formatVersion < previous.formatVersion)
+    throw new Error('Project format cannot be downgraded');
   if (previous.id !== next.id || next.revision !== previous.revision + 1)
     throw new Error(
       'Save must retain project identity and advance revision by one',
