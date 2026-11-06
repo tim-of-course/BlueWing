@@ -138,7 +138,7 @@ For the simplest first implementation, return an actionable error if the desktop
 Assembly categories supply plan and 3D scope colors and filters. Plan group colors
 are replaced by vivid category strokes, parallel when several categories share a
 trace. Uncategorized traces use thick semitransparent hatched gray-blue strokes.
-Seven standard categories have fixed colors; additions and their colors belong
+Eight standard categories, including Insulation, have fixed colors; additions and their colors belong
 to the project. Each generated 3D object uses its applied assembly's category.
 Framing and drywall must be separate assemblies to filter independently. Category
 display and filtering never change quantities or authored geometry.

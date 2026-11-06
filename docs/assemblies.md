@@ -28,6 +28,11 @@ Standard scope colors are vivid for visibility over blueprints. Additional
 category names and editable colors belong to the project; library copies retain
 names without transferring project color preferences.
 
+The standards are Light-gauge metal framing, Wood blocking/backing, Sheathing/FRP,
+Moisture barriers, Drywall hang/finish, Acoustical ceilings/acoustical work, Demo,
+and **Insulation**. Insulation uses vivid purple and includes fiberglass and
+rockwool in framed walls, plus small gap-fill spray foam. Demo stays red.
+
 Plan traces use category colors instead of group colors. Shared traces show
 parallel strokes, one per distinct category. Uncategorized traces use a thick,
 semitransparent hatched gray-blue stroke. The Categories control filters plan and

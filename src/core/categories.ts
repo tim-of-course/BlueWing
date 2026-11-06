@@ -36,6 +36,7 @@ export const standardCategories = [
   { name: 'Drywall hang/finish', color: '#C023A0' },
   { name: 'Acoustical ceilings/acoustical work', color: '#D18A00' },
   { name: 'Demo', color: '#E03131' },
+  { name: 'Insulation', color: '#7338D1' },
 ] as const;
 
 export function categoryName(value?: string | null): string | null {

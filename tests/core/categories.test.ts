@@ -82,6 +82,18 @@ void test('category matching trims names and ignores case while custom colors re
     'Acoustical ceilings/acoustical work',
   );
   assert.equal(categoryName(' '), null);
+  assert.equal(categoryName(' insulation '), 'Insulation');
+  const insulation = categoryOptions(project).find(
+    (entry) => entry.name === 'Insulation',
+  );
+  assert.ok(insulation);
+  assert.equal(categoryColor({}, 'INSULATION'), insulation.color);
+  assert.notEqual(insulation.color, categoryColor({}, 'Demo'));
+  assert.ok(
+    standardCategories
+      .filter((entry) => entry.name !== 'Insulation')
+      .every((entry) => entry.color !== insulation.color),
+  );
   assert.equal(categoryColor(project, 'special SCOPE'), '#961DCB');
   assert.equal(
     categoryColor(project, 'DRYWALL HANG/FINISH'),

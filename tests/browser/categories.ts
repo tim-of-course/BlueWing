@@ -10,6 +10,9 @@ export async function categoryVisibilityWorkflow(page: Page): Promise<void> {
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
   const filter = page.locator('details.category-filter').first();
   await filter.locator('summary').click();
+  await expect(
+    filter.getByRole('checkbox', { name: 'Insulation', exact: true }),
+  ).toBeVisible();
   await filter.getByLabel('Uncategorized').check();
   await expect(filter.getByLabel('Uncategorized')).toBeChecked();
   const shown = await canvas.screenshot();
