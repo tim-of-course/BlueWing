@@ -218,8 +218,13 @@ export default function Wingman(props: Props) {
     };
   });
   const projectId = createMemo(() => props.controller.project()?.id ?? null);
+  // A memo only notifies when the takeoff changes, not on every project edit.
+  const takeoffId = createMemo(
+    () => props.controller.project()?.takeoffId ?? null,
+    { name: 'wingman.takeoffId' },
+  );
   createEffect(
-    () => props.controller.project()?.takeoffId,
+    () => takeoffId(),
     () => {
       planImages.clear();
       setVisual(null);
