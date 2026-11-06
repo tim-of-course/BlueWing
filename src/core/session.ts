@@ -45,6 +45,7 @@ interface HistoryEntry {
   construction: ExtensionChange<Project['construction']> | undefined;
   review: ExtensionChange<Project['review']> | undefined;
   categoryColors: ExtensionChange<Project['categoryColors']> | undefined;
+  notes: ExtensionChange<Project['notes']> | undefined;
   calculationChanged: boolean;
 }
 export interface HistoryItem {
@@ -103,6 +104,7 @@ function difference(
       before.categoryColors,
       after.categoryColors,
     ),
+    notes: extensionChange(before.notes, after.notes),
   };
 }
 
@@ -136,6 +138,11 @@ function restore(
     const review = entry.review[direction];
     if (review) next.review = structuredClone(review);
     else delete next.review;
+  }
+  if (entry.notes) {
+    const notes = entry.notes[direction];
+    if (notes === undefined) delete next.notes;
+    else next.notes = notes;
   }
   for (const change of entry.records) {
     const records: Record<string, Entity> = next[change.collection];

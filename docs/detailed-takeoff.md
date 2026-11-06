@@ -17,7 +17,7 @@ Formula estimates remain available and explicitly unmodeled. Calculation validit
 - Positioned 2x2/2x4 ACT mains, 4 ft tees, 2 ft tees, wall angle, and tile surfaces clipped to the measured boundary. Grid origin, direction, elevation, sections, and stock are explicit inputs.
 - Unified calculated material sources for desktop/CLI quantities, piece schedules, exports, and 3D; downstream stock, waste, and packages.
 - Source-linked snippets and review dependencies, quantity preview, atomic edits, Undo/Redo, and save/reopen.
-- A clean development format reset: project format 4 and global library version 2 only. Earlier takeoffs are disposable. No old-project migration, compatibility adapters, or automatic upgrade backups.
+- A clean development format reset: project format 5 and global library version 2 only. Earlier takeoffs are disposable. No old-project migration, compatibility adapters, or automatic upgrade backups.
 
 The original blueprint PDFs remain reusable. The private Bingham Elementary School set belongs in ignored `tmp/reference-plans/`; it is never committed.
 

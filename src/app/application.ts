@@ -6,6 +6,7 @@ import {
   validatePayload,
 } from '../core';
 import { copyAssembly } from '../core/assemblies';
+import { estiMakerTakeoff } from '../core/quantity-presentation';
 import {
   AssemblyLibraryStore,
   libraryStorage,
@@ -23,8 +24,8 @@ import type { AssetRange } from '../platform/storage-model';
 import { resolveConstruction } from '../core/applied-assemblies';
 import type { CategoryFilter } from '../core/categories';
 import {
-  buildConstructionScene,
-  constructionSceneInput,
+  constructionSceneContext,
+  prepareConstructionScene,
   defaultCamera,
   fitCamera,
   viewPresets,
@@ -363,6 +364,35 @@ export class Application {
               ),
             };
             break;
+          case 'quantities.exportEstiMaker': {
+            const project = this.project;
+            if (!project) throw new Error('Open or create a project first');
+            if (
+              request.projectId !== undefined &&
+              request.projectId !== project.id
+            )
+              throw new Error('The requested project is no longer open');
+            const path = payload.path as string | undefined;
+            if (
+              (request.origin === 'cli' && !path?.trim()) ||
+              (path !== undefined && !path.trim())
+            )
+              throw new Error(
+                'Supply an explicit output path for the EstiMaker export',
+              );
+            const takeoff = estiMakerTakeoff(project, this.calculate());
+            const text = JSON.stringify(takeoff, null, 2);
+            data = {
+              path: await writeOutput(
+                this.native,
+                `${project.name}.estimaker.json`,
+                new TextEncoder().encode(text),
+                path,
+              ),
+              text,
+            };
+            break;
+          }
           case 'snippet.render': {
             const project = this.project;
             const snippet = project?.review?.snippets[payload.id as string];
@@ -430,32 +460,46 @@ export class Application {
               throw new Error('Level not found');
             const result = this.calculate().model;
             const resolved = resolveConstruction(project);
-            const scene = buildConstructionScene(
-              constructionSceneInput(result, project),
-              {
-                categories: payload.categories as CategoryFilter,
-                ...(payload.levelId === undefined
-                  ? {}
-                  : {
-                      levelGeometryIds: [
-                        ...Object.values(resolved.walls),
-                        ...Object.values(resolved.ceilings),
-                        ...Object.values(resolved.materials ?? {}),
-                      ]
-                        .filter((source) => source.levelId === payload.levelId)
-                        .map((source) => source.geometryId),
-                    }),
-                ...(payload.geometryIds === undefined
-                  ? {}
-                  : { geometryIds: payload.geometryIds as string[] }),
-                ...(payload.materialId === undefined
-                  ? {}
-                  : { materialId: payload.materialId as string }),
-                ...(payload.role === undefined
-                  ? {}
-                  : { role: payload.role as string }),
-              },
-            );
+            const requestedSheets = payload.sheetIds as string[] | undefined;
+            for (const id of requestedSheets ?? [])
+              if (!Object.hasOwn(project.sheets, id))
+                throw new Error(`Sheet not found: ${id}`);
+            const { scene, sheetIds, alignment, appliedAlignments } =
+              prepareConstructionScene(
+                constructionSceneContext(project),
+                result,
+                {
+                  ...(requestedSheets === undefined
+                    ? {}
+                    : { sheetIds: requestedSheets }),
+                  alignment:
+                    (payload.alignment as 'saved' | 'none' | undefined) ??
+                    'saved',
+                  categories: payload.categories as CategoryFilter,
+                  ...(payload.levelId === undefined
+                    ? {}
+                    : {
+                        levelGeometryIds: [
+                          ...Object.values(resolved.walls),
+                          ...Object.values(resolved.ceilings),
+                          ...Object.values(resolved.materials ?? {}),
+                        ]
+                          .filter(
+                            (source) => source.levelId === payload.levelId,
+                          )
+                          .map((source) => source.geometryId),
+                      }),
+                  ...(payload.geometryIds === undefined
+                    ? {}
+                    : { geometryIds: payload.geometryIds as string[] }),
+                  ...(payload.materialId === undefined
+                    ? {}
+                    : { materialId: payload.materialId as string }),
+                  ...(payload.role === undefined
+                    ? {}
+                    : { role: payload.role as string }),
+                },
+              );
             const camera = {
               ...fitCamera(scene, {
                 ...defaultCamera,
@@ -520,6 +564,9 @@ export class Application {
               displayMode,
               complete: result.complete,
               categories: payload.categories,
+              sheetIds,
+              alignment,
+              appliedAlignments,
               diagnostics: result.diagnostics,
               displayedObjects:
                 scene.members.length +
@@ -537,6 +584,10 @@ export class Application {
                   ...(payload.categories === undefined
                     ? {}
                     : { categories: payload.categories as (string | null)[] }),
+                  sheetIds,
+                  alignment,
+                  pageMode: 'explicit',
+                  showPlan: false,
                   ...(payload.geometryIds === undefined
                     ? {}
                     : { geometryIds: payload.geometryIds as string[] }),

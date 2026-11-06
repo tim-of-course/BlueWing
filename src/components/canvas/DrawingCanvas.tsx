@@ -173,6 +173,8 @@ export default function DrawingCanvas(props: {
   tool: DrawingTool;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
+  /** Captures snapped page coordinates before any selection or drawing edit. */
+  onPickPoint?: (point: Point) => void;
   interactionDisabled?: boolean;
   presentationActive?: boolean;
   active?: boolean;
@@ -895,6 +897,17 @@ export default function DrawingCanvas(props: {
     const current = sheet();
     if (!current) return;
     const point = pagePoint(event);
+    if (props.onPickPoint) {
+      event.preventDefault();
+      if (
+        point.x >= 0 &&
+        point.y >= 0 &&
+        point.x <= current.width &&
+        point.y <= current.height
+      )
+        props.onPickPoint(snap(point, event.shiftKey));
+      return;
+    }
     if (brushSelection) {
       event.preventDefault();
       paintSelection(point, event.altKey);
@@ -1070,7 +1083,8 @@ export default function DrawingCanvas(props: {
       });
       return;
     }
-    if (props.tool !== 'select') setHover(snap(point, event.shiftKey));
+    if (props.tool !== 'select' || props.onPickPoint)
+      setHover(snap(point, event.shiftKey));
   }
   function pointerUp(event: PointerEvent) {
     const completed = gesture;

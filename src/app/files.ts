@@ -124,6 +124,45 @@ export async function choosePdf(
     input.click();
   });
 }
+/** Handoff files are viewed in memory and never staged as project assets. */
+export async function chooseHandoff(
+  native: boolean,
+): Promise<{ name: string; html: string } | null> {
+  if (native) {
+    const path = await open({
+      title: 'Open handoff document',
+      multiple: false,
+      directory: false,
+      filters: [{ name: 'HTML document', extensions: ['html', 'htm'] }],
+    });
+    if (!path) return null;
+    const file = await readNativeFile(path);
+    try {
+      const source = file.nativeSource;
+      if (!source) throw new Error('HTML file snapshot is unavailable');
+      const bytes = await nativeFileSource(source).read(0, source.length);
+      return { name: file.name, html: new TextDecoder().decode(bytes) };
+    } finally {
+      await releaseNativeFile(file);
+    }
+  }
+  const file = await new Promise<File | null>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.html,.htm,text/html';
+    input.hidden = true;
+    document.body.append(input);
+    const finish = () => {
+      const selected = input.files?.[0] ?? null;
+      input.remove();
+      resolve(selected);
+    };
+    input.addEventListener('cancel', finish, { once: true });
+    input.addEventListener('change', finish, { once: true });
+    input.click();
+  });
+  return file ? { name: file.name, html: await file.text() } : null;
+}
 export async function writeOutput(
   native: boolean,
   name: string,

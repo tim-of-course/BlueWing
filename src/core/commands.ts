@@ -1,3 +1,4 @@
+import { searchNotes } from './notes';
 import type {
   Assignment,
   CommandCall,
@@ -8,6 +9,11 @@ import type {
   Sheet,
 } from './types';
 import type { CalculationSnapshot } from './calculation-state';
+import {
+  matchSheetAlignment,
+  type MatchSheetAlignmentPayload,
+} from './alignment';
+import type { Combined3dAlignment } from './types';
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
 import {
   calculateProject,
@@ -83,6 +89,7 @@ const array = (items: PayloadSchema): PayloadSchema => ({
 });
 const positive: PayloadSchema = { type: 'number', minimum: Number.MIN_VALUE };
 const point = object({ x: number, y: number });
+const combined3dAlignment = object({ offset: point, rotation: number });
 const unit: PayloadSchema = {
   type: 'string',
   enum: ['m', 'mm', 'ft', 'in', 'm2', 'ft2', 'ea', 'scalar'],
@@ -103,6 +110,7 @@ const sheet = object(
     rotation: number,
     pdfToPage: { type: 'array', items: number, minItems: 6, maxItems: 6 },
     calibration: object({ metresPerUnit: positive }),
+    combined3dAlignment,
   },
   ['id', 'name', 'assetId', 'pageIndex', 'width', 'height'],
 );
@@ -230,6 +238,37 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     false,
     {},
   ],
+  [
+    'construction.alignment.put',
+    'Set a presentation-only combined 3D alignment (metres/radians).',
+    object({ sheetId: string, offset: point, rotation: number }),
+    true,
+    { sheetId: 'sheet-1', offset: { x: 0, y: 0 }, rotation: 0 },
+  ],
+  [
+    'construction.alignment.delete',
+    'Clear a combined 3D alignment.',
+    object({ sheetId: string }),
+    true,
+    { sheetId: 'sheet-1' },
+  ],
+  [
+    'construction.alignment.match',
+    'Match one or two paired page points without changing scale.',
+    object({
+      sheetId: string,
+      referenceSheetId: string,
+      sourcePoints: { ...array(point), minItems: 1, maxItems: 2 },
+      referencePoints: { ...array(point), minItems: 1, maxItems: 2 },
+    }),
+    true,
+    {
+      sheetId: 'sheet-1',
+      referenceSheetId: 'sheet-2',
+      sourcePoints: [{ x: 0, y: 0 }],
+      referencePoints: [{ x: 10, y: 10 }],
+    },
+  ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
   [
     'project.category.put',
@@ -237,6 +276,27 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     object({ name: string, color: string }),
     true,
     { name: 'Specialty scope', color: '#8A36D1' },
+  ],
+  [
+    'notes.read',
+    'Read the project Markdown scratchpad before editing.',
+    object({}),
+    false,
+    {},
+  ],
+  [
+    'notes.write',
+    'Replace the full scratchpad. Read first and preserve unrelated text.',
+    object({ markdown: string }),
+    true,
+    { markdown: '# Notes\nCheck A101 detail 2.' },
+  ],
+  [
+    'notes.search',
+    'Find case-insensitive literal text in accepted notes; returns matching lines and total occurrences.',
+    object({ query: string }),
+    false,
+    { query: 'detail' },
   ],
   [
     'project.rename',
@@ -707,7 +767,7 @@ export function validateProject(input: unknown): asserts input is Project {
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 4
+    input.formatVersion !== 5
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -715,7 +775,7 @@ export function validateProject(input: unknown): asserts input is Project {
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [4] },
+        formatVersion: { type: 'number', enum: [5] },
         id: string,
         name: string,
         revision: { type: 'number', minimum: 0 },
@@ -727,6 +787,7 @@ export function validateProject(input: unknown): asserts input is Project {
         construction: constructionSchema,
         review: reviewSchema,
         categoryColors: { type: 'object', additionalProperties: string },
+        notes: string,
       },
       [
         'formatVersion',
@@ -890,6 +951,16 @@ export function executeCommandOnDraft(
     case 'commands.list':
       data = commandRegistry;
       break;
+    case 'notes.read':
+      data = { markdown: next.notes ?? '' };
+      break;
+    case 'notes.search':
+      data = searchNotes(next.notes ?? '', payload.query as string);
+      break;
+    case 'notes.write':
+      if (payload.markdown === '') delete next.notes;
+      else next.notes = payload.markdown as string;
+      break;
     case 'project.inspect':
       data = next;
       break;
@@ -933,6 +1004,37 @@ export function executeCommandOnDraft(
     case 'sheet.put':
       next.sheets[entityId] = structuredClone(payload) as unknown as Sheet;
       break;
+    case 'construction.alignment.put': {
+      const sheet = requireEntity(
+        next.sheets,
+        payload.sheetId as string,
+        'Sheet',
+      );
+      const alignment = structuredClone({
+        offset: payload.offset,
+        rotation: payload.rotation,
+      }) as Combined3dAlignment;
+      sheet.combined3dAlignment = alignment;
+      data = { alignment };
+      break;
+    }
+    case 'construction.alignment.delete':
+      delete requireEntity(next.sheets, payload.sheetId as string, 'Sheet')
+        .combined3dAlignment;
+      break;
+    case 'construction.alignment.match': {
+      const match = matchSheetAlignment(
+        next,
+        payload as unknown as MatchSheetAlignmentPayload,
+      );
+      requireEntity(
+        next.sheets,
+        payload.sheetId as string,
+        'Sheet',
+      ).combined3dAlignment = match.alignment;
+      data = match;
+      break;
+    }
     case 'sheet.naming.apply': {
       const entries = payload.sheets as { id: string; name: string }[];
       const seen = new Set<string>();

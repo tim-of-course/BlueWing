@@ -29,6 +29,14 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'quantities.exportEstiMaker',
+    'Save purchased LF/SF/count quantities as bluewing.takeoff v1 JSON for EstiMaker. Missing dimensions produce named zero-quantity rows; producer errors prevent export. No project changes. CLI requires an explicit path; UI can choose a destination.',
+    { path: string },
+    [],
+    false,
+    { path: '/path/estimate.estimaker.json' },
+  ),
+  entry(
     'sheet.naming.start',
     'Start the AI Page Naming workflow. Prefetch compact bottom-right title-block text for all sheets or sheetIds and return agent instructions. No names change until sheet.naming.apply.',
     { sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 } },
@@ -222,12 +230,14 @@ export const applicationCommands = [
   ),
   entry(
     'construction.render',
-    'Render calculated construction as a depth-tested 3D PNG, up to 8192 pixels per side. Use a named view or explicit azimuth/elevation in radians. Returns the resolved camera and display mode for Wingman or another export.',
+    'Render calculated construction as a depth-tested 3D PNG, up to 8192 pixels per side. Use a named view or explicit azimuth/elevation in radians. Returns the resolved camera, page scope, alignment and display mode for Wingman or another export.',
     {
       path: string,
       caption: string,
       width: { type: 'number', minimum: 64 },
       height: { type: 'number', minimum: 64 },
+      sheetIds: { type: 'array', items: string },
+      alignment: { type: 'string', enum: ['saved', 'none'] },
       geometryIds: { type: 'array', items: string },
       categories: { type: 'array', items: { type: 'string', nullable: true } },
       levelId: string,

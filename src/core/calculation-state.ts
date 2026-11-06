@@ -47,15 +47,23 @@ export function changesCalculation(
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const id = payload.id as string;
   switch (call.name) {
+    case 'notes.write':
     case 'project.rename':
     case 'project.category.put':
     case 'sheet.naming.apply':
     case 'snippet.put':
     case 'snippet.delete':
     case 'review.mark':
+    case 'construction.alignment.put':
+    case 'construction.alignment.delete':
+    case 'construction.alignment.match':
       return false;
     case 'sheet.put':
-      return !sameExcept(project.sheets[id], payload, ['name', 'order']);
+      return !sameExcept(project.sheets[id], payload, [
+        'name',
+        'order',
+        'combined3dAlignment',
+      ]);
     case 'geometry.put':
       return !sameExcept(project.geometries[id], payload, ['name']);
     case 'group.put':

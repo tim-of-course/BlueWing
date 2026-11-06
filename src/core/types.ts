@@ -23,6 +23,11 @@ export interface Quantity {
 export interface Calibration {
   metresPerUnit: number;
 }
+/** Presentation-only rigid transform in model metres/radians, about world Z. */
+export interface Combined3dAlignment {
+  offset: Point;
+  rotation: number;
+}
 export interface Sheet {
   id: string;
   name: string;
@@ -34,6 +39,7 @@ export interface Sheet {
   rotation?: number;
   pdfToPage?: [number, number, number, number, number, number];
   calibration?: Calibration;
+  combined3dAlignment?: Combined3dAlignment;
 }
 export type GeometryKind = 'path' | 'area' | 'count';
 export interface Geometry {
@@ -160,9 +166,10 @@ export interface Assignment {
   >;
 }
 export interface Project {
-  formatVersion: 4;
+  formatVersion: 5;
   /** Project-only category names and their display colors. */
   categoryColors?: Record<string, string>;
+  notes?: string;
   id: string;
   name: string;
   revision: number;
@@ -193,6 +200,8 @@ export interface CalculationSource {
   stockLength?: Quantity;
 }
 export interface CalculationOutput {
+  /** Semantic formula/purchase bucket identity; independent of public output indexes. */
+  quantityKey?: string;
   /** Formula estimates have no invented material geometry. */
   modeling: 'modeled' | 'estimate' | 'unresolved';
   groupId: string;

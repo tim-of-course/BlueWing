@@ -43,9 +43,21 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 `quantities.inspect` returns source contributions, diagnostics, allowance details, purchased quantities, and totals. `quantities.export` returns CSV or JSON text in `data`; the UI export buttons save that same calculation. Invalid calculations mark affected totals incomplete.
 
+`quantities.exportEstiMaker` saves purchased LF/SF/count lines as versioned `bluewing.takeoff` JSON using the same projection as Quantities. CLI calls require `payload.path`; UI calls can choose a destination. The result is `{path,text}`, with text identical to the saved file. Counts are normal import rows; missing physical dimensions produce descriptions marked `(missing quantity)` and actual numeric zero. Coverage is informational; unresolved sources and invalid import identity are producer errors that prevent saving. It does not change the project or revision. See [the contract and checked fixtures](estimaker-export.md).
+
+```sh
+bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate.estimaker.json"}}'
+```
+
 `web.stage` accepts a manifest URL and verifies the complete web release before caching it. `web.activate` accepts the staged version and reloads the web application after acknowledging the terminal response. Close the project and finish or cancel drafts first. These commands do not rebuild the Rust shell.
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
+
+## Project scratchpad
+
+`notes.read` returns `{markdown}`. `notes.write` replaces the full Markdown string using `{markdown}` and the normal project identity/expected revision; an empty string clears it. Read before writing and preserve unrelated text. `notes.search` accepts a nonempty `{query}` and returns matching `lines` with 1-based `line` numbers and `text`, plus `totalMatches` (occurrences). Search is case-insensitive literal substring matching in accepted text, without regex or an index. Notes use shared Undo/Redo, batch, preview, saving, and Pause CLI behavior.
+
+The right inspector has an alternate **Notes** view with a plain multiline editor, draft Find/previous/next, explicit Save/Cancel, and Ctrl/Cmd+S. Save failures and revision conflicts retain the draft; inspect changes before cancelling and reapplying it. Notes are freeform Markdown, separate from review, snippets, chat, and structured reports. Sheet/detail names and snippet IDs/bounds are ordinary prose references and are never rewritten automatically.
 
 ## AI Page Naming workflow
 
@@ -162,6 +174,20 @@ Construction physical lengths and world positions use metres, areas use square m
 
 `construction.render` uses the same Three.js renderer as the interactive 3D view and Wingman. Its payload supports:
 
+`sheetIds` limits the page scope: omit it for all project sheets, pass one ID for a single page, or pass `[]` for an empty scene. Unknown sheet IDs fail the request. `alignment` is `saved` by default, or `none` to ignore combined 3D transforms. Saved transforms apply only when the scope contains at least two sheets, before the other filters. Single-page views retain their original placement. The result includes resolved `sheetIds`, `alignment`, and `appliedAlignments` alongside the camera. Wingman receives this explicit scope and shows construction without an unrelated active PDF background.
+
+Combined 3D alignment is a saved presentation transform after calibration and construction placement. It does not change source geometry, placement, quantities, or single-page views. Numeric offsets use world XY metres and rotation uses radians about world Z. Set it with `construction.alignment.put`, remove it with `construction.alignment.delete`, or solve it with `construction.alignment.match`. These project mutations require the usual project identity and expected revision.
+
+```sh
+bluewing construction.alignment.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheetId":"SOURCE_SHEET_ID","offset":{"x":2,"y":-1},"rotation":0.1}}'
+bluewing construction.alignment.match '{"projectId":"PROJECT_ID","expectedRevision":13,"payload":{"sheetId":"SOURCE_SHEET_ID","referenceSheetId":"REFERENCE_SHEET_ID","sourcePoints":[{"x":72,"y":144},{"x":216,"y":144}],"referencePoints":[{"x":100,"y":200},{"x":244,"y":200}]}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/combined.png","sheetIds":["SOURCE_SHEET_ID","REFERENCE_SHEET_ID"],"alignment":"saved","view":"top"}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/original.png","alignment":"none","view":"top"}}'
+bluewing construction.alignment.delete '{"projectId":"PROJECT_ID","expectedRevision":14,"payload":{"sheetId":"SOURCE_SHEET_ID"}}'
+```
+
+Match points are corresponding source and reference **page coordinates**, in the order supplied, on distinct calibrated sheets. One pair preserves the source's saved rotation and solves translation; two pairs solve rigid rotation and translation without scaling. The reference's saved combined transform is included. The result reports `alignment`, `sourceDistance`, `referenceDistance`, `residual`, and per-pair `residuals` in metres (distances are null for one pair). A distance mismatch remains visible as residual error; matching never recalibrates either sheet.
+
 | Option                                         | Meaning                                                                                                                                                    |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `width`, `height`                              | PNG dimensions, default 1600 × 1000. Each side supports 64–8192 pixels, subject to the GPU's render-buffer limit. Requests beyond a limit fail explicitly. |
@@ -211,7 +237,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 4 is supported. Recreate older development takeoffs; the app does not load or migrate them. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
+Only project format 5 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

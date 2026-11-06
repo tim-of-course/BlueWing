@@ -4,6 +4,8 @@ Wingman gives a user and an external CLI participant a shared visual and a small
 
 ## Use
 
+CLI 3D previews retain the render's explicit `sheetIds`, alignment mode, camera, and filters when swapped into the main viewer. They show construction without the active sheet's PDF background. Omitted render scope resolves to all project sheets; an empty scope stays empty. Saved combined 3D transforms apply to scopes of at least two sheets, and previews read the latest accepted transforms from the project. Single-page previews keep original placement. `alignment: "none"` ignores saved transforms. These presentation settings leave quantities unchanged; the saved return view keeps the user's page mode and scope. See [alignment and rendering examples](cli.md) for numeric transforms and paired page-point matching.
+
 Choose **Copy AI prompt**, then **Wingman + chat** to talk in either place, or **Chat only** to keep the conversation in your AI's chat. Paste the prompt into your AI's chat. The desktop app supplies the installed command path and current project automatically. No model or provider setup lives in Bluewing. A browser-only workspace explains that connecting needs the desktop app.
 
 Enter sends a chat message; Shift+Enter adds a new line. Confirming composed text does not send it. If copying a prompt is unavailable, select and copy the displayed prompt instead.
@@ -111,3 +113,5 @@ Five independent Banana Split worker contexts completed successfully, with no de
 | Native workflow authoring   | `wf_423a62bf-e4eb-4885-9e47-3e8ebd8d9f0d` | `agt_a9717f80-9d33-4d41-9de7-f0b1e3e1afae` | Completed / success         |
 
 Recorded managed-tool rejections: two `banana_send:not_found` attempts by roots trying to address a parent. Neither blocked implementation. No recorded formal revisions, child acceptances, or turns without disposition. The host approved the exact screenshot dependency installation and the native workflow's Python syntax check under existing task authorization. One host follow-up reached an already completed worker and was rejected; the host completed that integration directly. All build/browser/native execution remains host-owned and serialized.
+
+The project **Notes** inspector is a separate freeform Markdown scratchpad. Agents use `notes.read`, `notes.search`, and `notes.write`; read before replacing text and preserve unrelated notes. Chat remains separate from project notes and Undo.

@@ -28,7 +28,9 @@ import {
 } from '../../src/app/visibility';
 import {
   buildConstructionScene,
+  constructionSceneContext,
   constructionSceneInput,
+  prepareConstructionScene,
 } from '../../src/three/scene';
 
 function fixture() {
@@ -162,6 +164,20 @@ void test('one shared trace derives distinct assembly scopes without duplicates 
   assert.ok(
     framingScene.members.every(
       (source) => source.category === 'Light-gauge metal framing',
+    ),
+  );
+  // Page-scoped and aligned scenes keep category colors and filters.
+  const pageScene = prepareConstructionScene(
+    constructionSceneContext(project),
+    before.model,
+    { categories: ['Drywall hang/finish'] },
+  ).scene;
+  assert.equal(pageScene.members.length, 0);
+  assert.equal(pageScene.surfaces.length, drywall.surfaces.length);
+  assert.ok(
+    pageScene.surfaces.every(
+      (source) =>
+        source.color === categoryColor(project, 'Drywall hang/finish'),
     ),
   );
   assert.deepEqual(calculateProject(project), before);

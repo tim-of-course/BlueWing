@@ -41,7 +41,7 @@ From PowerShell, with the desktop app running, call the CLI with:
 2. Choose Set scale (R) and select the scale printed on the sheet. Architectural and metric presets come first, followed by Custom ratio. For a resized plan or a missing printed scale, choose Two points, then Measure on plan, click a known dimension's endpoints, and enter its physical length. A scale is only saved when you apply it.
 3. Draw a Path, Area, or Count set. Finish a gesture with Enter or Finish; Escape cancels.
 4. Select drawing objects and add a named group. Assign an assembly, edit its inputs, and inspect Quantities.
-5. Export CSV or JSON. Each completed edit saves before the UI accepts it. Close and reopen to continue later; undo history lasts for the current project session.
+5. Export CSV or JSON, or choose **Export to EstiMaker** for purchased LF/SF/count quantities with piece sizes; missing dimensions export as named zero-quantity rows ([contract](docs/estimaker-export.md)). Expand quantity source details for net, waste, packages and drawing links. Each completed edit saves before the UI accepts it. Close and reopen to continue later; undo history lasts for the current project session.
 
 Shortcuts: V select, L path, F area, C count, R scale setup, Q drawing/quantities, Cmd-Z / Shift-Cmd-Z undo/redo, Cmd-D duplicate, Backspace/Delete remove, Cmd-0 fit sheet, and Cmd-1 actual size. Use Ctrl in place of Cmd outside macOS. Scroll zooms toward the pointer; Space-drag or middle-drag pans. Hold B and sweep the pointer to paint-select without clicking; Alt/Option+B removes objects. Release B to return to the current tool. This temporary brush is available when no drawing or inspector edit is unfinished. Shift-click/Shift-drag adds to selection; Alt/Option-click or Alt/Option-drag subtracts. Drag selected objects to move them or a selected point to edit it. Shift bypasses point and angle snapping. Snapping copies coordinates without linking objects.
 
@@ -61,9 +61,11 @@ Construction dimensions use metres and rotations use radians internally; drawing
 
 The 3D viewer uses Three.js with WebGL 2 for depth-correct rendering and selection. Left-drag to orbit, middle-drag to pan, and right-drag or scroll to zoom. Choose isometric, top, front, back, left, or right views; fit the whole model or selected materials. **Solid** shows opaque finishes, **Framing** hides finishes, and **X-ray** shows their outlines through the framing. Desktop, Wingman, and CLI images use the same renderer and camera state. A WebGL 2 context is required for 3D. The viewer draws on demand, batches members into GPU instances, and uses the screen's pixel density up to the graphics device's limits.
 
+3D starts with **Current page**. Choose **Combined pages** to select multiple sheets and **Align pages** to enter X/Y offsets and rotation or pick one/two matching reference points. Saved alignments travel with the project and affect combined 3D only; individual-page views, 2D points, dimensions, and quantities retain their original values. Scale comes from calibration. Combined scenes omit PDF backgrounds. The CLI exposes the same scope and saved alignments through `construction.render` and `construction.alignment.*`; see [CLI examples](docs/cli.md).
+
 Use **Review** for source-linked snippets, geometry highlights, annotations, and review marks. Relevant dependency changes flag previously reviewed sources as changed. Generation shares a 50,000-piece/surface budget and reports incomplete results when exhausted. The 3D viewer displays all generated objects matching its filters; CSV retains all generated pieces regardless of scene filters or selection.
 
-This development release supports project format 4 only. Start a new takeoff for older projects; there are no old-format loading or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 8, which adds immutable saved-asset snapshots for fast PDF reads. Rebuild the native binaries when updating from an older checkout.
+Only project format 5 is supported. Bluewing is pre-alpha; incompatible projects must be recreated, with no backward compatibility or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 8, which adds immutable saved-asset snapshots for fast PDF reads. Rebuild the native binaries when updating from an older checkout.
 
 The CLI operates the running desktop app:
 
@@ -74,6 +76,26 @@ src-tauri/target/release/bundle/macos/Bluewing.app/Contents/MacOS/bluewing comma
 Wingman shows the latest CLI-rendered plan or 3D location in a live corner preview. Click to swap views and click again to return. Choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**, and paste it into your AI's chat to get started. In Wingman chat, Enter sends and Shift+Enter adds a new line. **Pause CLI** stops new and queued CLI actions; **End conversation** ends an active message wait. Use **Attach screenshot** or Cmd/Ctrl+Shift+X to capture any rectangle inside the app for the next message. See [Wingman behavior and verification](docs/wingman.md).
 
 See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs/web-releases.md). A public web-release host is not configured in this repository.
+
+**Open handoff document** displays a standalone HTML file without importing it
+into the project. It works with no project open. The viewer allows embedded
+scripts, styles, and images in an isolated frame; external resources and native
+access are unavailable. Close the viewer to return to the workspace.
+
+An authoring skill owns the document's content, layout, evidence, and visible
+standalone status. Bluewing reads only this optional metadata:
+
+```html
+<script type="application/json" id="bluewing-handoff">
+  { "draft": true }
+</script>
+```
+
+`true` shows **Draft** while the agent is working or waiting on blockers; `false`
+shows **Complete** when the agent has finished. This does not track human
+review or imply approval or verified quantities. Missing or malformed metadata
+shows **Status not supplied** and the document remains viewable. Opening a
+document does not change project data.
 
 ## Verify
 
