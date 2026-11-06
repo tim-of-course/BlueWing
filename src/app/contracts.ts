@@ -184,6 +184,7 @@ export interface WorkspaceController {
     signal?: AbortSignal,
   ): Promise<HTMLCanvasElement>;
   exportQuantities(format: 'csv' | 'json'): Promise<void>;
+  exportEstiMaker(): Promise<void>;
   installWebUpdate(manifestUrl: string): Promise<string>;
   activateWebUpdate(version: string): Promise<void>;
 }

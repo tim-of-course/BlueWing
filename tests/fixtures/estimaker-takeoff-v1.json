@@ -1,0 +1,64 @@
+{
+  "kind": "bluewing.takeoff",
+  "version": 1,
+  "project": {
+    "id": "contract-project",
+    "name": "Quantity contract",
+    "revision": "0"
+  },
+  "exportedAt": "2026-11-06T12:00:00.000Z",
+  "calculationComplete": true,
+  "coverage": {
+    "modeledOutputs": 0,
+    "estimateOutputs": 1,
+    "complete": false,
+    "unresolvedOutputs": 0
+  },
+  "rows": [
+    {
+      "lineId": "bwq1:%5B%22formula%22%2C%22a%22%2C%22tee%22%2C%22%5B%5C%220.609600000000%5C%22%2Cnull%5D%22%5D",
+      "description": "Tee · 2ft (75pc)",
+      "baseDescription": "Tee",
+      "quantity": 150,
+      "unit": "LF",
+      "category": "Acoustical ceilings",
+      "source": {
+        "groupId": "group",
+        "groupLabel": "Ceiling",
+        "assignmentId": "a",
+        "recipeId": "tee",
+        "outputId": "tee",
+        "materialId": "tee"
+      },
+      "pieceCount": 75,
+      "pieceLength": {
+        "value": 0.6096,
+        "unit": "m"
+      },
+      "cutSchedule": [
+        {
+          "count": 75,
+          "length": {
+            "value": 0.6096,
+            "unit": "m"
+          }
+        }
+      ],
+      "provenance": {
+        "basis": "purchased",
+        "originalAmount": 75,
+        "originalUnit": "ea",
+        "physicalLengthSource": "cut",
+        "sourceRefs": [
+          {
+            "geometryId": "g",
+            "sheetId": "s",
+            "pieceId": null,
+            "surfaceId": null
+          }
+        ],
+        "modelingStatus": "estimate"
+      }
+    }
+  ]
+}

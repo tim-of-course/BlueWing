@@ -6,6 +6,7 @@ import {
   validatePayload,
 } from '../core';
 import { copyAssembly } from '../core/assemblies';
+import { estiMakerTakeoff } from '../core/quantity-presentation';
 import {
   AssemblyLibraryStore,
   libraryStorage,
@@ -361,6 +362,35 @@ export class Application {
               ),
             };
             break;
+          case 'quantities.exportEstiMaker': {
+            const project = this.project;
+            if (!project) throw new Error('Open or create a project first');
+            if (
+              request.projectId !== undefined &&
+              request.projectId !== project.id
+            )
+              throw new Error('The requested project is no longer open');
+            const path = payload.path as string | undefined;
+            if (
+              (request.origin === 'cli' && !path?.trim()) ||
+              (path !== undefined && !path.trim())
+            )
+              throw new Error(
+                'Supply an explicit output path for the EstiMaker export',
+              );
+            const takeoff = estiMakerTakeoff(project, this.calculate());
+            const text = JSON.stringify(takeoff, null, 2);
+            data = {
+              path: await writeOutput(
+                this.native,
+                `${project.name}.estimaker.json`,
+                new TextEncoder().encode(text),
+                path,
+              ),
+              text,
+            };
+            break;
+          }
           case 'snippet.render': {
             const project = this.project;
             const snippet = project?.review?.snippets[payload.id as string];

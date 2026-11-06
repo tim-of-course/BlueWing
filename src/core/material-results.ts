@@ -60,7 +60,7 @@ export function summarizeMaterials(result: ConstructionResult): void {
     bucket.push(piece);
     members.set(key, bucket);
   }
-  for (const pieces of members.values()) {
+  for (const [key, pieces] of members) {
     const first = present(pieces[0]);
     const amounts = purchaseAmount(
       pieces.length,
@@ -73,6 +73,7 @@ export function summarizeMaterials(result: ConstructionResult): void {
       true,
     );
     result.purchases.push({
+      quantityKey: JSON.stringify(['members', key]),
       ...provenance(first),
       role: pieces.every((p) => p.role === first.role) ? first.role : 'member',
       materialId: first.materialId,
@@ -100,7 +101,7 @@ export function summarizeMaterials(result: ConstructionResult): void {
     bucket.push(surface);
     surfaces.set(key, bucket);
   }
-  for (const patches of surfaces.values()) {
+  for (const [key, patches] of surfaces) {
     const first = present(patches[0]);
     const requiredArea = patches.reduce((sum, p) => sum + p.area, 0);
     const amounts = purchaseAmount(requiredArea, {
@@ -110,6 +111,7 @@ export function summarizeMaterials(result: ConstructionResult): void {
         : { packageSize: first.packageSize }),
     });
     result.surfacePurchases.push({
+      quantityKey: JSON.stringify(['surface', key]),
       ...provenance(first),
       materialId: first.materialId,
       surfaceIds: patches.map((p) => p.id),
@@ -164,6 +166,7 @@ export function modeledOutputs(
       ...identity(purchase),
       modeling: 'modeled',
       outputId: `members/${String(index)}`,
+      ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
       name:
         project.recipes[purchase.recipeId ?? '']?.name ?? purchase.materialId,
@@ -204,6 +207,7 @@ export function modeledOutputs(
       ...identity(purchase),
       modeling: 'modeled',
       outputId: `surface/${String(index)}`,
+      ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
       name: `${purchase.finishId ?? 'Ceiling'} installed area`,
       unit: 'ft2',

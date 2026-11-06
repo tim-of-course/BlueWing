@@ -315,7 +315,7 @@ export function calculateProject(project: Project): CalculationResult {
         bucket.push(source);
         buckets.set(key, bucket);
       }
-      for (const sources of buckets.values()) {
+      for (const [key, sources] of buckets) {
         const diagnostics = sources.flatMap((entry) =>
           entry.diagnostic ? [`${entry.geometryId}: ${entry.diagnostic}`] : [],
         );
@@ -338,6 +338,12 @@ export function calculateProject(project: Project): CalculationResult {
           : undefined;
         const result: CalculationOutput = {
           ...amounts,
+          quantityKey: JSON.stringify([
+            'formula',
+            assignment.id,
+            output.id,
+            key,
+          ]),
           modeling: 'estimate',
           groupId: assignment.groupId,
           assignmentId: assignment.id,

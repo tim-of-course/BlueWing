@@ -32,6 +32,10 @@ export async function compactWorkflow(page: Page) {
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
   ).toContainText('192 ft2');
+  await page
+    .locator('details.quantity-output > summary')
+    .filter({ hasText: 'Wall area' })
+    .click();
   await page.getByRole('button', { name: 'Path 1', exact: true }).click();
   await expect(page.getByText('1 selected', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: /^Hide Walls on/ }).click();
