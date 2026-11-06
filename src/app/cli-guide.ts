@@ -37,7 +37,7 @@ export function connectionPrompt(
     `Connect to my open Bluewing project ${JSON.stringify(project.name)} using this ${connection.shell === 'powershell' ? 'PowerShell' : 'shell'} command:`,
     command,
     conversationInstructions(mode),
-    `Use this executable and BLUEWING_DATA_DIR for subsequent commands. Keep requests bound to projectId ${JSON.stringify(project.id)}. Bluewing must remain open. Call takeoff.list, choose the intended stable ID, and pass takeoffId in every takeoff command envelope; UI selection is independent. Read the connection result for command help and message cursors.`,
+    `Use this executable and BLUEWING_DATA_DIR for subsequent commands. Keep requests bound to projectId ${JSON.stringify(project.id)}. Bluewing must remain open. Use takeoff.list then takeoff.select to set the CLI current takeoff (starts on Main). Selection persists for the open project session independently of the UI. An envelope takeoffId overrides one request; check the echoed takeoff identity in results. Read the connection result for command help and message cursors.`,
   ].join('\n\n');
 }
 
@@ -52,7 +52,7 @@ export function cliIntroduction(
     usage: 'bluewing <command> <JSON request> (or <command> --stdin)',
     help: 'bluewing help <command> returns its payload schema and examples; commands.list returns the full registry.',
     start: project
-      ? 'project.inspect reads project metadata and records. Use takeoff.list to discover IDs, then pass an explicit takeoffId envelope for takeoff.inspect, geometry, calculations, batch/preview and renders. Use projectId and the latest expectedRevision for edits.'
+      ? 'project.inspect reads project metadata and records. Use takeoff.list and takeoff.select to set CLI context (starts on Main, independent of UI). Envelope takeoffId overrides one request; scoped results echo effective identity. Use projectId and the latest expectedRevision for edits.'
       : 'Open or create a project in Bluewing to begin.',
     workflows: {
       pageNaming: { title: 'AI Page Naming', start: 'sheet.naming.start' },
@@ -62,7 +62,7 @@ export function cliIntroduction(
       sheetNaming:
         'sheet.naming.start, sheet.naming.read, sheet.naming.apply, sheet.naming.cancel',
       takeoff:
-        'takeoff.list, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems, geometry.put, group.put, assignment.put, quantities.inspect',
+        'takeoff.list, takeoff.select, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems, geometry.put, group.put, assignment.put, quantities.inspect',
       construction: 'wall.put, construction.inspect, construction.render',
       review: 'snippet.render, review.inspect, wingman.flash',
       conversation: 'messages.send, messages.read, messages.wait',

@@ -10,6 +10,7 @@ import {
 import type { DrawingTool, WorkspaceController } from '../../app/contracts';
 import type { Observation } from '../../app/application';
 import type { Geometry, LengthUnit, Point, Sheet } from '../../core/types';
+import { deductionGeometryIds } from '../../core/takeoffs';
 import {
   distance,
   hitTestGeometry,
@@ -268,14 +269,6 @@ export default function DrawingCanvas(props: {
         for (const id of group.geometryIds)
           colors[id] = group.color ?? '#3b82f6';
       }
-      for (const assignment of Object.values(
-        props.controller.project()?.assignments ?? {},
-      ))
-        if (assignment.direction === 'deduct')
-          for (const id of props.controller.project()?.groups[
-            assignment.groupId
-          ]?.geometryIds ?? [])
-            if (colors[id]) colors[id] = '#e25858';
       return colors;
     },
     {
@@ -496,6 +489,7 @@ export default function DrawingCanvas(props: {
             currentDraft.kind === 'calibrate' &&
             currentDraft.points.length === 2
           ));
+      const currentProject = props.controller.project();
       return {
         size: viewport(),
         camera: camera(),
@@ -503,6 +497,9 @@ export default function DrawingCanvas(props: {
         geometries: geometries(),
         selected: props.controller.selection(),
         colors: geometryColors(),
+        deductionIds: currentProject
+          ? deductionGeometryIds(currentProject)
+          : [],
         draft: currentDraft,
         edit: edit(),
         hover: showHover ? hover() : null,
@@ -565,10 +562,17 @@ export default function DrawingCanvas(props: {
     paintTakeoff(ctx, displayed, {
       selectedIds: state.selected,
       colors: state.colors,
+      deductionIds: state.deductionIds,
       unitsPerPixel: pixel,
     });
     if (state.presentation)
-      paintPlanPresentation(ctx, state.geometries, state.presentation, pixel);
+      paintPlanPresentation(
+        ctx,
+        state.geometries,
+        state.presentation,
+        pixel,
+        state.deductionIds,
+      );
     for (const geometry of displayed) {
       if (!state.selected.includes(geometry.id)) continue;
       for (const point of geometry.points) {

@@ -120,7 +120,7 @@ function fixture() {
     },
   };
 }
-void test('SQLite stores independent takeoff ownership, calibration and copy provenance through session saves', async () => {
+void test('SQLite stores independent takeoff ownership, shared page calibration and copy provenance through session saves', async () => {
   const { storage, database, setFailure } = fixture();
   await storage.open('takeoffs', true);
   const initial = project();
@@ -178,8 +178,11 @@ void test('SQLite stores independent takeoff ownership, calibration and copy pro
   assert.equal(Object.keys(takeoffProject(loaded, 'co').geometries).length, 1);
   assert.equal(loaded.takeoffs.co?.copies?.[0]?.sourceRevision, 1);
   assert.ok(loaded.takeoffs.co);
-  assert.ok(loaded.takeoffs.co.calibrations.s);
-  assert.equal(loaded.takeoffs.co.calibrations.s.metresPerUnit, 1);
+  assert.equal(loaded.sheets.s?.calibration?.metresPerUnit, 1);
+  assert.equal(
+    takeoffProject(loaded, 'co').sheets.s?.calibration?.metresPerUnit,
+    1,
+  );
   await session.dispatch({
     ...session.observation,
     name: 'takeoff.delete',
@@ -199,7 +202,6 @@ const project = (): Project => ({
       name: 'Main',
       kind: 'main',
       owned: {},
-      calibrations: {},
     },
   },
   formatVersion: 5,

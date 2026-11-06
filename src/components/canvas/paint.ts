@@ -4,6 +4,8 @@ export interface PaintTakeoffOptions {
   selectedIds?: string[];
   /** Geometry ID to CSS color. */
   colors?: Record<string, string>;
+  /** Apply dashes without replacing the geometry's category/group color. */
+  deductionIds?: readonly string[];
   /** Page units per output pixel; keeps strokes and count markers legible. */
   unitsPerPixel?: number;
 }
@@ -16,6 +18,7 @@ export function paintTakeoff(
 ): void {
   const pixel = options.unitsPerPixel ?? 1;
   const selected = new Set(options.selectedIds ?? []);
+  const deductions = new Set(options.deductionIds ?? []);
   context.save();
   context.lineCap = 'round';
   context.lineJoin = 'round';
@@ -28,6 +31,9 @@ export function paintTakeoff(
     context.strokeStyle = selected.has(geometry.id) ? '#60a5fa' : color;
     context.fillStyle = color;
     const isSelected = selected.has(geometry.id);
+    context.setLineDash(
+      deductions.has(geometry.id) ? [8 * pixel, 5 * pixel] : [],
+    );
     context.lineWidth = (isSelected ? 3 : 2) * pixel;
     if (geometry.kind === 'count') {
       for (const point of geometry.points) {

@@ -190,12 +190,12 @@ void test('takeoffs start empty; independent copies round positive purchases bef
   const after = takeoffProject(f.session.project, 'main');
   assert.deepEqual(after.geometries, main.geometries);
   assert.deepEqual(after.recipes, main.recipes);
-  assert.deepEqual(after.sheets, main.sheets);
-  assert.equal(f.report('main').totals[0]?.amount, 4);
-  await assert.rejects(f.copy(), /Conflicting/);
+  assert.equal(after.sheets.s?.calibration?.metresPerUnit, 2);
+  assert.equal(f.report('main').totals[0]?.amount, 8);
+  await f.copy();
 });
 
-void test('returning local calibration to Main scale invalidates quantities and undo restores the local result', async () => {
+void test('shared page calibration invalidates every takeoff and undo restores all quantities', async () => {
   const f = fixture();
   await f.create();
   await f.copy();
@@ -208,10 +208,12 @@ void test('returning local calibration to Main scale invalidates quantities and 
     });
   await putScale(2);
   assert.equal(f.session.calculationFor('co').totals[0]?.amount, -8);
+  assert.equal(f.session.calculationFor('main').totals[0]?.amount, 8);
   await putScale(1);
   assert.equal(f.session.calculationFor('co').totals[0]?.amount, -4);
   await f.call({ name: 'history.undo' });
   assert.equal(f.session.calculationFor('co').totals[0]?.amount, -8);
+  assert.equal(f.session.calculationFor('main').totals[0]?.amount, 8);
   await f.call({ name: 'history.redo' });
   assert.equal(f.session.calculationFor('co').totals[0]?.amount, -4);
   assert.equal(f.session.calculationFor('main').totals[0]?.amount, 4);
@@ -265,7 +267,7 @@ void test('ownership rejects cross-takeoff writes/references and phases reject d
       name: 'Shared name',
     },
   });
-  assert.equal(f.session.project.sheets.s?.calibration?.metresPerUnit, 1);
+  assert.equal(f.session.project.sheets.s?.calibration?.metresPerUnit, 2);
   assert.equal(
     takeoffProject(f.session.project, 'co').sheets.s?.calibration
       ?.metresPerUnit,

@@ -11,7 +11,6 @@ function project(): Project {
         name: 'Main',
         kind: 'main',
         owned: {},
-        calibrations: {},
       },
     },
     formatVersion: 5,

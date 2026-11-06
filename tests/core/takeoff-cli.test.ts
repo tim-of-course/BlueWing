@@ -5,7 +5,7 @@ import { ProjectSession } from '../../src/core/session';
 import { createProject } from '../../src/core/geometry';
 import { parseCli } from '../../src/app/cli';
 
-void test('CLI requires explicit takeoff context, ignores active UI selection and keeps Main scale isolated', async () => {
+void test('CLI selection persists independently of UI, supports one-request overrides and shares page scale', async () => {
   const project = createProject('Context');
   project.sheets.s = {
     id: 's',
@@ -25,19 +25,36 @@ void test('CLI requires explicit takeoff context, ignores active UI selection an
     origin: 'cli',
   });
   app.selectTakeoff('co');
-  await assert.rejects(
-    app.dispatch(parseCli(['quantities.inspect'])),
-    /Explicit takeoffId/,
+  const initial = await app.dispatch(parseCli(['quantities.inspect']));
+  assert.equal(initial.takeoff?.id, 'main');
+  const selected = await app.dispatch(
+    parseCli(['takeoff.select', '{"payload":{"id":"co"}}']),
   );
-  await assert.rejects(
-    app.dispatch({
-      ...app.observe(),
-      name: 'sheet.put',
-      payload: project.sheets.s,
-      origin: 'cli',
-    }),
-    /Explicit takeoffId/,
+  assert.equal(selected.takeoff?.id, 'co');
+  const revision = app.observe().expectedRevision;
+  app.selectTakeoff('main');
+  assert.equal(
+    (await app.dispatch(parseCli(['quantities.inspect']))).takeoff?.id,
+    'co',
   );
+  assert.equal(
+    (
+      await app.dispatch(
+        parseCli(['quantities.inspect', '{"takeoffId":"main"}']),
+      )
+    ).takeoff?.id,
+    'main',
+  );
+  assert.equal(
+    (await app.dispatch(parseCli(['quantities.inspect']))).takeoff?.id,
+    'co',
+  );
+  assert.equal(app.observe().expectedRevision, revision);
+  await assert.rejects(
+    app.dispatch(parseCli(['takeoff.select', '{"payload":{"id":"missing"}}'])),
+  );
+  assert.equal(app.cliTakeoffId, 'co');
+  app.selectTakeoff('co');
   await app.dispatch({
     ...app.observe(),
     name: 'sheet.put',
@@ -49,7 +66,7 @@ void test('CLI requires explicit takeoff context, ignores active UI selection an
     },
     origin: 'cli',
   });
-  assert.equal(app.session.project.sheets.s?.calibration?.metresPerUnit, 1);
+  assert.equal(app.session.project.sheets.s?.calibration?.metresPerUnit, 2);
   assert.equal(app.project?.sheets.s?.calibration?.metresPerUnit, 2);
   const main = await app.dispatch(
     parseCli(['takeoff.inspect', '{"takeoffId":"main"}']),
@@ -67,4 +84,14 @@ void test('CLI requires explicit takeoff context, ignores active UI selection an
   app.draftPending = false;
   app.selectTakeoff('main');
   assert.equal(app.activeTakeoffId, 'main');
+  await app.dispatch({
+    ...app.observe(),
+    name: 'takeoff.delete',
+    payload: { id: 'co' },
+    origin: 'cli',
+  });
+  assert.equal(
+    (await app.dispatch(parseCli(['quantities.inspect']))).takeoff?.id,
+    'main',
+  );
 });

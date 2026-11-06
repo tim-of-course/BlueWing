@@ -29,8 +29,16 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'takeoff.select',
+    'Select the CLI current takeoff for subsequent requests in this open project session. Starts on Main; independent of UI selection. An envelope takeoffId overrides one request without changing this selection.',
+    { id: string },
+    ['id'],
+    false,
+    { id: 'main' },
+  ),
+  entry(
     'quantities.exportEstiMaker',
-    'Save purchased LF/SF/count quantities as bluewing.takeoff v2 JSON for EstiMaker. Missing dimensions produce named zero-quantity rows; producer errors prevent export. No project changes. Includes takeoff identity, contribution direction and signed quantities after positive purchasing. CLI requires envelope takeoffId and an explicit path; UI can choose a destination.',
+    'Save purchased LF/SF/count quantities as bluewing.takeoff v2 JSON for EstiMaker. Missing dimensions produce named zero-quantity rows; producer errors prevent export. No project changes. Includes takeoff identity, contribution direction and signed quantities after positive purchasing. Uses CLI current takeoff unless envelope takeoffId overrides it. CLI requires an explicit path; UI can choose a destination.',
     { path: string },
     [],
     false,

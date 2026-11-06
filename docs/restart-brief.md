@@ -12,7 +12,7 @@ The previous PlanVyper application is a reference. **Its code, documentation, te
 
 ## A small useful MVP
 
-Projects contain one independent Main plus named phases and change orders, with stable takeoff IDs. PDF sources and the reusable library are shared; authored work, applied definitions, calibration, construction and review are takeoff-local. Change orders add/deduct independent copies. See [the implemented takeoff contract](named-takeoffs.md).
+Projects contain one independent Main plus named phases and change orders, with stable takeoff IDs. PDF sources, page calibration and the reusable library are shared; authored work, applied definitions, construction and review are takeoff-local. Change orders add/deduct independent copies. See [the implemented takeoff contract](named-takeoffs.md).
 
 Complete this workflow: create a project, import a PDF, choose and calibrate a sheet, draw lengths/areas/counts, apply a simple calculation, inspect its sources, export quantities, close, and reopen. An agent can inspect the same project and make the same edits through the CLI while the desktop app shows the results.
 
@@ -20,7 +20,7 @@ The first usable MVP targeted macOS. Windows is now supported with a WebView2 de
 
 Initial scope:
 
-- One open project session, multiple sheets, local project storage, and takeoff-local calibration per sheet.
+- One open project session, multiple sheets, local project storage, and one shared calibration per sheet.
 - Paths, explicit area polygons, and count markers; selection, point editing, move, copy, and delete.
 - Reusable groups with editable recipes, traceable quantities, waste allowances, whole-package rounding, and CSV/JSON export.
 - One command path for UI and CLI, reliable saving, and session undo/redo.

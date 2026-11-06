@@ -24,7 +24,6 @@ function fixture(
         name: 'Main',
         kind: 'main',
         owned: {},
-        calibrations: {},
       },
     },
     formatVersion: 5,

@@ -166,7 +166,6 @@ export interface Takeoff {
   kind: 'main' | 'phase' | 'change-order';
   mainTakeoffId?: string;
   owned: Record<string, string[]>;
-  calibrations: Record<string, Calibration>;
   construction?: ConstructionContext;
   review?: ReviewData;
   copies?: {

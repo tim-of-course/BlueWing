@@ -19,6 +19,18 @@ export const mainId = (project: Project) =>
   required(Object.values(project.takeoffs).find((t) => t.kind === 'main')).id;
 export const takeoffContext = (project: Project) =>
   requireTakeoff(project, project.takeoffId ?? mainId(project));
+/** Styling is independent of category/group colors and of quantity arithmetic. */
+export function deductionGeometryIds(project: Project): string[] {
+  return [
+    ...new Set(
+      Object.values(project.assignments)
+        .filter((assignment) => assignment.direction === 'deduct')
+        .flatMap(
+          (assignment) => project.groups[assignment.groupId]?.geometryIds ?? [],
+        ),
+    ),
+  ];
+}
 export function requireTakeoff(project: Project, id: string): Takeoff {
   const entry = Object.hasOwn(project.takeoffs, id) && project.takeoffs[id];
   if (!entry) throw new Error(`Unknown takeoff ${id}`);
@@ -45,15 +57,6 @@ export function takeoffProject(
   const view = {
     ...project,
     takeoffId: id,
-    sheets: Object.fromEntries(
-      Object.entries(project.sheets).map(([key, sheet]) => {
-        if (takeoff.kind === 'main') return [key, sheet];
-        const source = { ...sheet };
-        delete source.calibration;
-        const calibration = takeoff.calibrations[key];
-        return [key, { ...source, ...(calibration ? { calibration } : {}) }];
-      }),
-    ),
   };
   for (const collection of ownedCollections)
     Object.assign(view, {
@@ -92,18 +95,13 @@ export function mergeTakeoff(
     }
     takeoff.owned[collection] = Object.keys(view[collection]);
   }
+  project.sheets = view.sheets;
   if (takeoff.kind === 'main') {
-    project.sheets = view.sheets;
     if (view.construction) project.construction = view.construction;
     else delete project.construction;
     if (view.review) project.review = view.review;
     else delete project.review;
   } else {
-    takeoff.calibrations = Object.fromEntries(
-      Object.values(view.sheets).flatMap((sheet) =>
-        sheet.calibration ? [[sheet.id, sheet.calibration]] : [],
-      ),
-    );
     if (view.construction) takeoff.construction = view.construction;
     else delete takeoff.construction;
     if (view.review) takeoff.review = view.review;
@@ -171,7 +169,6 @@ export function manageTakeoff(project: Project, call: CommandCall): unknown {
       kind: p.kind as Takeoff['kind'],
       ...(p.kind === 'change-order' ? { mainTakeoffId: mainId(project) } : {}),
       owned: {},
-      calibrations: {},
     });
   }
   const destination = requireTakeoff(
@@ -207,19 +204,6 @@ export function manageTakeoff(project: Project, call: CommandCall): unknown {
   for (const id of selected) {
     const geometry = source.geometries[id];
     if (!geometry) throw new Error(`Geometry not in source takeoff: ${id}`);
-    const calibration = source.sheets[geometry.sheetId]?.calibration;
-    const existing = target.sheets[geometry.sheetId]?.calibration;
-    if (
-      existing &&
-      calibration &&
-      existing.metresPerUnit !== calibration.metresPerUnit
-    )
-      throw new Error('Conflicting sheet calibration');
-    if (!existing && calibration)
-      target.sheets[geometry.sheetId] = {
-        ...required(target.sheets[geometry.sheetId]),
-        calibration: structuredClone(calibration),
-      };
     target.geometries[remap(id)] = {
       ...structuredClone(geometry),
       id: remap(id),

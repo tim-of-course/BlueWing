@@ -86,7 +86,9 @@ export async function namedTakeoffs(page: Page) {
       },
     ],
   });
-  expect((await cli('quantities.inspect')).exitCode).toBe(1);
+  expect((await cli('quantities.inspect')).response.data).toMatchObject({
+    context: { takeoffId: 'main' },
+  });
   await page.getByRole('button', { name: 'Takeoffs', exact: true }).click();
   await page.getByLabel('Takeoff name', { exact: true }).fill('CO 01');
   await page.getByLabel('New takeoff kind').selectOption('change-order');

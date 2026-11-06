@@ -40,7 +40,6 @@ for (const browserType of [chromium, firefox, webkit]) {
               name: 'Main',
               kind: 'main' as const,
               owned: {},
-              calibrations: {},
             },
           },
           formatVersion: 5 as const,
@@ -55,6 +54,7 @@ for (const browserType of [chromium, firefox, webkit]) {
               pageIndex: 0,
               width: 100,
               height: 100,
+              calibration: { metresPerUnit: 2 },
             },
           },
           geometries: {},
@@ -84,7 +84,6 @@ for (const browserType of [chromium, firefox, webkit]) {
               kind: 'change-order' as const,
               mainTakeoffId: 'main',
               owned: { geometries: ['copy'] },
-              calibrations: { s: { metresPerUnit: 2 } },
             },
           },
           geometries: {
@@ -140,10 +139,10 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.equal(result.saved.revision, 1);
       assert.equal(result.saved.takeoffs.co?.name, 'CO 1');
       assert.ok(result.saved.takeoffs.co);
-      assert.ok(result.saved.takeoffs.co.calibrations.s);
-      assert.equal(result.saved.takeoffs.co.calibrations.s.metresPerUnit, 2);
+      assert.equal(result.saved.sheets.s?.calibration?.metresPerUnit, 2);
+      assert.ok(!('calibrations' in result.saved.takeoffs.co));
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
-      assert.equal(result.saved.sheets.s?.assetId, 'pdf');
+      assert.equal(result.saved.sheets.s.assetId, 'pdf');
     } finally {
       await browser.close();
     }

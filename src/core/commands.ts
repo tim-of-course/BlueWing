@@ -736,10 +736,6 @@ export function validateProject(
                 ),
                 additionalProperties: false,
               },
-              calibrations: {
-                type: 'object',
-                additionalProperties: object({ metresPerUnit: positive }),
-              },
               construction: constructionSchema,
               review: reviewSchema,
               copies: array(
@@ -750,7 +746,7 @@ export function validateProject(
                 }),
               ),
             },
-            ['id', 'name', 'kind', 'owned', 'calibrations'],
+            ['id', 'name', 'kind', 'owned'],
           ),
         },
         takeoffId: string,
@@ -805,8 +801,6 @@ export function validateProject(
         takeoff.mainTakeoffId !== mainId(project)
       )
         throw new Error('Change order must reference Main');
-      for (const sheetId of Object.keys(takeoff.calibrations))
-        requireEntity(project.sheets, sheetId, 'Calibration sheet');
       const view = takeoffProject(project, takeoff.id);
       validateProject(view, true);
     }
@@ -1049,22 +1043,7 @@ export function executeCommandOnDraft(
       next.name = payload.name as string;
       break;
     case 'sheet.put':
-      {
-        const sheet = structuredClone(payload) as unknown as Sheet;
-        if (call.takeoffId && next.takeoffs[call.takeoffId]?.kind !== 'main') {
-          const takeoff = requireEntity(
-            next.takeoffs,
-            call.takeoffId,
-            'Takeoff',
-          );
-          if (sheet.calibration)
-            takeoff.calibrations[entityId] = structuredClone(sheet.calibration);
-          const calibration = next.sheets[entityId]?.calibration;
-          delete sheet.calibration;
-          if (calibration) sheet.calibration = calibration;
-        }
-        next.sheets[entityId] = sheet;
-      }
+      next.sheets[entityId] = structuredClone(payload) as unknown as Sheet;
       break;
     case 'sheet.naming.apply': {
       const entries = payload.sheets as { id: string; name: string }[];
@@ -1105,8 +1084,6 @@ export function executeCommandOnDraft(
         throw new Error('Remove takeoff work before deleting a shared sheet');
       for (const entry of Object.values(next.geometries))
         if (entry.sheetId === entityId) removeGeometry(next, entry.id);
-      for (const takeoff of Object.values(next.takeoffs))
-        Reflect.deleteProperty(takeoff.calibrations, entityId);
       Reflect.deleteProperty(next.sheets, entityId);
       break;
     case 'geometry.put':

@@ -92,6 +92,8 @@ export class Application {
   session: ProjectSession | null = null;
   draftPending = false;
   activeTakeoffId: string | null = null;
+  /** CLI navigation is session state, independent of the user's visible workspace. */
+  cliTakeoffId: string | null = null;
   selectTakeoff(id: string): void {
     if (!this.session) throw new Error('Open a project first');
     if (this.draftPending)
@@ -175,12 +177,15 @@ export class Application {
   private attach(project: Project) {
     this.textPrefetch.clear();
     this.activeTakeoffId = mainId(project);
+    this.cliTakeoffId = mainId(project);
     this.session = new ProjectSession(project, this.storage);
     this.session.subscribe((accepted) => {
       if (!this.activeTakeoffId || !accepted.takeoffs[this.activeTakeoffId]) {
         this.activeTakeoffId = mainId(accepted);
         this.disposeConstructionRenderer();
       }
+      if (!this.cliTakeoffId || !accepted.takeoffs[this.cliTakeoffId])
+        this.cliTakeoffId = mainId(accepted);
       this.publish();
     });
     this.publish();
@@ -238,23 +243,24 @@ export class Application {
       )
         this.check(request);
       const scoped =
-        !/^(project\.|takeoff\.(list|create|rename|delete)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
+        !/^(project\.|takeoff\.(list|create|rename|delete|select)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
           request.name,
         ) ||
         (request.name === 'sheet.put' &&
           typeof request.payload === 'object' &&
           request.payload !== null &&
           'calibration' in request.payload);
-      if (scoped && request.origin === 'cli' && !request.takeoffId)
-        throw new Error('Explicit takeoffId is required for takeoff commands');
       if (scoped && this.session) {
         if (
           request.projectId !== undefined &&
           request.projectId !== this.session.observation.projectId
         )
           throw new Error('The requested project is no longer open');
+        const root = this.session.project;
+        const selected =
+          request.origin === 'cli' ? this.cliTakeoffId : this.activeTakeoffId;
         request.takeoffId ??=
-          this.activeTakeoffId ?? mainId(this.session.project);
+          selected && root.takeoffs[selected] ? selected : mainId(root);
         requireTakeoff(this.session.project, request.takeoffId);
       }
 
@@ -270,7 +276,7 @@ export class Application {
               messagesAfter:
                 'optional nonnegative message cursor; reads are nondestructive',
               takeoffId:
-                'required for takeoff reads, edits, batch, preview and renders; use takeoff.list',
+                'optional one-request override of CLI current takeoff; use takeoff.list and takeoff.select',
               projectId: 'required for active project mutations',
               expectedRevision: 'required for active project mutations',
             },
@@ -415,6 +421,25 @@ export class Application {
               ),
             };
             break;
+          case 'takeoff.select': {
+            if (!this.session) throw new Error('Open a project first');
+            if (
+              request.projectId !== undefined &&
+              request.projectId !== this.session.observation.projectId
+            )
+              throw new Error('The requested project is no longer open');
+            const selected = requireTakeoff(
+              this.session.project,
+              payload.id as string,
+            );
+            this.cliTakeoffId = selected.id;
+            data = {
+              id: selected.id,
+              name: selected.name,
+              kind: selected.kind,
+            };
+            break;
+          }
           case 'quantities.exportEstiMaker': {
             const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open or create a project first');
@@ -593,7 +618,7 @@ export class Application {
               labelContext.fillStyle = '#111111';
               labelContext.font = '14px sans-serif';
               labelContext.fillText(
-                `${project.takeoffs[project.takeoffId ?? mainId(project)]?.name ?? ''} · ${project.takeoffId ?? 'main'} · deductions red`,
+                `${project.takeoffs[project.takeoffId ?? mainId(project)]?.name ?? ''} · ${project.takeoffId ?? 'main'} · deductions hatched`,
                 8,
                 canvas.height - 8,
                 canvas.width - 16,
@@ -828,10 +853,15 @@ export class Application {
             throw new Error('Unknown application command');
         }
       const observation = this.session?.observation;
-      const contextTakeoff =
-        scoped && request.takeoffId
-          ? this.session?.project.takeoffs[request.takeoffId]
-          : undefined;
+      const effectiveTakeoffId =
+        request.name === 'takeoff.select'
+          ? this.cliTakeoffId
+          : scoped
+            ? request.takeoffId
+            : undefined;
+      const contextTakeoff = effectiveTakeoffId
+        ? this.session?.project.takeoffs[effectiveTakeoffId]
+        : undefined;
       return {
         data,
         ...(contextTakeoff

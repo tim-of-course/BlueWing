@@ -1,4 +1,4 @@
-import { takeoffContext } from '../core/takeoffs';
+import { takeoffContext, deductionGeometryIds } from '../core/takeoffs';
 import type { Project } from '../core/types';
 import type { PdfDocuments } from '../pdf/documents';
 import { paintTakeoff } from '../components/canvas/paint';
@@ -67,16 +67,16 @@ export async function renderImage(
     const colors: Record<string, string> = {};
     for (const group of Object.values(project.groups))
       for (const id of group.geometryIds) colors[id] = group.color ?? '#3b82f6';
-    for (const assignment of Object.values(project.assignments))
-      if (assignment.direction === 'deduct')
-        for (const id of project.groups[assignment.groupId]?.geometryIds ?? [])
-          colors[id] = '#e25858';
     paintTakeoff(
       context,
       Object.values(project.geometries).filter(
         (geometry) => geometry.sheetId === sheet.id,
       ),
-      { colors, unitsPerPixel: 1 / scale },
+      {
+        colors,
+        deductionIds: deductionGeometryIds(project),
+        unitsPerPixel: 1 / scale,
+      },
     );
   }
   if (options.highlightIds?.length) {
@@ -90,6 +90,7 @@ export async function renderImage(
         colors: Object.fromEntries(
           options.highlightIds.map((id) => [id, '#f59e0b']),
         ),
+        deductionIds: deductionGeometryIds(project),
         unitsPerPixel: 2 / scale,
       },
     );

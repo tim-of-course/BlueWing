@@ -34,7 +34,6 @@ function baseProject(): Project {
         name: 'Main',
         kind: 'main',
         owned: {},
-        calibrations: {},
       },
     },
     formatVersion: 5,

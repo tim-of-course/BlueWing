@@ -21,7 +21,6 @@ export function createProject(name: string, id = newId()): Project {
         name: 'Main',
         kind: 'main',
         owned: {},
-        calibrations: {},
       },
     },
     id,
