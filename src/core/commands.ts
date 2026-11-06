@@ -721,7 +721,6 @@ export function validateProject(input: unknown): asserts input is Project {
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 4 &&
     input.formatVersion !== 5
   )
     throw new Error(
@@ -730,7 +729,7 @@ export function validateProject(input: unknown): asserts input is Project {
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [4, 5] },
+        formatVersion: { type: 'number', enum: [5] },
         id: string,
         name: string,
         revision: { type: 'number', minimum: 0 },
@@ -759,8 +758,6 @@ export function validateProject(input: unknown): asserts input is Project {
     'project',
   );
   const project = input as Project;
-  if (project.formatVersion === 4 && project.notes !== undefined)
-    throw new Error('Project notes require format 5');
   validateDetailed(project);
   if (!Number.isInteger(project.revision) || project.revision < 0)
     throw new Error('Unsupported project format or revision');
@@ -912,7 +909,6 @@ export function executeCommandOnDraft(
       data = searchNotes(next.notes ?? '', payload.query as string);
       break;
     case 'notes.write':
-      next.formatVersion = 5;
       if (payload.markdown === '') delete next.notes;
       else next.notes = payload.markdown as string;
       break;

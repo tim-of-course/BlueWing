@@ -34,7 +34,7 @@ for (const browserType of [chromium, firefox, webkit]) {
         )) as typeof StorageModule;
         const storage = new BrowserStorage();
         const initial = {
-          formatVersion: 4 as const,
+          formatVersion: 5 as const,
           id: 'p',
           name: 'Original',
           revision: 0,
@@ -65,7 +65,6 @@ for (const browserType of [chromium, firefox, webkit]) {
         const bytes = Array.from(await storage.readAsset('pdf'));
         const next = {
           ...initial,
-          formatVersion: 5 as const,
           notes: '# Scratchpad\n😀 detail',
           name: 'Saved',
           revision: 1,

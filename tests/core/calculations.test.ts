@@ -18,7 +18,7 @@ function fixture(
   recipeId: string,
 ): Project {
   return {
-    formatVersion: 4,
+    formatVersion: 5,
     id: 'project',
     name: 'Estimate',
     revision: 0,

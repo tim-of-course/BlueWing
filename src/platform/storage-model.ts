@@ -69,8 +69,6 @@ export function recordChanges(previous: Project | undefined, next: Project) {
 }
 export function checkSave(previous: Project, next: Project): void {
   validateProject(next);
-  if (next.formatVersion < previous.formatVersion)
-    throw new Error('Project format cannot be downgraded');
   if (previous.id !== next.id || next.revision !== previous.revision + 1)
     throw new Error(
       'Save must retain project identity and advance revision by one',

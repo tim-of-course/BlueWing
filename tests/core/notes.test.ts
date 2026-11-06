@@ -23,9 +23,8 @@ void test('scratchpad literal search preserves multiline Unicode and original li
   assert.throws(() => searchNotes('', ''), /empty/);
 });
 
-void test('notes save atomically, upgrade 4 once, retain cache/review, and share history', async () => {
+void test('notes save atomically, retain cache/review, and share history', async () => {
   const project = createProject('Notes');
-  project.formatVersion = 4;
   let fail = true;
   const session = new ProjectSession(project, {
     save: () =>
@@ -41,7 +40,6 @@ void test('notes save atomically, upgrade 4 once, retain cache/review, and share
     payload: { markdown: '# Notes\n😀 detail.*' },
   };
   await assert.rejects(call(write), /disk full/);
-  assert.equal(session.project.formatVersion, 4);
   assert.equal(session.project.notes, undefined);
   assert.equal(session.canUndo, false);
   assert.equal(session.calculation, cache);
@@ -49,13 +47,11 @@ void test('notes save atomically, upgrade 4 once, retain cache/review, and share
   const stale = session.observation;
   await call(write);
   await assert.rejects(session.dispatch({ ...write, ...stale }), /conflict/);
-  assert.equal(session.project.formatVersion, 5);
   assert.equal(session.project.notes, '# Notes\n😀 detail.*');
   assert.deepEqual(inspectReview(session.project), review);
   assert.equal(session.calculation, cache);
   await call({ name: 'history.undo' });
   assert.equal(session.project.notes, undefined);
-  assert.equal(session.project.formatVersion, 5);
   assert.equal(session.calculation, cache);
   await call({ name: 'history.redo' });
   assert.equal(session.project.notes, '# Notes\n😀 detail.*');
@@ -89,8 +85,8 @@ void test('notes save atomically, upgrade 4 once, retain cache/review, and share
   assert.equal(session.project.notes, undefined);
   assert.equal(session.calculation, cache);
   assert.throws(() => {
-    validateProject({ ...project, notes: 'Invalid format 4' });
-  }, /format 5/);
+    validateProject({ ...project, formatVersion: 4 });
+  }, /Unsupported/);
   assert.throws(() => {
     validateProject({ ...project, formatVersion: 3 });
   }, /Unsupported/);
