@@ -10,8 +10,18 @@ import type { PlanView, WingmanView } from '../app/wingman-types';
 import type { Geometry } from '../core/types';
 import { resolveConstruction } from '../core/applied-assemblies';
 import { deductionGeometryIds } from '../core/takeoffs';
+import {
+  categoryColor,
+  geometryCategories,
+  geometryMatchesCategories,
+  matchesCategories,
+} from '../core/categories';
 import { paintTakeoff } from './canvas/paint';
-import { buildConstructionScene, constructionSceneInput } from '../three/scene';
+import {
+  prepareConstructionScene,
+  constructionSceneContext,
+  sameConstructionSceneContext,
+} from '../three/scene';
 import type { acquireConstructionSnapshot } from '../three/renderer';
 import type { RegionImages } from '../pdf/region-images';
 
@@ -81,10 +91,13 @@ export default function WingmanPreview(props: {
   const model = createMemo(() =>
     props.view.kind === '3d' ? props.controller.construction() : null,
   );
-  const modelInput = createMemo(() => {
-    const result = model();
-    return result ? constructionSceneInput(result) : null;
-  });
+  const sceneContext = createMemo(
+    () => {
+      const project = props.controller.project();
+      return project ? constructionSceneContext(project) : null;
+    },
+    { equals: sameConstructionSceneContext },
+  );
   const modelFilter = createMemo(
     () => {
       const view = props.view;
@@ -105,6 +118,9 @@ export default function WingmanPreview(props: {
             .map((source) => source.geometryId)
         : undefined;
       return {
+        categories: view.categories,
+        ...(view.sheetIds === undefined ? {} : { sheetIds: view.sheetIds }),
+        alignment: view.alignment ?? 'saved',
         ...(geometryIds ? { geometryIds } : {}),
         ...(levelGeometryIds ? { levelGeometryIds } : {}),
         ...(view.materialId ? { materialId: view.materialId } : {}),
@@ -114,9 +130,12 @@ export default function WingmanPreview(props: {
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   );
   const modelScene = createMemo(() => {
-    const input = modelInput();
+    const result = model();
+    const project = sceneContext();
     const filter = modelFilter();
-    return input && filter ? buildConstructionScene(input, filter) : null;
+    return result && project && filter
+      ? prepareConstructionScene(project, result, filter).scene
+      : null;
   });
   onCleanup(() => {
     snapshot?.dispose();
@@ -225,18 +244,25 @@ export default function WingmanPreview(props: {
         const visible = view.visibleGeometryIds
           ? new Set(view.visibleGeometryIds)
           : null;
+        const tags = geometryCategories(project);
         const geometries = Object.values(project.geometries).filter(
           (item) =>
-            item.sheetId === sheet.id && (!visible || visible.has(item.id)),
+            item.sheetId === sheet.id &&
+            (!visible || visible.has(item.id)) &&
+            geometryMatchesCategories(tags[item.id] ?? [], view.categories),
         );
-        const colors: Record<string, string> = {};
-        for (const group of Object.values(project.groups))
-          for (const id of group.geometryIds)
-            colors[id] = group.color ?? '#3b82f6';
+        const categoryColors = Object.fromEntries(
+          geometries.map((item) => [
+            item.id,
+            (tags[item.id] ?? [])
+              .filter((name) => matchesCategories(name, view.categories))
+              .map((name) => categoryColor(project, name)),
+          ]),
+        );
         if (view.mode !== 'plan')
           paintTakeoff(context, geometries, {
-            colors,
             deductionIds: deductionGeometryIds(project),
+            categoryColors,
             unitsPerPixel: 1 / scale,
           });
         paintPlanPresentation(

@@ -12,12 +12,8 @@ export async function compactWorkflow(page: Page) {
   await expect(group).toContainText('24 ft');
   expect((await group.boundingBox())?.height).toBe(22);
   expect((await page.locator('.sheet-row').boundingBox())?.height).toBe(24);
-  await page.getByLabel('Highlight color').fill('#f97316');
-  await page.getByRole('button', { name: 'Save group', exact: true }).click();
-  await expect(group.locator('.group-color')).toHaveCSS(
-    'background-color',
-    'rgb(249, 115, 22)',
-  );
+  await expect(page.getByLabel('Highlight color')).toHaveCount(0);
+  await expect(page.locator('details.category-filter')).toBeVisible();
   await page.getByLabel('Assembly to assign').selectOption('wall-area');
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })

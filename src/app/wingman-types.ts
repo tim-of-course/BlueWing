@@ -1,6 +1,7 @@
 import type { PlanSnippet } from '../core/review';
 import type { DisplayMode, SceneCamera } from '../three/scene';
 import type { DrawingTool, WorkspaceContext } from './contracts';
+import type { CategoryFilter } from '../core/categories';
 
 export interface ViewBounds {
   x: number;
@@ -16,10 +17,14 @@ export interface PlanView {
   highlightIds?: string[];
   annotations?: PlanSnippet['annotations'];
   visibleGeometryIds?: string[];
+  categories?: CategoryFilter;
 }
 export interface ModelView {
   kind: '3d';
   camera: SceneCamera;
+  sheetIds?: string[];
+  alignment?: 'saved' | 'none';
+  pageMode?: 'current' | 'combined' | 'explicit';
   displayMode?: DisplayMode;
   showPlan?: boolean;
   geometryIds?: string[];
@@ -29,6 +34,7 @@ export interface ModelView {
   selectedGeometryIds?: string[];
   selectedPieceId?: string | null;
   selectedOnly?: boolean;
+  categories?: CategoryFilter;
 }
 export type WingmanView = PlanView | ModelView;
 export interface WingmanVisual {

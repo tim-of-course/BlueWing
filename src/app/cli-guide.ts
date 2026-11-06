@@ -65,6 +65,7 @@ export function cliIntroduction(
         'takeoff.list, takeoff.select, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems, geometry.put, group.put, assignment.put, quantities.inspect',
       construction: 'wall.put, construction.inspect, construction.render',
       review: 'snippet.render, review.inspect, wingman.flash',
+      notes: 'notes.read, notes.search, notes.write',
       conversation: 'messages.send, messages.read, messages.wait',
     },
     messages:

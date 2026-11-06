@@ -1,4 +1,9 @@
 import type { Project } from '../core/types';
+import {
+  geometryCategories,
+  geometryMatchesCategories,
+} from '../core/categories';
+import type { CategoryFilter } from '../core/categories';
 
 /** Local view preferences, separate from saved estimating data. */
 export interface DrawingVisibility {
@@ -6,9 +11,34 @@ export interface DrawingVisibility {
   hiddenGroups: Record<string, string[]>;
 }
 
+/** Categories from groups hidden on a trace's sheet do not contribute to it. */
+export function visibleCategoryTags(
+  project: Project,
+  visibility: DrawingVisibility,
+): Record<string, string[]> {
+  const groups = Object.fromEntries(
+    Object.values(project.groups).map((group) => [
+      group.id,
+      {
+        ...group,
+        geometryIds: group.geometryIds.filter((id) => {
+          const geometry = project.geometries[id];
+          return (
+            geometry &&
+            !visibility.hiddenSheets.includes(geometry.sheetId) &&
+            !visibility.hiddenGroups[geometry.sheetId]?.includes(group.id)
+          );
+        }),
+      },
+    ]),
+  );
+  return geometryCategories({ ...project, groups });
+}
+
 export function visibleDrawingIds(
   project: Project | null,
   visibility: DrawingVisibility,
+  categories?: CategoryFilter,
 ): ReadonlySet<string> {
   const visible = new Set<string>();
   if (!project) return visible;
@@ -30,6 +60,10 @@ export function visibleDrawingIds(
       !visibility.hiddenSheets.includes(geometry.sheetId)
     )
       visible.add(geometry.id);
+  const tags = visibleCategoryTags(project, visibility);
+  for (const id of visible)
+    if (!geometryMatchesCategories(tags[id] ?? [], categories))
+      visible.delete(id);
   return visible;
 }
 

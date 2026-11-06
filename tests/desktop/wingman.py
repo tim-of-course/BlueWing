@@ -139,7 +139,61 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
                             'height': 3, 'studSpacing': 0.5, 'stud': member,
                             'bottomAllowance': 0, 'topAllowance': 0,
                             'track': dict(member, materialId='track'), 'finishes': []}, True)
+        # Alignment is saved in the project but only changes multi-sheet 3D.
+        source_sheet = command('project.inspect')['sheets'][sheet]
+        other_sheet = dict(source_sheet, id='alignment-reference', name='Alignment reference')
+        command('sheet.put', other_sheet, True)
+        quantities_before = command('quantities.inspect')['totals']
+        render_options = {'path': str(EVIDENCE / 'alignment.png'), 'width': 400,
+                          'height': 300, 'sheetIds': [sheet], 'view': 'top'}
+        original = command('construction.render', render_options)
+        png(original)
+        command('construction.alignment.put', {'sheetId': sheet, 'offset': {'x': 3, 'y': 4},
+                                                'rotation': 0}, True)
+        single = command('construction.render', render_options)
+        assert single['camera'] == original['camera'] and single['appliedAlignments'] == {}
+        combined = command('construction.render', dict(render_options, sheetIds=[sheet, other_sheet['id']]))
+        png(combined)
+        assert abs(combined['camera']['target']['x'] - single['camera']['target']['x'] - 3) < 1e-8
+        assert abs(combined['camera']['target']['y'] - single['camera']['target']['y'] - 4) < 1e-8
+        assert combined['appliedAlignments'][sheet]['offset'] == {'x': 3, 'y': 4}
+        assert command('quantities.inspect')['totals'] == quantities_before
+        command('construction.alignment.delete', {'sheetId': sheet}, True)
+        command('sheet.delete', {'id': other_sheet['id']}, True)
         bounds = {'x': 60, 'y': 120, 'width': 330, 'height': 100}
+        # Two assembly scopes share one trace; category filters must separate
+        # their model objects without changing installed/purchased quantities.
+        project = command('project.inspect')
+        wall_application = command('construction.inspect')['applications']['walls']['wall']
+        framing = project['recipes'][wall_application['recipeId']]
+        command('assembly.put', dict(framing, category='Light-gauge metal framing'), True)
+        drywall = command('library.inspect')['assemblies']['drywall-wall-surface']
+        drywall['id'] = 'drywall-scope'
+        drywall['materialTemplate']['height'] = 3
+        command('assembly.put', drywall, True)
+        command('group.put', {'id': 'drywall-group', 'name': 'Drywall', 'geometryIds': ['wall-path']}, True)
+        command('assignment.put', {'id': 'drywall-use', 'groupId': 'drywall-group',
+                                  'recipeId': 'drywall-scope', 'inputs': {}, 'allowances': {}}, True)
+        command('project.category.put', {'name': 'Specialty scope', 'color': '#8236DC'}, True)
+        category_baseline = command('project.inspect')
+        quantity_baseline = command('quantities.inspect')
+        drywall_model = command('construction.inspect', {'categories': ['Drywall hang/finish']})
+        assert not drywall_model['pieces'] and drywall_model['surfaces']
+        assert all(surface['recipeId'] == 'drywall-scope' for surface in drywall_model['surfaces'])
+        for categories, expected in [(['Drywall hang/finish'], True), (['Light-gauge metal framing'], True), ([], False)]:
+            image = command('construction.render', {'path': str(EVIDENCE / ('category-' + str(len(categories)) + '-' + str(expected) + '.png')),
+                                                    'width': 320, 'height': 240, 'categories': categories, 'caption': 'Category review'})
+            png(image)
+            assert (image['displayedObjects'] > 0) is expected
+            assert image['categories'] == categories
+            assert visual('3d', 'Category review')['categories'] == categories
+        category_plan = command('sheet.render', {'sheetId': sheet, 'path': str(EVIDENCE / 'drywall-plan.png'),
+                                                 'categories': ['Drywall hang/finish'], 'mode': 'takeoff', 'maxDimension': 640, 'caption': 'Category plan'})
+        png(category_plan)
+        assert category_plan['categories'] == ['Drywall hang/finish']
+        assert visual('plan', 'Category plan')['categories'] == ['Drywall hang/finish']
+        assert command('project.inspect') == category_baseline
+        assert command('quantities.inspect') == quantity_baseline
         annotations = [{'points': [{'x': 100, 'y': 170}, {'x': 200, 'y': 170}],
                         'label': 'Check wall', 'color': '#ff8800'}]
         command('snippet.put', {'id': 'detail', 'name': 'Wall detail', 'sheetId': sheet,

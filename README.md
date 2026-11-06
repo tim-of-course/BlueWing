@@ -61,9 +61,11 @@ Construction dimensions use metres and rotations use radians internally; drawing
 
 The 3D viewer uses Three.js with WebGL 2 for depth-correct rendering and selection. Left-drag to orbit, middle-drag to pan, and right-drag or scroll to zoom. Choose isometric, top, front, back, left, or right views; fit the whole model or selected materials. **Solid** shows opaque finishes, **Framing** hides finishes, and **X-ray** shows their outlines through the framing. Desktop, Wingman, and CLI images use the same renderer and camera state. A WebGL 2 context is required for 3D. The viewer draws on demand, batches members into GPU instances, and uses the screen's pixel density up to the graphics device's limits.
 
+3D starts with **Current page**. Choose **Combined pages** to select multiple sheets and **Align pages** to enter X/Y offsets and rotation or pick one/two matching reference points. Saved alignments travel with the project and affect combined 3D only; individual-page views, 2D points, dimensions, and quantities retain their original values. Scale comes from calibration. Combined scenes omit PDF backgrounds. The CLI exposes the same scope and saved alignments through `construction.render` and `construction.alignment.*`; see [CLI examples](docs/cli.md).
+
 Use **Review** for source-linked snippets, geometry highlights, annotations, and review marks. Relevant dependency changes flag previously reviewed sources as changed. Generation shares a 50,000-piece/surface budget and reports incomplete results when exhausted. The 3D viewer displays all generated objects matching its filters; CSV retains all generated pieces regardless of scene filters or selection.
 
-This development release supports project format 5 only. Start a new takeoff for older projects; there are no old-format loading or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 8, which adds immutable saved-asset snapshots for fast PDF reads. Rebuild the native binaries when updating from an older checkout.
+Only project format 6 is supported. Bluewing is pre-alpha; incompatible projects must be recreated, with no backward compatibility or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 8, which adds immutable saved-asset snapshots for fast PDF reads. Rebuild the native binaries when updating from an older checkout.
 
 The CLI operates the running desktop app:
 
@@ -74,6 +76,26 @@ src-tauri/target/release/bundle/macos/Bluewing.app/Contents/MacOS/bluewing comma
 Wingman shows the latest CLI-rendered plan or 3D location in a live corner preview. Click to swap views and click again to return. Choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**, and paste it into your AI's chat to get started. In Wingman chat, Enter sends and Shift+Enter adds a new line. **Pause CLI** stops new and queued CLI actions; **End conversation** ends an active message wait. Use **Attach screenshot** or Cmd/Ctrl+Shift+X to capture any rectangle inside the app for the next message. See [Wingman behavior and verification](docs/wingman.md).
 
 See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs/web-releases.md). A public web-release host is not configured in this repository.
+
+**Open handoff document** displays a standalone HTML file without importing it
+into the project. It works with no project open. The viewer allows embedded
+scripts, styles, and images in an isolated frame; external resources and native
+access are unavailable. Close the viewer to return to the workspace.
+
+An authoring skill owns the document's content, layout, evidence, and visible
+standalone status. Bluewing reads only this optional metadata:
+
+```html
+<script type="application/json" id="bluewing-handoff">
+  { "draft": true }
+</script>
+```
+
+`true` shows **Draft** while the agent is working or waiting on blockers; `false`
+shows **Complete** when the agent has finished. This does not track human
+review or imply approval or verified quantities. Missing or malformed metadata
+shows **Status not supplied** and the document remains viewable. Opening a
+document does not change project data.
 
 ## Verify
 
@@ -147,7 +169,7 @@ Edit the vector master at [`assets/brand/bluewing.svg`](assets/brand/bluewing.sv
 
 ## Development
 
-Named independent Main, phase and change-order takeoffs use project format 5. Recreate disposable format-4 development projects. See [takeoff workflows and CLI/handoff contracts](docs/named-takeoffs.md).
+Named independent Main, phase and change-order takeoffs use project format 6. Recreate disposable format-4/5 development projects. See [takeoff workflows and CLI/handoff contracts](docs/named-takeoffs.md).
 
 The [Solid 2 repo skill](.agents/skills/solidjs-2/SKILL.md) covers RC-specific APIs and diagnostics. Solid is pinned to `2.0.0-rc.8` with its compatible compiler, renderer, diagnostics, and Vite integration. Keep `bun.lock` and `src-tauri/Cargo.lock` committed. Upgrade the Solid package set deliberately.
 

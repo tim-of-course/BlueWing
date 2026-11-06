@@ -26,8 +26,11 @@ import { exportConstruction } from '../core/detailed-commands';
 import { renderImage } from './render';
 import { encodeBase64 } from '../platform/base64';
 import type { WorkspaceController } from './contracts';
+import { geometryMatchesCategories } from '../core/categories';
+import type { CategoryFilter } from '../core/categories';
 import {
   readVisibility,
+  visibleCategoryTags,
   visibleDrawingIds,
   type DrawingVisibility,
 } from './visibility';
@@ -179,9 +182,51 @@ export function createWorkspace(
     { hiddenSheets: [], hiddenGroups: {} },
     { name: 'workspace.drawingVisibility' },
   );
+  const [categoryFilter, setCategoryFilterSignal] =
+    createSignal<CategoryFilter>(undefined);
+  function setCategoryFilter(filter: CategoryFilter) {
+    setCategoryFilterSignal(filter);
+    const current = app.project;
+    const visible = visibleDrawingIds(current, visibility(), filter);
+    setSelection((ids) => ids.filter((id) => visible.has(id)));
+    if (current) {
+      try {
+        if (filter === undefined)
+          localStorage.removeItem(`bluewing.categories.${current.id}`);
+        else
+          localStorage.setItem(
+            `bluewing.categories.${current.id}`,
+            JSON.stringify(filter),
+          );
+      } catch {
+        /* Device preferences are optional. */
+      }
+    }
+  }
+  function revealCategory(id: string) {
+    const current = app.project;
+    if (
+      current &&
+      !geometryMatchesCategories(
+        visibleCategoryTags(current, visibility())[id] ?? [],
+        categoryFilter(),
+      )
+    )
+      setCategoryFilter(undefined);
+  }
   const visibleGeometryIds = createMemo(
-    () => visibleDrawingIds(project(), visibility()),
+    () => visibleDrawingIds(project(), visibility(), categoryFilter()),
     { name: 'workspace.visibleDrawing' },
+  );
+  const visibleTags = createMemo(
+    () => {
+      const current = project();
+      return current ? visibleCategoryTags(current, visibility()) : {};
+    },
+    {
+      name: 'workspace.visibleCategoryTags',
+      equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    },
   );
   const selection = createMemo(
     () => selectedIds().filter((id) => visibleGeometryIds().has(id)),
@@ -196,7 +241,7 @@ export function createWorkspace(
     setVisibility(next);
     // A hidden selection must not reappear selected when its group is shown.
     const current = app.project;
-    const visible = visibleDrawingIds(current, next);
+    const visible = visibleDrawingIds(current, next, categoryFilter());
     setSelection((ids) => ids.filter((id) => visible.has(id)));
     if (current) {
       try {
@@ -322,6 +367,23 @@ export function createWorkspace(
       if (publishedId !== (current?.id ?? null) || switchedTakeoff) {
         resetHistory();
         setVisibility(readVisibility(current?.id ?? null));
+        let savedCategories: CategoryFilter;
+        try {
+          const value: unknown = JSON.parse(
+            localStorage.getItem(`bluewing.categories.${current?.id ?? ''}`) ??
+              'null',
+          );
+          if (
+            Array.isArray(value) &&
+            value.every(
+              (item: unknown) => item === null || typeof item === 'string',
+            )
+          )
+            savedCategories = value;
+        } catch {
+          /* Ignore invalid device preferences. */
+        }
+        setCategoryFilterSignal(savedCategories);
         setSelection([]);
         setActiveGroupId(null);
         setDrawingGroupId(null);
@@ -484,11 +546,13 @@ export function createWorkspace(
         activeGroupId: activeGroupId(),
         drawingGroupId: drawingGroupId(),
         visibility: visibility(),
+        categories: categoryFilter(),
       });
     },
     restoreContext(context) {
       const current = app.project;
       changeVisibility(context.visibility);
+      setCategoryFilter(context.categories);
       setActiveSheetId(
         context.sheetId && current?.sheets[context.sheetId]
           ? context.sheetId
@@ -608,6 +672,9 @@ export function createWorkspace(
       setSelection(ids.filter((id) => visibleGeometryIds().has(id)));
     },
     visibleGeometryIds,
+    visibleCategoryTags: visibleTags,
+    categoryFilter,
+    setCategoryFilter,
     isSheetVisible: (sheetId) => !visibility().hiddenSheets.includes(sheetId),
     setSheetVisible,
     isGroupVisible: (groupId, sheetId) =>
@@ -616,6 +683,7 @@ export function createWorkspace(
     showGeometry(id, groupId) {
       const geometry = app.project?.geometries[id];
       if (!geometry) return;
+      revealCategory(id);
       const view = visibility();
       changeVisibility({
         hiddenSheets: view.hiddenSheets.filter(
@@ -750,6 +818,7 @@ export function createWorkspace(
           payload: { id: group.id, geometryIds: [...group.geometryIds, id] },
         });
       await batch(commands, expected);
+      revealCategory(id);
       const view = visibility();
       if (
         view.hiddenSheets.includes(sheetId) ||

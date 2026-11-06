@@ -204,7 +204,7 @@ const project = (): Project => ({
       owned: {},
     },
   },
-  formatVersion: 5,
+  formatVersion: 6,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -232,6 +232,57 @@ void test('SQLite persists changed records only and rejects stale revisions atom
   );
   assert.deepEqual(await storage.load(), next);
   await assert.rejects(storage.initialize(initial));
+  database.close();
+});
+
+void test('project-only category colors survive SQLite reopen and extension removal', async () => {
+  const { storage, database } = fixture();
+  await storage.open('categories', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next = {
+    ...initial,
+    revision: 1,
+    categoryColors: { Special: '#8236DC' },
+  };
+  await storage.save(initial, next);
+  assert.deepEqual(await storage.load(), next);
+  const removed = { ...initial, revision: 2 };
+  await storage.save(next, removed);
+  assert.deepEqual(await storage.load(), removed);
+  database.close();
+});
+
+void test('combined 3D sheet alignment persists and clears without format migration', async () => {
+  const { storage, database } = fixture();
+  await storage.open('alignment', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next: Project = {
+    ...initial,
+    revision: 1,
+    sheets: {
+      s: {
+        id: 's',
+        name: 'Sheet',
+        assetId: 'pdf',
+        pageIndex: 0,
+        width: 100,
+        height: 100,
+        combined3dAlignment: {
+          offset: { x: 3.25, y: -4.5 },
+          rotation: Math.PI / 3,
+        },
+      },
+    },
+  };
+  await storage.save(initial, next);
+  assert.deepEqual(await storage.load(), next);
+  const cleared = structuredClone(next);
+  cleared.revision++;
+  delete cleared.sheets.s?.combined3dAlignment;
+  await storage.save(next, cleared);
+  assert.deepEqual(await storage.load(), cleared);
   database.close();
 });
 
@@ -272,12 +323,12 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   database.close();
 });
 
-void test('format 5 saves assembly fields atomically and retains them on reopen', async () => {
+void test('assembly fields save atomically and survive reopen', async () => {
   const { storage, database, setFailure } = fixture();
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 5);
+  assert.equal((await storage.load()).formatVersion, 6);
   const next: Project = {
     ...initial,
     revision: 1,
@@ -316,7 +367,7 @@ void test('format 5 saves assembly fields atomically and retains them on reopen'
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    5,
+    6,
   );
   database.close();
 });
@@ -325,7 +376,7 @@ void test('old project formats are rejected without changing the saved file', as
   const { storage, database, backups } = fixture();
   await storage.open('unsupported', true);
   await storage.initialize(project());
-  for (const version of [1, 2, 3, 4]) {
+  for (const version of [1, 2, 3, 4, 5]) {
     database.prepare('UPDATE project SET format_version=?').run(version);
     await assert.rejects(storage.load(), /format|version/i);
     assert.equal(
@@ -338,7 +389,7 @@ void test('old project formats are rejected without changing the saved file', as
   database.close();
 });
 
-void test('format 5 extensions survive reopen and backups run only when requested', async () => {
+void test('extensions survive reopen and backups run only when requested', async () => {
   const { storage, database, backups, setBackupFailure } = fixture();
   await storage.open('detailed', true);
   const initial = project();
@@ -427,5 +478,37 @@ void test('native asset readers stream from immutable snapshots and release them
   await range.close?.();
   assert.equal(snapshots.size, 0);
   await assert.rejects(range.read(0, 1), /Missing snapshot/);
+  database.close();
+});
+
+void test('SQLite notes saves and clearing are atomic and survive reopen', async () => {
+  const { storage, database, setFailure } = fixture();
+  await storage.open('notes', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next: Project = {
+    ...initial,
+    notes: '# 😀\nA101 detail.*',
+    revision: 1,
+  };
+  setFailure(true);
+  await assert.rejects(storage.save(initial, next), /disk full/);
+  assert.deepEqual(await storage.load(), initial);
+  setFailure(false);
+  await storage.save(initial, next);
+  await storage.close();
+  await storage.open('notes', false);
+  assert.deepEqual(await storage.load(), next);
+  await assert.rejects(
+    storage.save(initial, { ...next, notes: 'Stale' }),
+    /CHECK/,
+  );
+  assert.deepEqual(await storage.load(), next);
+  const cleared = { ...next, revision: 2 };
+  delete cleared.notes;
+  await storage.save(next, cleared);
+  await storage.close();
+  await storage.open('notes', false);
+  assert.deepEqual(await storage.load(), cleared);
   database.close();
 });

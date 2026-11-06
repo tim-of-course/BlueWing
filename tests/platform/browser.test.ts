@@ -42,7 +42,7 @@ for (const browserType of [chromium, firefox, webkit]) {
               owned: {},
             },
           },
-          formatVersion: 5 as const,
+          formatVersion: 6 as const,
           id: 'p',
           name: 'Original',
           revision: 0,
@@ -95,6 +95,8 @@ for (const browserType of [chromium, firefox, webkit]) {
               points: [{ x: 2, y: 3 }],
             },
           },
+          notes: '# Scratchpad\n😀 detail',
+          categoryColors: { Special: '#8236DC' },
         };
         await storage.save(initial, next);
         let conflict = false;
@@ -143,6 +145,9 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.ok(!('calibrations' in result.saved.takeoffs.co));
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
       assert.equal(result.saved.sheets.s.assetId, 'pdf');
+      assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
+      assert.equal(result.saved.formatVersion, 6);
+      assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
     } finally {
       await browser.close();
     }

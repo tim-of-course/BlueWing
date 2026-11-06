@@ -1,6 +1,6 @@
 # Desktop CLI
 
-Named takeoffs: call `takeoff.list`, then supply `takeoffId` in the request envelope for takeoff reads, edits, batch/preview, exports and renders. CLI context is independent of the active UI selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-5 reset and per-takeoff handoff filenames.
+Named takeoffs: call `takeoff.list`, then `takeoff.select` with `{id}` to set persistent CLI context (Main initially). An envelope `takeoffId` overrides one request for reads, edits, batch/preview, exports and renders. CLI context is independent of the active UI selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-6 reset and per-takeoff handoff filenames.
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
@@ -54,6 +54,12 @@ bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate
 `web.stage` accepts a manifest URL and verifies the complete web release before caching it. `web.activate` accepts the staged version and reloads the web application after acknowledging the terminal response. Close the project and finish or cancel drafts first. These commands do not rebuild the Rust shell.
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
+
+## Project scratchpad
+
+`notes.read` returns `{markdown}`. `notes.write` replaces the full Markdown string using `{markdown}` and the normal project identity/expected revision; an empty string clears it. Read before writing and preserve unrelated text. `notes.search` accepts a nonempty `{query}` and returns matching `lines` with 1-based `line` numbers and `text`, plus `totalMatches` (occurrences). Search is case-insensitive literal substring matching in accepted text, without regex or an index. Notes use shared Undo/Redo, batch, preview, saving, and Pause CLI behavior.
+
+The right inspector has an alternate **Notes** view with a plain multiline editor, draft Find/previous/next, explicit Save/Cancel, and Ctrl/Cmd+S. Save failures and revision conflicts retain the draft; inspect changes before cancelling and reapplying it. Notes are freeform Markdown, separate from review, snippets, chat, and structured reports. Sheet/detail names and snippet IDs/bounds are ordinary prose references and are never rewritten automatically.
 
 ## AI Page Naming workflow
 
@@ -129,6 +135,27 @@ Recordings now include `canvas.pointer`, `canvas.paint`, `canvas.commit`, `page.
 
 ## Detailed takeoff
 
+### Assembly category filters
+
+`sheet.render`, `construction.render`, and `construction.inspect` accept optional
+`categories`, an array of assembly category names. Omit it for all categories,
+use `[]` for no matches, and include `null` for Uncategorized. Matching trims names
+and ignores case, and uses OR across categories.
+Other filters intersect. Explicit CLI filters are independent of UI preferences.
+
+```sh
+bluewing construction.render '{"payload":{"path":"/absolute/path/drywall.png","categories":["Drywall hang/finish"]}}'
+bluewing construction.inspect '{"payload":{"categories":["Light-gauge metal framing"]}}'
+bluewing sheet.render '{"payload":{"sheetId":"SHEET_ID","path":"/absolute/path/scopes.png","categories":["Drywall hang/finish","Light-gauge metal framing"]}}'
+bluewing project.category.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"name":"Specialty scope","color":"#8236DC"}}'
+```
+
+Project inspection exposes custom colors in `categoryColors`. Standard categories
+use fixed vivid colors. Published Wingman views retain render category filters.
+Sheet filters affect takeoff strokes/highlights, leaving the PDF layer unchanged.
+Quantity inspection and exports remain unfiltered. Separately filtering framing
+and drywall requires separate assemblies, even when they share a trace.
+
 The structured Construction and Review panels use the same commands below. Consult `commands.list` for complete required fields. Most `put` commands replace full records; `wall.put` and `ceiling.put` accept a resolved specification and store its local differences from the applied project assembly. All examples use the usual `payload` envelope, with project identity and expected revision on mutations.
 
 | Commands                                          | Purpose                                                                                                                                                                                            |
@@ -148,6 +175,20 @@ The structured Construction and Review panels use the same commands below. Consu
 Construction physical lengths and world positions use metres, areas use square metres, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Recipe inputs still use their declared units.
 
 `construction.render` uses the same Three.js renderer as the interactive 3D view and Wingman. Its payload supports:
+
+`sheetIds` limits the page scope: omit it for all project sheets, pass one ID for a single page, or pass `[]` for an empty scene. Unknown sheet IDs fail the request. `alignment` is `saved` by default, or `none` to ignore combined 3D transforms. Saved transforms apply only when the scope contains at least two sheets, before the other filters. Single-page views retain their original placement. The result includes resolved `sheetIds`, `alignment`, and `appliedAlignments` alongside the camera. Wingman receives this explicit scope and shows construction without an unrelated active PDF background.
+
+Combined 3D alignment is a saved presentation transform after calibration and construction placement. It does not change source geometry, placement, quantities, or single-page views. Numeric offsets use world XY metres and rotation uses radians about world Z. Set it with `construction.alignment.put`, remove it with `construction.alignment.delete`, or solve it with `construction.alignment.match`. These project mutations require the usual project identity and expected revision.
+
+```sh
+bluewing construction.alignment.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheetId":"SOURCE_SHEET_ID","offset":{"x":2,"y":-1},"rotation":0.1}}'
+bluewing construction.alignment.match '{"projectId":"PROJECT_ID","expectedRevision":13,"payload":{"sheetId":"SOURCE_SHEET_ID","referenceSheetId":"REFERENCE_SHEET_ID","sourcePoints":[{"x":72,"y":144},{"x":216,"y":144}],"referencePoints":[{"x":100,"y":200},{"x":244,"y":200}]}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/combined.png","sheetIds":["SOURCE_SHEET_ID","REFERENCE_SHEET_ID"],"alignment":"saved","view":"top"}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/original.png","alignment":"none","view":"top"}}'
+bluewing construction.alignment.delete '{"projectId":"PROJECT_ID","expectedRevision":14,"payload":{"sheetId":"SOURCE_SHEET_ID"}}'
+```
+
+Match points are corresponding source and reference **page coordinates**, in the order supplied, on distinct calibrated sheets. One pair preserves the source's saved rotation and solves translation; two pairs solve rigid rotation and translation without scaling. The reference's saved combined transform is included. The result reports `alignment`, `sourceDistance`, `referenceDistance`, `residual`, and per-pair `residuals` in metres (distances are null for one pair). A distance mismatch remains visible as residual error; matching never recalibrates either sheet.
 
 | Option                                         | Meaning                                                                                                                                                    |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -198,7 +239,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 5 is supported. Recreate older development takeoffs; the app does not load or migrate them. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
+Only project format 6 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 7.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

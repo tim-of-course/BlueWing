@@ -26,7 +26,7 @@ function fixture(
         owned: {},
       },
     },
-    formatVersion: 5,
+    formatVersion: 6,
     id: 'project',
     name: 'Estimate',
     revision: 0,

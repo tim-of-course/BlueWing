@@ -179,7 +179,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         geometry = {'id': 'wall-path', 'name': 'Wall W1', 'sheetId': sheet, 'kind': 'path',
                     'points': [{'x': 72, 'y': 144}, {'x': 372, 'y': 144}]}
         call('geometry.put', geometry, True)
-        assert inspect()['formatVersion'] == 5
+        assert inspect()['formatVersion'] == 6
         member = {'materialId': 'stud-40x90', 'width': 0.04, 'depth': 0.09, 'stockLength': 4}
         wall = {'id': 'wall', 'geometryId': 'wall-path', 'baseElevation': 0, 'height': 3,
                 'studSpacing': 0.5, 'stud': member, 'bottomAllowance': 0.02, 'topAllowance': 0.03,

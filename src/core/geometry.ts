@@ -14,7 +14,7 @@ export function newId(): string {
 }
 export function createProject(name: string, id = newId()): Project {
   return {
-    formatVersion: 5,
+    formatVersion: 6,
     takeoffs: {
       main: {
         id: 'main',

@@ -8,6 +8,7 @@ import {
 } from '../../src/core/calculations';
 import { takeoffProject, required } from '../../src/core/takeoffs';
 import { resolveConstruction } from '../../src/core/applied-assemblies';
+import { constructionSceneInput } from '../../src/three/scene';
 import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
 import { executeCommand } from '../../src/core/commands';
 import { importFixture } from '../fixtures/quantity-project';
@@ -349,6 +350,43 @@ void test('copy/delete, failed saves, batch preview and undo/redo stay atomic in
   );
 });
 
+void test('project notes and category colors remain shared when edited from another takeoff', async () => {
+  const f = fixture();
+  await f.create();
+  await f.copy();
+  const cached = f.session.calculationFor('co');
+  await f.call({
+    name: 'notes.write',
+    takeoffId: 'co',
+    payload: { markdown: '# Shared project note' },
+  });
+  await f.call({
+    name: 'project.category.put',
+    takeoffId: 'co',
+    payload: { name: 'Special insulation', color: '#7338D1' },
+  });
+  assert.equal(f.session.project.notes, '# Shared project note');
+  assert.equal(
+    takeoffProject(f.session.project, 'main').categoryColors?.[
+      'Special insulation'
+    ],
+    '#7338D1',
+  );
+  assert.equal(
+    takeoffProject(f.session.project, 'co').categoryColors?.[
+      'Special insulation'
+    ],
+    '#7338D1',
+  );
+  assert.equal(f.session.calculationFor('co'), cached);
+  await f.call({ name: 'history.undo' });
+  assert.equal(
+    f.session.project.categoryColors?.['Special insulation'],
+    undefined,
+  );
+  assert.equal(f.session.project.notes, '# Shared project note');
+});
+
 void test('copied modeled walls remap openings and applied IDs; unresolved deductions stay incomplete', async () => {
   const f = fixture();
   await f.call({
@@ -402,6 +440,17 @@ void test('copied modeled walls remap openings and applied IDs; unresolved deduc
   assert.notEqual(opening.wallId, 'wall');
   assert.ok(walls[opening.wallId]);
   assert.ok(f.report('co').model.pieces.every((p) => p.direction === 'deduct'));
+  const colored = structuredClone(co);
+  for (const recipe of Object.values(colored.recipes))
+    recipe.category = 'Insulation';
+  colored.categoryColors = { Insulation: '#7338D1' };
+  const scene = constructionSceneInput(f.report('co').model, colored);
+  assert.ok(scene.members.length > 0);
+  assert.ok(
+    scene.members.every(
+      (member) => member.direction === 'deduct' && member.color === '#7338D1',
+    ),
+  );
   await f.copy('add');
   assert.equal(
     Object.keys(

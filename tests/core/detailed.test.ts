@@ -60,7 +60,7 @@ void test('construction commands save, preview, undo and redo without changing a
   const { session, call, wall, saves } = fixture();
   const points = session.project.geometries.g?.points;
   await call({ name: 'wall.put', payload: wall });
-  assert.equal(session.project.formatVersion, 5);
+  assert.equal(session.project.formatVersion, 6);
   const result = generateConstruction(
     session.project,
     resolveConstruction(session.project),

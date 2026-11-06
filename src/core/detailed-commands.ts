@@ -16,6 +16,12 @@ import {
 } from './applied-assemblies';
 import { calculateProject } from './calculations';
 import {
+  categoryName,
+  matchesCategories,
+  filterConstructionCategories,
+  type CategoryFilter,
+} from './categories';
+import {
   emptyReview,
   inspectReview,
   pruneReview,
@@ -367,7 +373,15 @@ export const detailedCommands: CommandDefinition[] = [
   definition(
     'construction.inspect',
     'Derive positioned pieces, finish surfaces, purchasing quantities and unresolved inputs.',
-    object({}),
+    object(
+      {
+        categories: {
+          type: 'array',
+          items: { type: 'string', nullable: true },
+        },
+      },
+      [],
+    ),
     false,
   ),
   definition(
@@ -493,14 +507,44 @@ export function executeDetailed(
     return records[id] ?? { deleted: id };
   }
   switch (call.name) {
-    case 'construction.inspect':
+    case 'construction.inspect': {
+      const categories = payload.categories as CategoryFilter;
+      const applications = resolveConstruction(project);
+      const include = (source: { recipeId?: string }) =>
+        matchesCategories(
+          categoryName(project.recipes[source.recipeId ?? '']?.category),
+          categories,
+        );
       return {
         projectId: project.id,
         revision: project.revision,
         takeoff: project.takeoffs[project.takeoffId ?? 'main'],
-        ...calculation().model,
-        applications: resolveConstruction(project),
+        ...filterConstructionCategories(
+          project,
+          calculation().model,
+          categories,
+        ),
+        categories,
+        applications: {
+          ...applications,
+          walls: Object.fromEntries(
+            Object.entries(applications.walls).filter(([, item]) =>
+              include(item),
+            ),
+          ),
+          ceilings: Object.fromEntries(
+            Object.entries(applications.ceilings).filter(([, item]) =>
+              include(item),
+            ),
+          ),
+          materials: Object.fromEntries(
+            Object.entries(applications.materials ?? {}).filter(([, item]) =>
+              include(item),
+            ),
+          ),
+        },
       };
+    }
     case 'construction.export':
       return exportConstruction(
         project,

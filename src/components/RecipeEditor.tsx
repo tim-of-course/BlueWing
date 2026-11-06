@@ -15,6 +15,7 @@ import {
   For,
   Show,
   onSettled,
+  untrack,
 } from 'solid-js';
 import {
   evaluateFormula,
@@ -26,6 +27,7 @@ import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import { calculateProject } from '../core/calculations';
 import { validateAssembly } from '../core/commands';
+import { categoryOptions } from '../core/categories';
 import type {
   GeometryKind,
   Recipe,
@@ -91,6 +93,18 @@ export default function RecipeEditor(props: {
   let libraryRevision = 0;
   const [error, setError] = createSignal('');
   const [saving, setSaving] = createSignal(false);
+  const [categoryName, setCategoryName] = createSignal('');
+  const [categoryColor, setCategoryColor] = createSignal('#d12fa9');
+  const categoryChoices = createMemo(
+    () => {
+      const project = props.controller.project();
+      return project ? categoryOptions(project) : [];
+    },
+    {
+      name: 'recipe.categoryChoices',
+      equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+    },
+  );
   const [previewOpen, setPreviewOpen] = createSignal(false);
   const assemblyError = createMemo(() => {
     const recipe = draft();
@@ -544,6 +558,7 @@ export default function RecipeEditor(props: {
             <label class="field">
               Category
               <input
+                list="assembly-category-options"
                 value={recipe().category ?? ''}
                 disabled={saving()}
                 onInput={(event) => {
@@ -552,6 +567,61 @@ export default function RecipeEditor(props: {
                 }}
               />
             </label>
+            <datalist id="assembly-category-options">
+              <For each={categoryChoices()} keyed={(option) => option.name}>
+                {(option) => <option value={option().name} />}
+              </For>
+            </datalist>
+            <details>
+              <summary>Add or edit project category</summary>
+              <div class="button-row">
+                <input
+                  aria-label="Project category name"
+                  placeholder="Category name"
+                  value={categoryName()}
+                  onInput={(event) =>
+                    setCategoryName(event.currentTarget.value)
+                  }
+                />
+                <input
+                  aria-label="Project category color"
+                  type="color"
+                  value={categoryColor()}
+                  onInput={(event) =>
+                    setCategoryColor(event.currentTarget.value)
+                  }
+                />
+                <button
+                  type="button"
+                  disabled={
+                    saving() ||
+                    !categoryName().trim() ||
+                    !props.controller.project()
+                  }
+                  onClick={() => {
+                    const name = categoryName().trim();
+                    setSaving(true);
+                    void props.controller
+                      .execute(
+                        {
+                          name: 'project.category.put',
+                          payload: { name, color: categoryColor() },
+                        },
+                        observation ?? props.controller.observe(),
+                      )
+                      .then(() => {
+                        observation = untrack(() => props.controller.observe());
+                        change((current) => ({ ...current, category: name }));
+                        setCategoryName('');
+                      })
+                      .catch(report)
+                      .finally(() => setSaving(false));
+                  }}
+                >
+                  Save category
+                </button>
+              </div>
+            </details>
             <label class="field">
               Description
               <textarea

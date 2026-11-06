@@ -12,6 +12,12 @@ import type { Observation } from '../../app/application';
 import type { Geometry, LengthUnit, Point, Sheet } from '../../core/types';
 import { deductionGeometryIds } from '../../core/takeoffs';
 import {
+  categoryColor,
+  geometryCategories,
+  geometryMatchesCategories,
+  matchesCategories,
+} from '../../core/categories';
+import {
   distance,
   hitTestGeometry,
   hitTestGeometrySweep,
@@ -168,6 +174,8 @@ export default function DrawingCanvas(props: {
   tool: DrawingTool;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
+  /** Captures snapped page coordinates before any selection or drawing edit. */
+  onPickPoint?: (point: Point) => void;
   interactionDisabled?: boolean;
   presentationActive?: boolean;
   active?: boolean;
@@ -242,15 +250,23 @@ export default function DrawingCanvas(props: {
       : null,
   );
   const geometries = createMemo(
-    () =>
-      Object.values(props.controller.project()?.geometries ?? {}).filter(
+    () => {
+      const project = props.controller.project();
+      const tags =
+        project && activePresentation() ? geometryCategories(project) : {};
+      return Object.values(project?.geometries ?? {}).filter(
         (item) =>
           item.sheetId === sheet()?.id &&
           (activePresentation()
-            ? !activePresentation()?.visibleGeometryIds ||
-              activePresentation()?.visibleGeometryIds?.includes(item.id)
+            ? (!activePresentation()?.visibleGeometryIds ||
+                activePresentation()?.visibleGeometryIds?.includes(item.id)) &&
+              geometryMatchesCategories(
+                tags[item.id] ?? [],
+                props.controller.categoryFilter(),
+              )
             : props.controller.visibleGeometryIds().has(item.id)),
-      ),
+      );
+    },
     {
       name: 'canvas.geometries',
       equals: (previous, next) =>
@@ -260,22 +276,24 @@ export default function DrawingCanvas(props: {
   );
   const geometryColors = createMemo(
     () => {
-      const colors: Record<string, string> = {};
-      for (const group of Object.values(
-        props.controller.project()?.groups ?? {},
-      )) {
-        if (!props.controller.isGroupVisible(group.id, sheet()?.id ?? ''))
-          continue;
-        for (const id of group.geometryIds)
-          colors[id] = group.color ?? '#3b82f6';
-      }
-      return colors;
+      const project = props.controller.project();
+      if (!project) return {};
+      const categories = activePresentation()
+        ? geometryCategories(project)
+        : props.controller.visibleCategoryTags();
+      const filter = props.controller.categoryFilter();
+      return Object.fromEntries(
+        Object.keys(project.geometries).map((id) => [
+          id,
+          (categories[id] ?? [])
+            .filter((name) => matchesCategories(name, filter))
+            .map((name) => categoryColor(project, name)),
+        ]),
+      );
     },
     {
       name: 'canvas.geometryColors',
-      equals: (previous, next) =>
-        Object.keys(previous).length === Object.keys(next).length &&
-        Object.entries(previous).every(([id, color]) => next[id] === color),
+      equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
     },
   );
   const renderSheet = createMemo(() => sheet(), {
@@ -561,7 +579,7 @@ export default function DrawingCanvas(props: {
     if (state.presentation?.mode === 'plan') displayed = [];
     paintTakeoff(ctx, displayed, {
       selectedIds: state.selected,
-      colors: state.colors,
+      categoryColors: state.colors,
       deductionIds: state.deductionIds,
       unitsPerPixel: pixel,
     });
@@ -891,6 +909,17 @@ export default function DrawingCanvas(props: {
     const current = sheet();
     if (!current) return;
     const point = pagePoint(event);
+    if (props.onPickPoint) {
+      event.preventDefault();
+      if (
+        point.x >= 0 &&
+        point.y >= 0 &&
+        point.x <= current.width &&
+        point.y <= current.height
+      )
+        props.onPickPoint(snap(point, event.shiftKey));
+      return;
+    }
     if (brushSelection) {
       event.preventDefault();
       paintSelection(point, event.altKey);
@@ -1066,7 +1095,8 @@ export default function DrawingCanvas(props: {
       });
       return;
     }
-    if (props.tool !== 'select') setHover(snap(point, event.shiftKey));
+    if (props.tool !== 'select' || props.onPickPoint)
+      setHover(snap(point, event.shiftKey));
   }
   function pointerUp(event: PointerEvent) {
     const completed = gesture;
@@ -1125,6 +1155,7 @@ export default function DrawingCanvas(props: {
             height: size.height / view.zoom,
           },
           visibleGeometryIds: geometries().map((item) => item.id),
+          categories: props.controller.categoryFilter(),
         };
       },
       apply(view) {

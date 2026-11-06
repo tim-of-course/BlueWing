@@ -8,6 +8,90 @@ declare global {
   }
 }
 
+test('shared category strokes and uncategorized hatch remain legible at two zooms', async ({
+  page,
+}) => {
+  await page.goto('/tests/browser/construction-rendering-harness.html');
+  for (const zoom of [1, 2]) {
+    const results = await page.evaluate(
+      (scale) => ({
+        shared: window.constructionRendering.categoryStrokes(scale, [
+          '#0077CC',
+          '#C023A0',
+        ]),
+        framing: window.constructionRendering.categoryStrokes(scale, [
+          '#0077CC',
+        ]),
+        drywall: window.constructionRendering.categoryStrokes(scale, [
+          '#C023A0',
+        ]),
+        unclassified: window.constructionRendering.categoryStrokes(scale, []),
+      }),
+      zoom,
+    );
+    expect(results.shared.blue).toBeGreaterThan(100);
+    expect(results.shared.magenta).toBeGreaterThan(100);
+    expect(results.framing.blue).toBeGreaterThan(100);
+    expect(results.framing.magenta).toBe(0);
+    expect(results.drywall.magenta).toBeGreaterThan(100);
+    expect(results.drywall.blue).toBe(0);
+    expect(results.unclassified.hatch).toBeGreaterThan(10);
+    expect(results.unclassified.pale).toBeGreaterThan(100);
+  }
+});
+
+test('deduction dashes preserve parallel category colors for paths, areas, counts and selections', async ({
+  page,
+}) => {
+  const errors = await captureErrors(page);
+  await page.goto('/tests/browser/construction-rendering-harness.html');
+  const draft = await page.evaluate(() => ({
+    solid: window.constructionRendering.categoryStrokes(
+      1,
+      ['#0077CC'],
+      'solid',
+    ),
+    dashed: window.constructionRendering.categoryStrokes(
+      1,
+      ['#0077CC'],
+      'dashed',
+    ),
+  }));
+  expect(draft.dashed.blue).toBeLessThan(draft.solid.blue * 0.9);
+  for (const zoom of [1, 2])
+    for (const kind of ['path', 'area', 'count'] as const)
+      for (const selected of [false, true])
+        for (const uncategorized of [false, true]) {
+          const result = await page.evaluate(
+            ({ zoom, kind, selected, uncategorized }) =>
+              window.constructionRendering.categoryDeductionStrokes(
+                zoom,
+                kind,
+                selected,
+                uncategorized,
+              ),
+            { zoom, kind, selected, uncategorized },
+          );
+          expect(result.deduction?.ink).toBeGreaterThan(5);
+          expect(result.deduction?.ink).toBeLessThan(
+            (result.positive?.ink ?? 0) * 0.98,
+          );
+          if (!uncategorized) {
+            expect(result.deduction?.blue).toBeGreaterThan(5);
+            expect(result.deduction?.magenta).toBeGreaterThan(5);
+            expect(result.deduction?.blue).toBeLessThan(
+              (result.positive?.blue ?? 0) * 0.98,
+            );
+            expect(result.deduction?.magenta).toBeLessThan(
+              (result.positive?.magenta ?? 0) * 0.98,
+            );
+          }
+          expect(result.deduction?.red).toBe(0);
+          expect(result.positive?.red).toBe(0);
+        }
+  expect(errors).toEqual([]);
+});
+
 test('middle-drag pans and right-drag zooms the 3D view', async ({ page }) => {
   await page.goto('/tests/browser/construction-rendering-harness.html');
   await page.evaluate(() => {
