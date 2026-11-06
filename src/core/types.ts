@@ -23,6 +23,11 @@ export interface Quantity {
 export interface Calibration {
   metresPerUnit: number;
 }
+/** Presentation-only rigid transform in model metres/radians, about world Z. */
+export interface Combined3dAlignment {
+  offset: Point;
+  rotation: number;
+}
 export interface Sheet {
   id: string;
   name: string;
@@ -34,6 +39,7 @@ export interface Sheet {
   rotation?: number;
   pdfToPage?: [number, number, number, number, number, number];
   calibration?: Calibration;
+  combined3dAlignment?: Combined3dAlignment;
 }
 export type GeometryKind = 'path' | 'area' | 'count';
 export interface Geometry {

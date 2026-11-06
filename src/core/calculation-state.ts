@@ -52,9 +52,16 @@ export function changesCalculation(
     case 'snippet.put':
     case 'snippet.delete':
     case 'review.mark':
+    case 'construction.alignment.put':
+    case 'construction.alignment.delete':
+    case 'construction.alignment.match':
       return false;
     case 'sheet.put':
-      return !sameExcept(project.sheets[id], payload, ['name', 'order']);
+      return !sameExcept(project.sheets[id], payload, [
+        'name',
+        'order',
+        'combined3dAlignment',
+      ]);
     case 'geometry.put':
       return !sameExcept(project.geometries[id], payload, ['name']);
     case 'group.put':

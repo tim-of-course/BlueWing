@@ -20,6 +20,9 @@ export interface PlanView {
 export interface ModelView {
   kind: '3d';
   camera: SceneCamera;
+  sheetIds?: string[];
+  alignment?: 'saved' | 'none';
+  pageMode?: 'current' | 'combined' | 'explicit';
   displayMode?: DisplayMode;
   showPlan?: boolean;
   geometryIds?: string[];

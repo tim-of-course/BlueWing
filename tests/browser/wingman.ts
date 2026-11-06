@@ -680,6 +680,15 @@ export async function modelWorkflow(page: Page) {
     track: { materialId: 'track', width: 0.04, depth: 0.09 },
     finishes: [],
   });
+  // A second page makes combined presentation transforms observable even though
+  // all construction in this fixture belongs to the original page.
+  const sourceSheet = project.sheets[geometry.sheetId];
+  if (!sourceSheet) throw new Error('Missing source sheet');
+  await mutate(page, 'sheet.put', {
+    ...sourceSheet,
+    id: 'wingman-reference',
+    name: 'Wingman reference',
+  });
   await page
     .getByLabel('Workspace view', { exact: true })
     .selectOption('split');
@@ -722,20 +731,64 @@ export async function modelWorkflow(page: Page) {
   );
   await page.mouse.up({ button: 'right' });
   await expect
-    .poll(async () => (await inspect(page)).data.main.model?.camera.target)
-    .not.toEqual(fitted.camera.target);
+    .poll(async () => (await inspect(page)).data.main.model?.camera.zoom)
+    .not.toEqual(fitted.camera.zoom);
+  const draggedZoom = (await inspect(page)).data.main.model?.camera.zoom;
+  if (draggedZoom === undefined) throw new Error('Missing dragged camera');
   await viewer.getByRole('img').press('ArrowLeft');
   await viewer.getByRole('img').press('+');
   await expect(view).toHaveValue('');
   const before = (await inspect(page)).data.main;
   expect(before.model?.role).toBe('stud');
   expect(before.model?.camera.span).toBe(fitted.camera.span);
-  expect(before.model?.camera.zoom).toBeCloseTo(1.2);
+  expect(before.model?.camera.zoom).toBeCloseTo(draggedZoom * 1.2);
   const target = { ...fitted.camera.target, z: 2.75 };
   const span = fitted.camera.span * 1.25;
+  const empty = await cli<{
+    sheetIds: string[];
+    alignment: string;
+    appliedAlignments: Record<string, unknown>;
+    displayedObjects: number;
+  }>(page, 'construction.render', {
+    path: 'empty-model.png',
+    width: 64,
+    height: 64,
+    sheetIds: [],
+    alignment: 'none',
+  });
+  expect(empty.exitCode).toBe(0);
+  expect(empty.response.data).toMatchObject({
+    sheetIds: [],
+    alignment: 'none',
+    appliedAlignments: {},
+    displayedObjects: 0,
+  });
+  expect((await inspect(page)).data.agent?.view).toMatchObject({
+    sheetIds: [],
+    alignment: 'none',
+    pageMode: 'explicit',
+    showPlan: false,
+  });
+  const single = await cli<{
+    sheetIds: string[];
+    appliedAlignments: Record<string, unknown>;
+    displayedObjects: number;
+  }>(page, 'construction.render', {
+    path: 'single-model.png',
+    width: 64,
+    height: 64,
+    sheetIds: [geometry.sheetId],
+  });
+  expect(single.exitCode).toBe(0);
+  expect(single.response.data.sheetIds).toEqual([geometry.sheetId]);
+  expect(single.response.data.appliedAlignments).toEqual({});
+  expect(single.response.data.displayedObjects).toBeGreaterThan(0);
   const rendered = await cli<{
     camera: ModelView['camera'];
     displayMode: string;
+    sheetIds: string[];
+    alignment: string;
+    appliedAlignments: Record<string, unknown>;
   }>(page, 'construction.render', {
     path: 'model.png',
     width: 640,
@@ -757,17 +810,30 @@ export async function modelWorkflow(page: Page) {
     zoom: 1.3,
   });
   expect(rendered.response.data.displayMode).toBe('xray');
+  expect(rendered.response.data.sheetIds).toEqual([
+    ...Object.keys(project.sheets),
+    'wingman-reference',
+  ]);
+  expect(rendered.response.data.alignment).toBe('saved');
+  expect(rendered.response.data.appliedAlignments).toEqual({});
   const validView = await inspect(page);
   expect(validView.data.agent?.view).toMatchObject({
     kind: '3d',
     camera: rendered.response.data.camera,
     displayMode: 'xray',
+    sheetIds: rendered.response.data.sheetIds,
+    alignment: 'saved',
+    pageMode: 'explicit',
+    showPlan: false,
   });
   for (const invalid of [
     { zoom: 0.001 },
     { zoom: 10_001 },
     { elevation: -2 },
     { elevation: 2 },
+    { sheetIds: ['missing-sheet'] },
+    { sheetIds: [geometry.sheetId, 'missing-sheet'] },
+    { alignment: 'invalid' },
   ]) {
     const rejected = await cli(page, 'construction.render', {
       path: 'invalid-camera.png',
@@ -795,6 +861,21 @@ export async function modelWorkflow(page: Page) {
   await expect
     .poll(() => preview.evaluate((el) => (el as HTMLCanvasElement).toDataURL()))
     .not.toBe(pixels);
+  const geometryPixels = await preview.evaluate((el) =>
+    (el as HTMLCanvasElement).toDataURL(),
+  );
+  // Alignment edits are live even when the cached construction result is reused.
+  await mutate(page, 'construction.alignment.put', {
+    sheetId: geometry.sheetId,
+    offset: { x: 2, y: 0 },
+    rotation: 0.2,
+  });
+  await expect
+    .poll(() => preview.evaluate((el) => (el as HTMLCanvasElement).toDataURL()))
+    .not.toBe(geometryPixels);
+  await mutate(page, 'construction.alignment.delete', {
+    sheetId: geometry.sheetId,
+  });
   await page
     .getByRole('button', { name: 'Swap to agent view', exact: true })
     .click();

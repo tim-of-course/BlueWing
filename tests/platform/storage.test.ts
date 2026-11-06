@@ -150,6 +150,39 @@ void test('SQLite persists changed records only and rejects stale revisions atom
   database.close();
 });
 
+void test('combined 3D sheet alignment persists and clears without format migration', async () => {
+  const { storage, database } = fixture();
+  await storage.open('alignment', true);
+  const initial = project();
+  await storage.initialize(initial);
+  const next: Project = {
+    ...initial,
+    revision: 1,
+    sheets: {
+      s: {
+        id: 's',
+        name: 'Sheet',
+        assetId: 'pdf',
+        pageIndex: 0,
+        width: 100,
+        height: 100,
+        combined3dAlignment: {
+          offset: { x: 3.25, y: -4.5 },
+          rotation: Math.PI / 3,
+        },
+      },
+    },
+  };
+  await storage.save(initial, next);
+  assert.deepEqual(await storage.load(), next);
+  const cleared = structuredClone(next);
+  cleared.revision++;
+  delete cleared.sheets.s?.combined3dAlignment;
+  await storage.save(next, cleared);
+  assert.deepEqual(await storage.load(), cleared);
+  database.close();
+});
+
 void test('PDF bytes and records roll back together; staged bytes survive a failed save', async () => {
   const { storage, transactions, setFailure, database } = fixture();
   await storage.open('test', true);
