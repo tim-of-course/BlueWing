@@ -39,6 +39,7 @@ import { activateWebUpdate, installWebUpdate } from '../platform/updates';
 import { PdfDocuments } from '../pdf/documents';
 import { TextPrefetch } from '../pdf/text-prefetch';
 import { pageNamingInstructions } from './page-naming';
+import { estimatingSkill, projectFolder } from './estimating-skill';
 import { PageImages, PAGE_RENDERER_VERSION } from '../pdf/page-images';
 import { pageImageStore } from '../platform/page-image-store';
 import {
@@ -112,6 +113,7 @@ export class Application {
     typeof acquireConstructionSnapshot
   > | null = null;
   private constructionRendererEpoch = 0;
+  private projectPath: string | null = null;
 
   constructor(readonly native: boolean) {
     this.messaging = new Messaging(messagingStorage(native));
@@ -394,6 +396,15 @@ export class Application {
               this.projectFor(request.takeoffId),
               (payload.mode as ConversationMode | undefined) ?? 'chat',
             );
+            break;
+          case 'estimating.skill':
+            data = {
+              skill: estimatingSkill,
+              projectFolder:
+                this.native && this.session && this.projectPath
+                  ? projectFolder(this.projectPath)
+                  : null,
+            };
             break;
           case 'wingman.inspect':
             data = this.presentation?.inspect() ?? null;
@@ -773,6 +784,7 @@ export class Application {
                 await this.storage.initialize(project);
               await this.messaging.bind(project.id);
               this.attach(project);
+              this.projectPath = path;
               if (!this.native)
                 localStorage.setItem('bluewing.lastProject', path);
               data = project;

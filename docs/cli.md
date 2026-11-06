@@ -12,6 +12,8 @@ In Wingman, choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**,
 
 Start with `bluewing help` for a short introduction, or `bluewing help messages.send` for one command's schema and examples. `bluewing connect '{"payload":{"mode":"wingman"}}'` returns the current project and Wingman conversation instructions; mode `chat` keeps answers in the external chat. These modes communicate intent through instructions, without changing other callers' behavior or storing a global conversation mode. `commands.list` still returns the full registry.
 
+`bluewing estimating.skill` returns the company estimating skill (scopes, takeoff standards, and the agent-written handoff document). It also returns `projectFolder`, the open desktop project file's folder (null in the browser), where agents save the handoff document. `connect` tells agents to read it before any takeoff work. The text lives in `src/app/estimating-skill.ts`.
+
 ## Connection troubleshooting
 
 `bluewing.exe` is a client for an already-running desktop app. Running it without arguments asks that app for help; it does not start a connection service. Start Bluewing or `bluewing-desktop.exe` to open the desktop, then keep the executable and `BLUEWING_DATA_DIR` from the copied prompt together on every call.
