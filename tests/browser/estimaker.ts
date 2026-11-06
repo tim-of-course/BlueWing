@@ -43,7 +43,6 @@ export async function productionQuantityWorkflow(page: Page) {
   expect(takeoff.kind).toBe('bluewing.takeoff');
   expect(takeoff.rows[0]?.quantity).toBeCloseTo(192);
   expect(takeoff.rows[0]?.unit).toBe('SF');
-  expect(takeoff.skipped).toEqual([]);
   expect(takeoff.coverage.complete).toBe(false);
   await detail
     .getByRole('table', { name: 'Drawing contributions' })

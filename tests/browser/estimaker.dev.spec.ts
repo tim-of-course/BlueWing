@@ -5,11 +5,11 @@ import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureErrors, cli, startWingmanProject } from './wingman';
 import { drawWall } from './takeoff';
 import { readDownload } from './estimaker';
-import { fixture } from '../fixtures/quantity-project';
+import { fixture, importFixture } from '../fixtures/quantity-project';
 import type { Project } from '../../src/core/types';
 import type { TakeoffEnvelope } from '../../src/core/quantity-presentation';
 
-test('Quantities and CLI share purchased EstiMaker data; unsupported native counts remain visible; source/review navigation stays live', async ({
+test('Quantities and CLI share purchased footage and count rows; source/review navigation stays live', async ({
   page,
 }, info) => {
   const errors = await captureErrors(page);
@@ -19,6 +19,9 @@ test('Quantities and CLI share purchased EstiMaker data; unsupported native coun
   const geometry = Object.values(project.geometries)[0];
   const recipe = fixture().recipes.tee;
   if (!geometry || !recipe) throw new Error('Missing fixture');
+  const missingRecipe = importFixture().recipes.gyp;
+  if (!missingRecipe) throw new Error('Missing area fixture');
+  missingRecipe.geometryKinds = ['path'];
   recipe.geometryKinds = ['path'];
   recipe.outputs.push({
     id: 'count',
@@ -30,6 +33,7 @@ test('Quantities and CLI share purchased EstiMaker data; unsupported native coun
   });
   const commands = [
     { name: 'recipe.put', payload: recipe },
+    { name: 'recipe.put', payload: missingRecipe },
     {
       name: 'group.put',
       payload: { id: 'group', name: 'Ceiling', geometryIds: [geometry.id] },
@@ -39,6 +43,16 @@ test('Quantities and CLI share purchased EstiMaker data; unsupported native coun
       payload: {
         id: 'a',
         recipeId: recipe.id,
+        groupId: 'group',
+        inputs: {},
+        allowances: {},
+      },
+    },
+    {
+      name: 'assignment.put',
+      payload: {
+        id: 'finish',
+        recipeId: missingRecipe.id,
         groupId: 'group',
         inputs: {},
         allowances: {},
@@ -77,11 +91,13 @@ test('Quantities and CLI share purchased EstiMaker data; unsupported native coun
       const countRow = totals
         .getByRole('row')
         .filter({ hasText: 'Count-only clips' });
-      await expect(countRow).toContainText('3 ea');
+      await expect(countRow).toContainText('3 count');
       await expect(countRow).not.toContainText('Unavailable');
-      await expect(countRow).toContainText(
-        'Count-only materials cannot export as LF',
-      );
+      await expect(countRow).toContainText('Count-only clips (count)');
+      const missingRow = totals
+        .getByRole('row')
+        .filter({ hasText: '5/8 Gyp (missing quantity)' });
+      await expect(missingRow).toContainText('0 SF');
       const detail = page
         .locator('details.quantity-output')
         .filter({ has: page.locator('summary').filter({ hasText: 'Tee' }) });
@@ -112,7 +128,11 @@ test('Quantities and CLI share purchased EstiMaker data; unsupported native coun
       const command = JSON.parse(reply.response.data.text) as TakeoffEnvelope;
       expect({ ...command, exportedAt: ui.exportedAt }).toEqual(ui);
       expect(ui.rows[0]?.quantity).toBeCloseTo(150);
-      expect(ui.skipped[0]?.code).toBe('missing-physical-length');
+      expect(ui.rows[1]?.quantity).toBe(3);
+      expect(ui.rows[1]?.unit).toBe('count');
+      expect(ui.rows[2]?.description).toBe('5/8 Gyp (missing quantity)');
+      expect(ui.rows[2]?.quantity).toBe(0);
+      expect(ui.rows[2]?.unit).toBe('SF');
       expect((await cli(page, 'quantities.exportEstiMaker')).exitCode).toBe(1);
       expect(
         (await cli<Project>(page, 'project.inspect')).response.data,
@@ -124,7 +144,7 @@ test('Quantities and CLI share purchased EstiMaker data; unsupported native coun
             .click(),
         ),
       ) as { outputs: unknown[] };
-      expect(generic.outputs).toHaveLength(2);
+      expect(generic.outputs).toHaveLength(3);
       await detail
         .getByRole('table', { name: 'Drawing contributions' })
         .getByRole('button')

@@ -26,7 +26,7 @@ export interface TakeoffRow {
   baseDescription: string;
   description: string;
   quantity: number;
-  unit: 'LF' | 'SF';
+  unit: 'LF' | 'SF' | 'count';
   category: string;
   source: QuantitySourceIdentity;
   pieceCount?: number;
@@ -34,14 +34,15 @@ export interface TakeoffRow {
   cutSchedule?: { count: number; length: PhysicalLength }[];
   provenance: {
     basis: 'purchased';
-    originalAmount: number;
+    originalAmount: number | null;
     originalUnit: Output['unit'];
     physicalLengthSource?: 'stock' | 'cut';
     sourceRefs: QuantitySourceRef[];
     modelingStatus: Output['modeling'];
   };
 }
-export interface SkippedQuantity {
+/** Producer issues for Bluewing's UI; these never become imported placeholder items. */
+export interface QuantityIssue {
   lineId: string | null;
   baseDescription: string;
   description: string;
@@ -78,7 +79,6 @@ export interface TakeoffEnvelope {
     complete: boolean;
   };
   rows: TakeoffRow[];
-  skipped: SkippedQuantity[];
 }
 
 const metres: Record<LengthUnit, number> = {
@@ -142,7 +142,7 @@ export function presentQuantities(
     const lineId = output.quantityKey
       ? `bwq1:${encodeURIComponent(output.quantityKey)}`
       : null;
-    const skip = (code: SkippedQuantity['code'], reason: string) => ({
+    const skip = (code: QuantityIssue['code'], reason: string) => ({
       output,
       ...label,
       row: null,
@@ -171,13 +171,91 @@ export function presentQuantities(
         code,
         reason,
         diagnostics: [...output.diagnostics],
-      } satisfies SkippedQuantity,
+      } satisfies QuantityIssue,
     });
     if (output.modeling === 'unresolved')
       return skip(
         'unresolved',
         'Resolve this assembly or drawing source before exporting.',
       );
+    if (!lineId)
+      return skip(
+        'missing-line-identity',
+        'Recalculate this output to obtain its semantic purchase bucket identity.',
+      );
+    const recipe = project.recipes[output.recipeId];
+    const definition = recipe
+      ? assemblyOutputs(recipe).find(
+          ({ output: item }) => item.id === output.outputId,
+        )
+      : undefined;
+    const dimensionedPiece =
+      output.unit === 'ea' &&
+      (definition?.output.piece !== undefined ||
+        output.modeling === 'modeled' ||
+        output.role !== undefined ||
+        output.stockLength != null ||
+        output.cutLength != null);
+    const requiredInputs =
+      definition?.component?.assembly.inputs ?? recipe?.inputs ?? [];
+    const missingInput = output.sources.some((entry) =>
+      requiredInputs.some(
+        (input) =>
+          input.type === 'number' &&
+          (input.unit in metres ||
+            input.unit === 'ft2' ||
+            input.unit === 'm2') &&
+          entry.inputs[input.name] === undefined &&
+          input.default === undefined,
+      ),
+    );
+    const missingCalibration =
+      !output.complete &&
+      output.unit !== 'scalar' &&
+      (output.unit !== 'ea' || dimensionedPiece) &&
+      output.sources.some((entry) => {
+        const geometry = project.geometries[entry.geometryId];
+        return (
+          geometry &&
+          geometry.kind !== 'count' &&
+          !project.sheets[geometry.sheetId]?.calibration
+        );
+      });
+    const missingPieceLength =
+      dimensionedPiece &&
+      output.complete &&
+      output.stockLength == null &&
+      output.cutLength == null;
+    // A known material with missing dimensions is deliberately import-ready at zero.
+    // EstiMaker receives descriptions and numbers, not a second validity workflow.
+    if (
+      output.unit !== 'scalar' &&
+      (missingInput || missingCalibration || missingPieceLength)
+    ) {
+      const unit: TakeoffRow['unit'] =
+        output.unit === 'ft2' || output.unit === 'm2'
+          ? 'SF'
+          : output.unit === 'ea' && !dimensionedPiece
+            ? 'count'
+            : 'LF';
+      const row: TakeoffRow = {
+        lineId,
+        baseDescription: label.description,
+        description: `${label.description} (missing quantity)`,
+        quantity: 0,
+        unit,
+        category: label.category,
+        source,
+        provenance: {
+          basis: 'purchased',
+          originalAmount: null,
+          originalUnit: output.unit,
+          sourceRefs,
+          modelingStatus: output.modeling,
+        },
+      };
+      return { output, ...label, row, issue: null };
+    }
     if (
       !output.complete ||
       output.sources.some((entry) => entry.value === null || entry.diagnostic)
@@ -191,23 +269,17 @@ export function presentQuantities(
         'invalid-quantity',
         'Purchased quantity must be finite and nonnegative.',
       );
-    if (!lineId)
-      return skip(
-        'missing-line-identity',
-        'Recalculate this output to obtain its semantic purchase bucket identity.',
-      );
     let quantity: number;
     let unit: TakeoffRow['unit'];
     let pieces: Pick<TakeoffRow, 'pieceCount' | 'pieceLength' | 'cutSchedule'> =
       {};
     let physicalLengthSource: 'stock' | 'cut' | undefined;
     let description = label.description;
-    if (output.unit === 'ea') {
-      if (!Number.isInteger(output.purchasedAmount))
-        return skip(
-          'invalid-quantity',
-          'Purchased piece count is fractional; correct the piece package size.',
-        );
+    if (output.unit === 'ea' && !dimensionedPiece) {
+      quantity = output.purchasedAmount;
+      unit = 'count';
+      description = `${label.description} (count)`;
+    } else if (output.unit === 'ea') {
       // Missing stock permits a cut; supplied invalid stock never selects cut instead.
       const hasStock = output.stockLength != null;
       const length = hasStock ? output.stockLength : output.cutLength;
@@ -215,7 +287,7 @@ export function presentQuantities(
       if (!length || feet === undefined)
         return skip(
           hasStock ? 'invalid-stock-length' : 'missing-physical-length',
-          'Enter a positive physical stock length, or a cut length when no stock is supplied. Count-only materials cannot export as LF.',
+          'Enter a positive physical stock length, or a cut length when no stock is supplied.',
         );
       physicalLengthSource = hasStock ? 'stock' : 'cut';
       quantity = output.purchasedAmount * feet;
@@ -297,6 +369,16 @@ export function estiMakerTakeoff(
   exportedAt = new Date().toISOString(),
 ): TakeoffEnvelope {
   const entries = presentQuantities(project, result);
+  if (!project.id.trim())
+    throw new Error('EstiMaker export requires a project identity.');
+  const issues = entries.flatMap((entry) => (entry.issue ? [entry.issue] : []));
+  if (issues.length)
+    throw new Error(
+      `Cannot export to EstiMaker: ${issues.map((issue) => `${issue.description}: ${issue.reason}`).join('; ')}`,
+    );
+  const rows = entries.flatMap((entry) => (entry.row ? [entry.row] : []));
+  if (new Set(rows.map((row) => row.lineId)).size !== rows.length)
+    throw new Error('EstiMaker export contains duplicate line identities.');
   return {
     kind: 'bluewing.takeoff',
     version: 1,
@@ -313,7 +395,6 @@ export function estiMakerTakeoff(
         (output) => output.modeling === 'unresolved',
       ).length,
     },
-    rows: entries.flatMap((entry) => (entry.row ? [entry.row] : [])),
-    skipped: entries.flatMap((entry) => (entry.issue ? [entry.issue] : [])),
+    rows,
   };
 }

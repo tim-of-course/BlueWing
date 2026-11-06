@@ -72,6 +72,25 @@ void test('registry CLI command saves exact shared JSON text with no save/revisi
     });
     assert.equal((canceled.data as { path: null }).path, null);
     assert.equal(files.length, 1);
+    const broken = fixture();
+    const recipe = broken.recipes.tee;
+    if (!recipe?.outputs[0]) throw new Error('Missing fixture output');
+    recipe.outputs[0].formula = 'unknown';
+    app.session = new ProjectSession(broken, { save: () => Promise.resolve() });
+    await assert.rejects(
+      app.dispatch(
+        parseCli([
+          'quantities.exportEstiMaker',
+          JSON.stringify({ payload: { path: 'C:/exports/broken.json' } }),
+        ]),
+      ),
+      /Cannot export to EstiMaker/,
+    );
+    assert.equal(
+      files.length,
+      1,
+      'producer errors must not save a partial or fabricated file',
+    );
   } finally {
     if (previous) Object.defineProperty(globalThis, 'window', previous);
     else Reflect.deleteProperty(globalThis, 'window');

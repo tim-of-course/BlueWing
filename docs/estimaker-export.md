@@ -1,45 +1,47 @@
 # EstiMaker quantity contract
 
-The existing Quantities view and `quantities.exportEstiMaker` use the pure TypeScript projection in `src/core/quantity-presentation.ts`. It consumes the current `Project` and shared `CalculationSnapshot`; it neither calculates a second estimate nor changes project state. Generic quantity CSV/JSON and piece exports remain available.
+The existing Quantities view and `quantities.exportEstiMaker` share the pure TypeScript projection in `src/core/quantity-presentation.ts`, using the current project and calculation snapshot. Existing purchasing math and generic CSV/JSON exports remain unchanged.
 
-Choose **Export to EstiMaker** in Quantities. Desktop opens the existing native save dialog; browser mode downloads JSON. The CLI requires an explicit destination:
+Choose **Export to EstiMaker** to save/download JSON. CLI calls require a destination:
 
 ```sh
 bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate.estimaker.json"}}'
 ```
 
-The command returns `{path,text}`: `text` is exactly the saved JSON; `path` is null when a UI save dialog is canceled. No project revision, undo step, review gate, or Rust command is added. The existing native `write_file` capability writes the file. CLI help and `commands.list` expose the application registry entry.
+The command returns `{path,text}`: text exactly matches the file; path is null on UI cancellation. It adds no revision, Undo step, review gate or native command.
 
 ## Version 1
 
-The checked example is [estimaker-takeoff-v1.json](../tests/fixtures/estimaker-takeoff-v1.json), generated from [quantity-project.ts](../tests/fixtures/quantity-project.ts) and compared in core tests. The exported TypeScript `TakeoffEnvelope`, `TakeoffRow`, and `SkippedQuantity` interfaces define the contract.
+Checked examples: [sized pieces](../tests/fixtures/estimaker-takeoff-v1.json) and [counts/missing dimensions](../tests/fixtures/estimaker-counts-and-missing-v1.json). `TakeoffEnvelope` and `TakeoffRow` define the contract. `QuantityIssue` is internal to Bluewing.
 
-| Field                 | Meaning                                                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `kind`, `version`     | `bluewing.takeoff`, `1`                                                                                            |
-| `project`             | Current `{id,name,revision}`; revision is a string                                                                 |
-| `exportedAt`          | ISO timestamp                                                                                                      |
-| `calculationComplete` | Calculation validity, independent of 3D coverage                                                                   |
-| `coverage`            | `modeledOutputs`, `estimateOutputs`, `unresolvedOutputs`, `complete`                                               |
-| `rows`                | Eligible purchased LF/SF lines                                                                                     |
-| `skipped`             | Source identity, nullable semantic line ID, source references, code, corrective reason and calculation diagnostics |
+The envelope contains kind `bluewing.takeoff`, version 1, project `{id,name,revision}` (revision string), ISO exportedAt, informational calculationComplete and coverage, and rows. There is no exported skipped list or consumer unresolved state.
 
-A row contains `lineId`, `baseDescription` (the existing unsuffixed material/output description), `description` (including piece size/count where relevant), `quantity`, `unit` (`LF` or `SF`), existing recipe `category` (empty if absent), and `source: {groupId,groupLabel,assignmentId,recipeId,outputId,materialId}`. Missing genuine identities are null. Modeled `outputId` is null because the legacy `members/N` and `surface/N` IDs are positional rather than authored IDs. Formula output IDs include the component-qualified ID for systems. Component categories come from the existing component assembly category, falling back to the owning recipe.
+Each row contains:
 
-Piece rows also carry purchased `pieceCount`, physical `pieceLength: {value,unit}` (`m`, `mm`, `ft`, `in`), and available `cutSchedule: [{count,length}]`. The cut schedule describes required installed pieces before waste/packages; it is ordering detail, not another quantity to add to the row. Mixed required cuts sharing stock remain one purchase row. Counts and stock lengths follow the engine's one stock per purchased piece assumption; no cut optimization or offcut reuse is inferred.
+- Stable lineId, unsuffixed baseDescription, and import-ready description.
+- Numeric quantity and unit `LF | SF | count`.
+- Existing recipe category, empty when absent; no new scope tags.
+- Source `{groupId,groupLabel,assignmentId,recipeId,outputId,materialId}`. Optional source identities may be null. Modeled outputId is null because legacy members/N and surface/N are positional; formula output IDs remain component-qualified.
+- Optional purchased pieceCount, unit-tagged pieceLength, and cutSchedule `[{count,length}]` describing installed cuts before waste/packages.
+- Provenance `{basis:"purchased",originalAmount,originalUnit,physicalLengthSource?,sourceRefs,modelingStatus}`. Original amount is null when required quantity is unavailable. References contain nullable geometry/sheet/piece/surface IDs.
 
-Every row has `provenance: {basis:'purchased',originalAmount,originalUnit,physicalLengthSource?,sourceRefs,modelingStatus}`. References contain nullable `geometryId`, `sheetId`, `pieceId`, and `surfaceId`; labels are read from the current project. `physicalLengthSource` is `stock` or `cut` for pieces. No prices, scope fields, narrative, screenshots, review notes, or review answers enter this file.
+## Descriptions and numbers
 
-Skipped items also retain `baseDescription`, `description`, existing `category`, and `provenance: {basis:'purchased',originalAmount,originalUnit,modelingStatus}`. Known raw purchased amounts/units are provenance only. Nonfinite or unavailable amounts are null; unresolved placeholder amounts/units are null. Skipped items contain no valid footage quantity. The consumer can use `baseDescription` without stripping suffix text, group genuine material IDs with LF/SF, and keep source line IDs on length buckets. Stable identity supports intentional reimport updates; it does not prescribe duplicate skipping or an extra preview/approval step. Import/update interactions belong to EstiMaker.
+EstiMaker imports supplied descriptions and numeric quantities. It does not judge guesses, calculation completeness, model coverage or fractional footage, and does not infer rows from diagnostics. Its normal numeric rounding applies. No extra preview, approval or unresolved-item workflow is required.
 
-## Purchasing and diagnostics
+- Purchased lengths convert to LF and areas to SF: 1 ft = 0.3048 m, 1 SF = 0.09290304 square metres.
+- Sized pieces use purchased count times explicit valid stock length, or valid cut length when no stock exists. Example: `Tee - 2ft (75pc)`, quantity 150 LF. Structured count/length remain available.
+- Intentional count-only material is a normal row: `Door Frames (count)`, quantity 75, unit count.
+- Known material lacking required physical input/calibration or piece dimension is prepared by Bluewing as `5/8 Gyp (missing quantity)`, actual quantity **0**, unit SF. EstiMaker does not infer that zero or maintain an unresolved state.
 
-Length purchases convert to LF and area purchases to SF (1 ft = 0.3048 m, 1 SF = 0.09290304 m²). Piece purchases multiply the existing purchased piece count by valid explicit stock length, or by valid explicit cut length when stock is missing/null. Supplied nonpositive/nonfinite stock is invalid and cannot fall back to cut. A valid 75-piece purchase at 2 ft therefore exports **150 LF** and a 75-piece ordering detail. Descriptions never supply units or dimensions.
+The projection preserves engine waste/package rounding exactly once, keeps mixed-cut/common-stock buckets intact, and never rounds counts again. Fractional purchased numbers remain numeric. Required cut schedules are ordering detail, not additional imported footage. Description text never supplies dimensions.
 
-The projection never rounds counts, reapplies waste/packages, splits purchase totals, or changes net/adjusted/purchased engine math. Fractional purchased piece counts are skipped with `invalid-quantity` and a package-size correction message. Incomplete and unresolved outputs are skipped, as are unsupported scalar/count-only outputs, absent physical lengths, invalid stock, nonfinite quantities and missing semantic identities. Their diagnostic codes are explicit in `skipped`; calculation errors never become silent zero lines. Valid formula estimates export even when model coverage is incomplete. Valid unsupported native quantities remain readable in Bluewing alongside their export warning.
+SF is ordinary square footage. Scalar is dimensionless, not SF; no scalar-to-area mapping is guessed. Unresolvable assemblies/sources, broken formulas, invalid supplied stock, nonfinite quantities, missing semantic identity and duplicate line IDs are producer errors. Bluewing fails before saving rather than omitting items or fabricating consumer placeholders.
 
-## Identity and future takeoff ownership
+## Identity and integration
 
-`lineId` is a versioned, URI-encoded semantic `quantityKey`, carried from the actual calculation/purchase bucket. Existing public output IDs are preserved. Formula keys use assignment, component-qualified output and the engine's cut/stock bucket. Modeled member keys use assignment/wall/ceiling, material, stock-or-cut, waste and package. Surface keys use assignment/wall/ceiling, finish, material, waste and package. Rename, reorder, quantity changes, timestamps, revisions and changing drawing source sets are not identity inputs. A bucket-defining cut/stock or allowance change can create a different modeled line.
+Line IDs are versioned, URI-encoded semantic engine bucket keys, independent of quantities, names, revisions, timestamps, array positions and changing source sets. Formula keys use assignment, component-qualified output and cut/stock bucket. Modeled keys retain existing material, owner, finish, physical-length, waste and package distinctions.
 
-This version exports the current project. There is no persisted takeoff ID, selection placeholder, change-order direction or inferred scope. Future takeoff ownership and additions/deductions must pass an explicitly selected calculation into this projection, extend the contract deliberately, apply purchasing before sign, and retain gross additions/deductions as well as net. EstiMaker import behavior and that ownership infrastructure are separate work.
+The consumer may group material parents by genuine material ID and unit, keep length children by lineId, and intentionally update them through the existing CSV import/update/Bulk Update interaction. It need not strip description suffixes. No prices, narrative, screenshots or handoff-document content enter the file.
+
+This version exports the current project. Separate takeoff ownership and additions/deductions remain separate work: no fake takeoff IDs or direction fields. Future support must pass the selected calculation into this projection and apply sign after purchasing.

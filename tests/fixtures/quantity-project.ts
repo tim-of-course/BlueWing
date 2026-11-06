@@ -50,3 +50,43 @@ export function fixture(): Project {
   };
   return project;
 }
+
+/** Import-ready counts and missing dimensions, without consumer inference. */
+export function importFixture(): Project {
+  const project = fixture();
+  const tee = project.recipes.tee;
+  if (!tee) throw new Error('Missing tee fixture');
+  tee.outputs.push({
+    id: 'frames',
+    name: 'Door Frames',
+    materialId: 'door-frames',
+    unit: 'ea',
+    formula: '75',
+    allowance: { wastePercent: 0 },
+  });
+  project.recipes.gyp = {
+    id: 'gyp',
+    name: 'Wall finish',
+    category: 'Drywall',
+    geometryKinds: ['count'],
+    inputs: [{ name: 'height', type: 'number', unit: 'ft' }],
+    outputs: [
+      {
+        id: 'gyp',
+        name: '5/8 Gyp',
+        materialId: 'gyp-5/8',
+        unit: 'ft2',
+        formula: 'height * height',
+        allowance: { wastePercent: 0 },
+      },
+    ],
+  };
+  project.assignments.finish = {
+    id: 'finish',
+    groupId: 'group',
+    recipeId: 'gyp',
+    inputs: {},
+    allowances: {},
+  };
+  return project;
+}

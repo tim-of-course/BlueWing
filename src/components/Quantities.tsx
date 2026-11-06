@@ -234,8 +234,7 @@ export default function Quantities(props: {
                     <Show when={entry().issue}>
                       {(issue) => (
                         <p class="warning">
-                          Skipped by EstiMaker: {issue().reason} ({issue().code}
-                          )
+                          Cannot export: {issue().reason} ({issue().code})
                         </p>
                       )}
                     </Show>

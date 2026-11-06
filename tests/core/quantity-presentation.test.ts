@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import contract from '../fixtures/estimaker-takeoff-v1.json';
+import countsContract from '../fixtures/estimaker-counts-and-missing-v1.json';
 import {
   calculateProject,
   exportQuantities,
@@ -14,7 +15,7 @@ import {
   modeledOutputs,
   summarizeMaterials,
 } from '../../src/core/material-results';
-import { fixture } from '../fixtures/quantity-project';
+import { fixture, importFixture } from '../fixtures/quantity-project';
 import type {
   CalculationResult,
   Project,
@@ -54,7 +55,6 @@ void test('75 explicit 2ft pieces export 150 LF with quantity-only provenance an
   assert.equal(result.coverage.complete, false);
   assert.equal(result.coverage.estimateOutputs, 1);
   assert.equal(result.coverage.unresolvedOutputs, 0);
-  assert.equal(result.skipped.length, 0);
   const row = present(result.rows[0]);
   near(row.quantity, 150);
   assert.equal(row.unit, 'LF');
@@ -76,7 +76,6 @@ void test('75 explicit 2ft pieces export 150 LF with quantity-only provenance an
       'calculationComplete',
       'coverage',
       'rows',
-      'skipped',
     ].sort(),
   );
 });
@@ -143,9 +142,14 @@ void test('stock differs from net cuts; waste/packages apply once; invalid stock
   for (const value of [0, -1, NaN, Infinity]) {
     const changed = structuredClone(result);
     present(changed.outputs[0]).stockLength = { value, unit: 'm' };
-    const skipped = estiMakerTakeoff(project, changed);
-    assert.equal(skipped.rows.length, 0);
-    assert.equal(skipped.skipped[0]?.code, 'invalid-stock-length');
+    assert.equal(
+      presentQuantities(project, changed)[0]?.issue?.code,
+      'invalid-stock-length',
+    );
+    assert.throws(
+      () => estiMakerTakeoff(project, changed),
+      /positive physical stock length/,
+    );
   }
   const noStock = structuredClone(result);
   // Runtime compatibility: nullish missing stock has no artificial separate policy.
@@ -155,54 +159,71 @@ void test('stock differs from net cuts; waste/packages apply once; invalid stock
   assert.equal(cut.provenance.physicalLengthSource, 'cut');
   output.allowance = { wastePercent: 0, packageSize: 2.5 };
   output.formula = '6';
-  assert.equal(takeoff(project).skipped[0]?.code, 'invalid-quantity');
+  near(present(takeoff(project).rows[0]).quantity, 75);
 });
 
-void test('count-only, scalar, invalid formulas, unresolved and incomplete outputs give explicit skipped diagnostics', () => {
+void test('count-only materials export ordinary descriptions and purchased numbers', () => {
   const project = fixture();
   delete definition(project).piece;
-  assert.equal(takeoff(project).skipped[0]?.code, 'missing-physical-length');
-  const countIssue = present(takeoff(project).skipped[0]);
-  assert.equal(countIssue.baseDescription, 'Tee');
-  assert.equal(countIssue.description, 'Tee');
-  assert.equal(countIssue.category, 'Acoustical ceilings');
-  assert.equal(countIssue.provenance.originalAmount, 75);
-  assert.equal(countIssue.provenance.originalUnit, 'ea');
-  assert.ok(!('quantity' in countIssue));
+  definition(project).name = 'Door Frames';
+  const row = present(takeoff(project).rows[0]);
+  assert.equal(row.baseDescription, 'Door Frames');
+  assert.equal(row.description, 'Door Frames (count)');
+  assert.equal(row.quantity, 75);
+  assert.equal(row.unit, 'count');
+  assert.equal(row.provenance.originalAmount, 75);
+});
+
+void test('producer prepares count and named zero area rows without a skipped import workflow', () => {
+  const result = takeoff(importFixture());
+  assert.deepEqual(result, countsContract);
+  assert.equal(result.calculationComplete, false);
+  assert.equal(result.rows.length, 3);
+  const count = present(result.rows[1]);
+  const missing = present(result.rows[2]);
+  assert.equal(count.description, 'Door Frames (count)');
+  assert.equal(count.quantity, 75);
+  assert.equal(count.unit, 'count');
+  assert.equal(missing.description, '5/8 Gyp (missing quantity)');
+  assert.equal(missing.quantity, 0);
+  assert.equal(missing.unit, 'SF');
+  assert.ok(!('skipped' in result));
+  assert.ok(!('unresolved' in missing));
+});
+
+void test('missing required dimensions export named zero rows; scalar and broken formulas remain producer errors', () => {
+  const project = fixture();
+  delete present(present(project.recipes.tee).inputs[0]).default;
+  const missing = present(takeoff(project).rows[0]);
+  assert.equal(missing.description, 'Tee (missing quantity)');
+  assert.equal(missing.quantity, 0);
+  assert.equal(missing.unit, 'LF');
+  assert.equal(missing.provenance.originalAmount, null);
+  assert.equal(takeoff(project).calculationComplete, false);
+  delete definition(project).piece;
   definition(project).unit = 'scalar';
-  assert.equal(takeoff(project).skipped[0]?.code, 'unsupported-unit');
+  present(project.recipes.tee).inputs = [];
+  assert.throws(() => takeoff(project), /no physical LF\/SF dimension/);
   definition(project).formula = 'unknown';
-  assert.equal(takeoff(project).skipped[0]?.code, 'incomplete');
-  assert.ok(present(takeoff(project).skipped[0]).diagnostics.length);
-  assert.equal(
-    present(takeoff(project).skipped[0]).provenance.originalAmount,
-    null,
-  );
+  assert.throws(() => takeoff(project), /Correct the calculation diagnostics/);
   const result = calculateProject(fixture());
   present(result.outputs[0]).modeling = 'unresolved';
-  assert.equal(
-    present(estiMakerTakeoff(project, result).skipped[0]).provenance
-      .originalUnit,
-    null,
-  );
-  assert.equal(
-    present(estiMakerTakeoff(project, result).skipped[0]).provenance
-      .originalAmount,
-    null,
-  );
-  assert.equal(
-    estiMakerTakeoff(project, result).skipped[0]?.code,
-    'unresolved',
+  assert.throws(
+    () => estiMakerTakeoff(project, result),
+    /Resolve this assembly/,
   );
   present(result.outputs[0]).modeling = 'estimate';
-  present(result.outputs[0]).complete = false;
-  assert.equal(estiMakerTakeoff(project, result).rows.length, 0);
-  present(result.outputs[0]).complete = true;
   present(result.outputs[0]).purchasedAmount = Infinity;
-  const invalid = present(estiMakerTakeoff(project, result).skipped[0]);
-  assert.equal(invalid.provenance.originalAmount, null);
-  assert.equal(invalid.code, 'invalid-quantity');
-  assert.ok(!('quantity' in invalid));
+  assert.throws(
+    () => estiMakerTakeoff(project, result),
+    /finite and nonnegative/,
+  );
+  present(result.outputs[0]).purchasedAmount = 75;
+  delete present(result.outputs[0]).quantityKey;
+  assert.throws(
+    () => estiMakerTakeoff(project, result),
+    /semantic purchase bucket identity/,
+  );
 });
 
 function modeledFixture() {
@@ -353,4 +374,32 @@ void test('component-qualified formula identities and existing categories stay d
     componentOutputId('a/b', 'tee'),
   );
   assert.equal(present(rows[0]).category, child.category);
+});
+
+void test('producer errors do not become missing-dimension zeros; required identity errors reject export', () => {
+  const project = fixture();
+  definition(project).formula = 'unknown';
+  assert.throws(() => takeoff(project), /Correct the calculation diagnostics/);
+  definition(project).formula = '75';
+  const result = calculateProject(project);
+  result.outputs.push(structuredClone(present(result.outputs[0])));
+  assert.throws(
+    () => estiMakerTakeoff(project, result),
+    /duplicate line identities/,
+  );
+  project.id = '';
+  assert.throws(() => takeoff(project), /project identity/);
+});
+
+void test('missing sheet scale does not erase explicit quantities that do not require calibration', () => {
+  const project = fixture();
+  const geometry = present(project.geometries.g);
+  geometry.kind = 'path';
+  geometry.points = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+  ];
+  present(project.recipes.tee).geometryKinds = ['path'];
+  delete present(project.sheets.s).calibration;
+  near(present(takeoff(project).rows[0]).quantity, 150);
 });
