@@ -16,7 +16,12 @@ export default function TakeoffControls(props: {
   const current = () => required(props.controller.project() ?? undefined);
   const takeoff = () => takeoffContext(current());
   const source = () =>
-    props.controller.takeoffSources().find((p) => p.takeoffId === sourceId());
+    props.controller
+      .takeoffSources()
+      .find(
+        (p) => p.takeoffId === sourceId() && p.takeoffId !== takeoff().id,
+      ) ??
+    props.controller.takeoffSources().find((p) => p.takeoffId !== takeoff().id);
   const run = async (work: () => unknown) => {
     try {
       setError('');
@@ -126,7 +131,7 @@ export default function TakeoffControls(props: {
             Copy from{' '}
             <select
               aria-label="Source takeoff"
-              value={sourceId()}
+              value={source()?.takeoffId ?? ''}
               onChange={(e) => {
                 setSourceId(e.currentTarget.value);
                 setSelected([]);
@@ -173,18 +178,14 @@ export default function TakeoffControls(props: {
           </select>
           <button
             type="button"
-            disabled={
-              props.disabled ||
-              !selected().length ||
-              sourceId() === takeoff().id
-            }
+            disabled={props.disabled || !selected().length || !source()}
             onClick={() => {
               void run(() =>
                 props.controller.execute({
                   name: 'takeoff.copyItems',
                   takeoffId: takeoff().id,
                   payload: {
-                    sourceTakeoffId: sourceId(),
+                    sourceTakeoffId: source()?.takeoffId,
                     geometryIds: selected(),
                     direction:
                       takeoff().kind === 'change-order' ? direction() : 'add',

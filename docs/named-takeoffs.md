@@ -10,6 +10,8 @@ The global assembly library remains reusable. Import or copy a definition into t
 
 Use **Active takeoff** beside the project name. Switching clears drawing/group selections and changes the navigator, canvas, inspector, quantities, construction and review inputs together. Finish or cancel unfinished drawing/input before switching.
 
+Wingman previews and saved return views belong to one takeoff and clear when switching. CLI renders for another takeoff still export that takeoff, but do not replace the active takeoff's preview.
+
 Open **Takeoffs** to create, rename or delete a takeoff. Choose a source takeoff, check drawing items, choose Addition or (for change orders) Deduction, then **Copy selected items**. Copies include associated groups, assignments, independent definitions and construction references. The copy records the source takeoff/entity IDs and project revision. Source scale transfers to an unset destination; conflicting scales reject the complete copy.
 
 For a changed wall, copy the original Main wall as a deduction, then author its replacement as an addition. Neither wall follows later changes to the other. Deleting a takeoff deletes its owned work in one undoable transaction and retains shared PDF assets.
@@ -46,3 +48,5 @@ The EstiMaker projection from PR #6 is the shared purchasing presentation path. 
 ## Verification
 
 Local Windows verification used the pinned dependency set: static checks, core tests, 14 guarded platform tests (including SQLite plus Chromium/Firefox/WebKit IndexedDB), eight focused development browser scenarios and 20 selected production browser scenarios across Chromium/Firefox, and the guarded production build. Browser workers remained at one; development captures reported no Solid diagnostics or silent holds. Native builds/desktop workflows were not run because no native adapter changed. These results do not establish native webview or other operating-system behavior.
+
+Host review added a regression for restoring a takeoff's calibration to Main's scale (including undo/redo), and takeoff identity/clearing for Wingman previews and saved return views. Static checks, 268 core tests (one POSIX-only skip), guarded build, both development takeoff scenarios and six selected production takeoff/Wingman scenarios passed. The expanded development Wingman run had 14 passes and two failures in its existing 3D workflow: its right-drag pan assertion conflicts with the renderer's right-drag zoom mapping. A diagnostic run using middle-drag passed that assertion but failed the later live-preview pixel-change assertion in both browsers. The original test was restored; this 3D scenario is not a verified pass.

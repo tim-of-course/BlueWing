@@ -251,7 +251,10 @@ export class ProjectSession {
         takeoffProject(next, request.takeoffId),
       ));
     const execute = (call: CommandCall, validateResult: boolean) => {
-      if (validateCommand(call).mutates && changesCalculation(next, call)) {
+      if (
+        validateCommand(call).mutates &&
+        changesCalculation(takeoffProject(next, call.takeoffId), call)
+      ) {
         calculationChanged = true;
         calculation = undefined;
       }

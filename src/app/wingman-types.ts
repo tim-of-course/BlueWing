@@ -33,12 +33,14 @@ export interface ModelView {
 export type WingmanView = PlanView | ModelView;
 export interface WingmanVisual {
   projectId: string;
+  takeoffId: string;
   revision: number;
   view: WingmanView;
   caption?: string;
 }
 export interface WorkspaceViewSnapshot {
   projectId: string;
+  takeoffId: string;
   mode: 'plan' | '3d' | 'split';
   plan: PlanView | null;
   model: ModelView | null;

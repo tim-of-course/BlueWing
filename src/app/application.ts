@@ -469,6 +469,7 @@ export class Application {
             if (request.origin === 'cli')
               this.presentation?.publish({
                 projectId: project.id,
+                takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
                 view: {
                   kind: 'plan',
@@ -639,6 +640,7 @@ export class Application {
             if (request.origin === 'cli')
               this.presentation?.publish({
                 projectId: project.id,
+                takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
                 view: {
                   kind: '3d',
@@ -773,6 +775,7 @@ export class Application {
             if (request.origin === 'cli')
               this.presentation?.publish({
                 projectId: project.id,
+                takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
                 view: {
                   kind: 'plan',

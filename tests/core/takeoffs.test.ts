@@ -195,6 +195,28 @@ void test('takeoffs start empty; independent copies round positive purchases bef
   await assert.rejects(f.copy(), /Conflicting/);
 });
 
+void test('returning local calibration to Main scale invalidates quantities and undo restores the local result', async () => {
+  const f = fixture();
+  await f.create();
+  await f.copy();
+  const sheet = required(f.session.project.sheets.s);
+  const putScale = (metresPerUnit: number) =>
+    f.call({
+      name: 'sheet.put',
+      takeoffId: 'co',
+      payload: { ...sheet, calibration: { metresPerUnit } },
+    });
+  await putScale(2);
+  assert.equal(f.session.calculationFor('co').totals[0]?.amount, -8);
+  await putScale(1);
+  assert.equal(f.session.calculationFor('co').totals[0]?.amount, -4);
+  await f.call({ name: 'history.undo' });
+  assert.equal(f.session.calculationFor('co').totals[0]?.amount, -8);
+  await f.call({ name: 'history.redo' });
+  assert.equal(f.session.calculationFor('co').totals[0]?.amount, -4);
+  assert.equal(f.session.calculationFor('main').totals[0]?.amount, 4);
+});
+
 void test('ownership rejects cross-takeoff writes/references and phases reject deductions', async () => {
   const f = fixture();
   await f.create();

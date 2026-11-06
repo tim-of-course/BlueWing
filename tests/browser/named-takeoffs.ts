@@ -173,6 +173,37 @@ export async function namedTakeoffs(page: Page) {
     takeoffName: 'CO renamed',
   });
   expect((await download).suggestedFilename()).toContain(co);
+  const wingman = async () =>
+    (await cli('wingman.inspect')).response.data as {
+      main: { takeoffId: string };
+      agent: { takeoffId: string } | null;
+    };
+  expect(await wingman()).toMatchObject({
+    main: { takeoffId: 'main' },
+    agent: null,
+  });
+  const renderPreview = async (takeoffId: string) => {
+    const downloaded = page.waitForEvent('download');
+    const reply = await cli('sheet.render', {
+      takeoffId,
+      payload: {
+        sheetId,
+        mode: 'takeoff',
+        maxDimension: 320,
+        path: 'preview.png',
+      },
+    });
+    expect(reply.exitCode, JSON.stringify(reply.response)).toBe(0);
+    await downloaded;
+  };
+  await renderPreview('main');
+  expect(await wingman()).toMatchObject({ agent: { takeoffId: 'main' } });
+  await page.getByLabel('Active takeoff').selectOption(co);
+  await expect.poll(async () => (await wingman()).agent).toBeNull();
+  await renderPreview(co);
+  expect(await wingman()).toMatchObject({ agent: { takeoffId: co } });
+  await page.getByLabel('Active takeoff').selectOption('main');
+  await expect.poll(async () => (await wingman()).agent).toBeNull();
   await page.getByRole('button', { name: 'Takeoffs', exact: true }).click();
   await page.getByRole('button', { name: 'Path (L)', exact: true }).click();
   await page
