@@ -20,6 +20,7 @@ export function paintTakeoff(
   const selected = new Set(options.selectedIds ?? []);
   const deductions = new Set(options.deductionIds ?? []);
   context.save();
+  const inheritedDash = context.getLineDash();
   context.lineCap = 'round';
   context.lineJoin = 'round';
   const transform = context.getTransform();
@@ -31,9 +32,9 @@ export function paintTakeoff(
     context.strokeStyle = selected.has(geometry.id) ? '#60a5fa' : color;
     context.fillStyle = color;
     const isSelected = selected.has(geometry.id);
-    context.setLineDash(
-      deductions.has(geometry.id) ? [8 * pixel, 5 * pixel] : [],
-    );
+    const isDeduction = deductions.has(geometry.id);
+    context.lineCap = isDeduction ? 'butt' : 'round';
+    context.setLineDash(isDeduction ? [8 * pixel, 5 * pixel] : inheritedDash);
     context.lineWidth = (isSelected ? 3 : 2) * pixel;
     if (geometry.kind === 'count') {
       for (const point of geometry.points) {

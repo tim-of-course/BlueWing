@@ -61,8 +61,9 @@ test('deductions preserve colors with dashed plan strokes and hatched 3D members
           total++;
       return total;
     };
-    const plan = (deduct: boolean, selected = false) => {
+    const plan = (deduct: boolean, selected = false, draft = false) => {
       const element = canvas();
+      if (draft) context(element).setLineDash([5, 4]);
       paintTakeoff(
         context(element),
         [
@@ -215,6 +216,7 @@ test('deductions preserve colors with dashed plan strokes and hatched 3D members
       dashed: plan(true),
       selected: plan(false, true),
       selectedDashed: plan(true, true),
+      draft: plan(false, false, true),
       solid,
       deduction,
       framing,
@@ -225,6 +227,8 @@ test('deductions preserve colors with dashed plan strokes and hatched 3D members
   expect(result.dashed).toBeLessThan(result.plan);
   expect(result.selectedDashed).toBeGreaterThan(0);
   expect(result.selectedDashed).toBeLessThan(result.selected);
+  expect(result.draft).toBeGreaterThan(0);
+  expect(result.draft).toBeLessThan(result.plan);
   for (const [base, deduction] of [
     [result.solid, result.deduction],
     [result.framing, result.framingDeduction],
