@@ -9,6 +9,11 @@ import type {
   Sheet,
 } from './types';
 import type { CalculationSnapshot } from './calculation-state';
+import {
+  matchSheetAlignment,
+  type MatchSheetAlignmentPayload,
+} from './alignment';
+import type { Combined3dAlignment } from './types';
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
 import {
   calculateProject,
@@ -83,6 +88,7 @@ const array = (items: PayloadSchema): PayloadSchema => ({
 });
 const positive: PayloadSchema = { type: 'number', minimum: Number.MIN_VALUE };
 const point = object({ x: number, y: number });
+const combined3dAlignment = object({ offset: point, rotation: number });
 const unit: PayloadSchema = {
   type: 'string',
   enum: ['m', 'mm', 'ft', 'in', 'm2', 'ft2', 'ea', 'scalar'],
@@ -103,6 +109,7 @@ const sheet = object(
     rotation: number,
     pdfToPage: { type: 'array', items: number, minItems: 6, maxItems: 6 },
     calibration: object({ metresPerUnit: positive }),
+    combined3dAlignment,
   },
   ['id', 'name', 'assetId', 'pageIndex', 'width', 'height'],
 );
@@ -229,6 +236,37 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     object({}),
     false,
     {},
+  ],
+  [
+    'construction.alignment.put',
+    'Set a presentation-only combined 3D alignment (metres/radians).',
+    object({ sheetId: string, offset: point, rotation: number }),
+    true,
+    { sheetId: 'sheet-1', offset: { x: 0, y: 0 }, rotation: 0 },
+  ],
+  [
+    'construction.alignment.delete',
+    'Clear a combined 3D alignment.',
+    object({ sheetId: string }),
+    true,
+    { sheetId: 'sheet-1' },
+  ],
+  [
+    'construction.alignment.match',
+    'Match one or two paired page points without changing scale.',
+    object({
+      sheetId: string,
+      referenceSheetId: string,
+      sourcePoints: { ...array(point), minItems: 1, maxItems: 2 },
+      referencePoints: { ...array(point), minItems: 1, maxItems: 2 },
+    }),
+    true,
+    {
+      sheetId: 'sheet-1',
+      referenceSheetId: 'sheet-2',
+      sourcePoints: [{ x: 0, y: 0 }],
+      referencePoints: [{ x: 10, y: 10 }],
+    },
   ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
   [
@@ -941,6 +979,37 @@ export function executeCommandOnDraft(
     case 'sheet.put':
       next.sheets[entityId] = structuredClone(payload) as unknown as Sheet;
       break;
+    case 'construction.alignment.put': {
+      const sheet = requireEntity(
+        next.sheets,
+        payload.sheetId as string,
+        'Sheet',
+      );
+      const alignment = structuredClone({
+        offset: payload.offset,
+        rotation: payload.rotation,
+      }) as Combined3dAlignment;
+      sheet.combined3dAlignment = alignment;
+      data = { alignment };
+      break;
+    }
+    case 'construction.alignment.delete':
+      delete requireEntity(next.sheets, payload.sheetId as string, 'Sheet')
+        .combined3dAlignment;
+      break;
+    case 'construction.alignment.match': {
+      const match = matchSheetAlignment(
+        next,
+        payload as unknown as MatchSheetAlignmentPayload,
+      );
+      requireEntity(
+        next.sheets,
+        payload.sheetId as string,
+        'Sheet',
+      ).combined3dAlignment = match.alignment;
+      data = match;
+      break;
+    }
     case 'sheet.naming.apply': {
       const entries = payload.sheets as { id: string; name: string }[];
       const seen = new Set<string>();

@@ -199,6 +199,8 @@ export interface ConstructionSurface extends ConstructionSource {
   packageSize?: number;
 }
 export interface ConstructionPurchase extends ConstructionSource {
+  /** Exact key used by summarizeMaterials, before presentation. */
+  quantityKey?: string;
   role: string;
   materialId: string;
   stockLength: number;
@@ -211,6 +213,7 @@ export interface ConstructionPurchase extends ConstructionSource {
   packageCount: number | null;
 }
 export interface ConstructionSurfacePurchase extends ConstructionSource {
+  quantityKey?: string;
   surfaceIds: string[];
   materialId: string;
   requiredArea: number;

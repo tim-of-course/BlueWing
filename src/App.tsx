@@ -28,6 +28,9 @@ import ConstructionView from './components/ConstructionView';
 import ConstructionEditor from './components/ConstructionEditor';
 import ReviewPanel from './components/ReviewPanel';
 import NotesPanel from './components/NotesPanel';
+import HandoffViewer from './components/HandoffViewer';
+import { chooseHandoff } from './app/files';
+import { prepareHandoff, type HandoffDocument } from './app/handoff';
 import { formatScale } from './core/scale';
 import { resolveConstruction } from './core/applied-assemblies';
 import Wingman from './components/Wingman';
@@ -73,6 +76,7 @@ export default function App(props: { application?: Application }) {
   );
   const [inspectorPeek, setInspectorPeek] = createSignal(0);
   const [sheetDraft, setSheetDraft] = createSignal(false);
+  const [alignmentDraft, setAlignmentDraft] = createSignal(false);
   const [scaleDialog, setScaleDialog] = createSignal<{
     sheet: Sheet;
     expected: Observation;
@@ -98,6 +102,10 @@ export default function App(props: { application?: Application }) {
   let modelViewport: ViewportPort<ModelView> | undefined;
   const [constructionOpen, setConstructionOpen] = createSignal(false);
   const [reviewOpen, setReviewOpen] = createSignal(false);
+  const [handoff, setHandoff] = createSignal<HandoffDocument | null>(null, {
+    name: 'workspace.handoff',
+  });
+  const [handoffLoading, setHandoffLoading] = createSignal(false);
   const [detailDraft, setDetailDraft] = createSignal(false);
   const [error, setError] = createSignal('');
   const [projectName, setProjectName] = createSignal('Untitled project');
@@ -123,6 +131,7 @@ export default function App(props: { application?: Application }) {
     () =>
       notesDraft() ||
       detailDraft() ||
+      alignmentDraft() ||
       draft() ||
       recipeDraft() ||
       inspectorDraft() ||
@@ -235,8 +244,10 @@ export default function App(props: { application?: Application }) {
         return;
       if (
         recipeOpen() ||
+        alignmentDraft() ||
         constructionOpen() ||
         reviewOpen() ||
+        handoff() ||
         updateOpen() ||
         projectAction() ||
         sheetDraft() ||
@@ -344,6 +355,25 @@ export default function App(props: { application?: Application }) {
           }}
         >
           Open
+        </button>
+        <button
+          type="button"
+          disabled={handoffLoading()}
+          onClick={() => {
+            setHandoffLoading(true);
+            run(async () => {
+              try {
+                const file = await chooseHandoff(controller.native);
+                if (file) setHandoff(prepareHandoff(file.name, file.html));
+              } finally {
+                setHandoffLoading(false);
+              }
+            });
+          }}
+        >
+          {handoffLoading()
+            ? 'Opening handoff document…'
+            : 'Open handoff document'}
         </button>
         <Show when={controller.recentProjects().length > 0}>
           <select
@@ -658,7 +688,9 @@ export default function App(props: { application?: Application }) {
                   tool={tool()}
                   onError={setError}
                   onDraftChange={setDraft}
-                  interactionDisabled={inspectorDraft() || selectionDraft()}
+                  interactionDisabled={
+                    inspectorDraft() || selectionDraft() || alignmentDraft()
+                  }
                 />
               </div>
               <Show
@@ -671,6 +703,10 @@ export default function App(props: { application?: Application }) {
                 {(result) => (
                   <ConstructionView
                     controller={controller}
+                    alignmentController={controller}
+                    alignmentDisabled={hasDraft() || controller.busy()}
+                    onDraftChange={setAlignmentDraft}
+                    interactionDisabled={alignmentDraft()}
                     sheet={
                       controller.project()?.sheets[
                         controller.activeSheetId() ?? ''
@@ -759,6 +795,7 @@ export default function App(props: { application?: Application }) {
               controller.busy() ||
               constructionOpen() ||
               reviewOpen() ||
+              !!handoff() ||
               recipeOpen() ||
               updateOpen()
             }
@@ -1156,6 +1193,14 @@ export default function App(props: { application?: Application }) {
           hasDraft={hasDraft()}
           onClose={() => setUpdateOpen(false)}
         />
+      </Show>
+      <Show when={handoff()}>
+        {(document) => (
+          <HandoffViewer
+            document={document()}
+            onClose={() => setHandoff(null)}
+          />
+        )}
       </Show>
     </div>
   );

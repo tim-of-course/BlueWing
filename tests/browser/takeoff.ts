@@ -114,6 +114,10 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
   ).toContainText('448 ft2');
+  await page
+    .locator('details.quantity-output > summary')
+    .filter({ hasText: 'Wall area' })
+    .click();
   await expect(page.getByText('14', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(

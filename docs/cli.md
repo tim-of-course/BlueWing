@@ -43,6 +43,12 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 `quantities.inspect` returns source contributions, diagnostics, allowance details, purchased quantities, and totals. `quantities.export` returns CSV or JSON text in `data`; the UI export buttons save that same calculation. Invalid calculations mark affected totals incomplete.
 
+`quantities.exportEstiMaker` saves purchased LF/SF/count lines as versioned `bluewing.takeoff` JSON using the same projection as Quantities. CLI calls require `payload.path`; UI calls can choose a destination. The result is `{path,text}`, with text identical to the saved file. Counts are normal import rows; missing physical dimensions produce descriptions marked `(missing quantity)` and actual numeric zero. Coverage is informational; unresolved sources and invalid import identity are producer errors that prevent saving. It does not change the project or revision. See [the contract and checked fixtures](estimaker-export.md).
+
+```sh
+bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate.estimaker.json"}}'
+```
+
 `web.stage` accepts a manifest URL and verifies the complete web release before caching it. `web.activate` accepts the staged version and reloads the web application after acknowledging the terminal response. Close the project and finish or cancel drafts first. These commands do not rebuild the Rust shell.
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
@@ -146,6 +152,20 @@ The structured Construction and Review panels use the same commands below. Consu
 Construction physical lengths and world positions use metres, areas use square metres, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Recipe inputs still use their declared units.
 
 `construction.render` uses the same Three.js renderer as the interactive 3D view and Wingman. Its payload supports:
+
+`sheetIds` limits the page scope: omit it for all project sheets, pass one ID for a single page, or pass `[]` for an empty scene. Unknown sheet IDs fail the request. `alignment` is `saved` by default, or `none` to ignore combined 3D transforms. Saved transforms apply only when the scope contains at least two sheets, before the other filters. Single-page views retain their original placement. The result includes resolved `sheetIds`, `alignment`, and `appliedAlignments` alongside the camera. Wingman receives this explicit scope and shows construction without an unrelated active PDF background.
+
+Combined 3D alignment is a saved presentation transform after calibration and construction placement. It does not change source geometry, placement, quantities, or single-page views. Numeric offsets use world XY metres and rotation uses radians about world Z. Set it with `construction.alignment.put`, remove it with `construction.alignment.delete`, or solve it with `construction.alignment.match`. These project mutations require the usual project identity and expected revision.
+
+```sh
+bluewing construction.alignment.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheetId":"SOURCE_SHEET_ID","offset":{"x":2,"y":-1},"rotation":0.1}}'
+bluewing construction.alignment.match '{"projectId":"PROJECT_ID","expectedRevision":13,"payload":{"sheetId":"SOURCE_SHEET_ID","referenceSheetId":"REFERENCE_SHEET_ID","sourcePoints":[{"x":72,"y":144},{"x":216,"y":144}],"referencePoints":[{"x":100,"y":200},{"x":244,"y":200}]}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/combined.png","sheetIds":["SOURCE_SHEET_ID","REFERENCE_SHEET_ID"],"alignment":"saved","view":"top"}}'
+bluewing construction.render '{"payload":{"path":"/absolute/path/original.png","alignment":"none","view":"top"}}'
+bluewing construction.alignment.delete '{"projectId":"PROJECT_ID","expectedRevision":14,"payload":{"sheetId":"SOURCE_SHEET_ID"}}'
+```
+
+Match points are corresponding source and reference **page coordinates**, in the order supplied, on distinct calibrated sheets. One pair preserves the source's saved rotation and solves translation; two pairs solve rigid rotation and translation without scaling. The reference's saved combined transform is included. The result reports `alignment`, `sourceDistance`, `referenceDistance`, `residual`, and per-pair `residuals` in metres (distances are null for one pair). A distance mismatch remains visible as residual error; matching never recalibrates either sheet.
 
 | Option                                         | Meaning                                                                                                                                                    |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |

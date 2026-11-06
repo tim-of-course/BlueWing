@@ -856,6 +856,11 @@ export function createWorkspace(
         ),
       );
     },
+    async exportEstiMaker() {
+      await run(() =>
+        app.dispatch({ name: 'quantities.exportEstiMaker', origin: 'ui' }),
+      );
+    },
     async installWebUpdate(manifestUrl) {
       const result = await run(() =>
         app.dispatch({ name: 'web.stage', payload: { manifestUrl } }),
