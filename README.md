@@ -75,6 +75,26 @@ Wingman shows the latest CLI-rendered plan or 3D location in a live corner previ
 
 See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs/web-releases.md). A public web-release host is not configured in this repository.
 
+**Open handoff document** displays a standalone HTML file without importing it
+into the project. It works with no project open. The viewer allows embedded
+scripts, styles, and images in an isolated frame; external resources and native
+access are unavailable. Close the viewer to return to the workspace.
+
+An authoring skill owns the document's content, layout, evidence, and visible
+standalone status. Bluewing reads only this optional metadata:
+
+```html
+<script type="application/json" id="bluewing-handoff">
+  { "draft": true }
+</script>
+```
+
+`true` shows **Draft** while the agent is working or waiting on blockers; `false`
+shows **Complete** when the agent has finished. This does not track human
+review or imply approval or verified quantities. Missing or malformed metadata
+shows **Status not supplied** and the document remains viewable. Opening a
+document does not change project data.
+
 ## Verify
 
 Install the browsers once, then run the web checks:
