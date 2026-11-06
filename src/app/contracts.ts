@@ -2,7 +2,7 @@ import type { Accessor } from 'solid-js';
 import type { Observation } from './application';
 import type { ImportedFileReader } from './files';
 import type { PaperScale } from '../core/scale';
-import type { SheetNameSuggestion } from '../pdf/sheet-names';
+import type { TextPrefetch } from '../pdf/text-prefetch';
 import type { PlanSnippet } from '../core/review';
 import type {
   CalculationSnapshot,
@@ -110,11 +110,9 @@ export interface WorkspaceController {
   importPdf(): Promise<void>;
   importPdfFiles(files: ImportedFileReader[]): Promise<void>;
   renameSheet(id: string, name: string, expected?: Observation): Promise<void>;
-  suggestSheetName(sheet: Sheet): Promise<SheetNameSuggestion>;
-  renameSheets(
-    names: { id: string; name: string }[],
-    expected: Observation,
-  ): Promise<void>;
+  pageNamingStatus(
+    sheets: readonly Sheet[],
+  ): ReturnType<TextPrefetch['status']>;
   duplicateSheet(id: string): Promise<void>;
   deleteSheet(id: string): Promise<void>;
   reorderSheets(ids: string[]): Promise<void>;

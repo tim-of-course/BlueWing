@@ -5,7 +5,7 @@ import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import { startProject } from './takeoff';
 import { sheetNamesWorkflow } from './sheet-names';
 
-test('local sheet-name suggestions support review, edit, undo and reopening', async ({
+test('AI Page Naming replaces suggestion review with preparation and an agent task', async ({
   page,
 }, testInfo) => {
   const errors: string[] = [];

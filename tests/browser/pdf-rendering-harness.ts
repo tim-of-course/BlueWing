@@ -858,15 +858,15 @@ async function nameCache() {
   if (!sheet) throw new Error('Missing name fixture sheet');
   try {
     const [first, duplicate] = await Promise.all([
-      documents.suggestName(sheet),
-      documents.suggestName({
+      documents.text(sheet),
+      documents.text({
         ...sheet,
         id: 'duplicate',
         name: 'Renamed copy',
       }),
     ]);
-    if (first.status === 'suggested') first.name = 'Caller edit';
-    const unchanged = await documents.suggestName({
+    first.text = 'Caller edit';
+    const unchanged = await documents.text({
       ...sheet,
       name: 'New label',
     });
@@ -874,16 +874,16 @@ async function nameCache() {
     const failures = [];
     for (let attempt = 0; attempt < 2; attempt++)
       failures.push(
-        await documents.suggestName({ ...sheet, pageIndex: 999 }).then(
+        await documents.text({ ...sheet, pageIndex: 999 }).then(
           () => '',
           (error: unknown) => String(error),
         ),
       );
-    const recovered = await documents.suggestName(sheet);
+    const recovered = await documents.text(sheet);
     await documents.release('names');
-    const released = await documents.suggestName(sheet);
+    const released = await documents.text(sheet);
     await documents.clear();
-    const cleared = await documents.suggestName(sheet);
+    const cleared = await documents.text(sheet);
     return {
       duplicate,
       unchanged,

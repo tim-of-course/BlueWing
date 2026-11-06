@@ -47,6 +47,59 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
 
+## AI Page Naming workflow
+
+Choose **AI Page Naming** (the **Aa** button beside Sheets) to prepare title blocks
+and copy a task for an external agent. This replaces the old heuristic suggestion
+and review dialog. The agent can also choose the workflow directly from CLI help
+or the connection guide:
+
+```sh
+bluewing sheet.naming.start
+bluewing sheet.naming.read '{"payload":{"offset":0,"limit":5}}'
+bluewing sheet.naming.apply '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheets":[{"id":"SHEET_ID_1","name":"A101 · FLOOR PLAN"},{"id":"SHEET_ID_2","name":"S201 · FOUNDATION PLAN"}]}}'
+```
+
+**Start** returns specific agent instructions and starts sequential background
+prefetch for all sheets (or `payload.sheetIds`, up to 2,000). It returns immediately;
+a repeated start reuses cached results. The UI prepares the same cache as the CLI.
+
+**Read** returns compact bottom-right title-block snippets in small batches (five
+by default, at most 20), stable sheet IDs/current names, source asset/page numbers,
+and page-coordinate `region` bounds. Follow `nextOffset`; `queued` and `reading`
+describe outstanding work. Reading does not launch extraction or change revisions.
+The agent identifies the printed sheet number and page title rather than relying
+on a local naming guess.
+
+The extraction rectangle is the visually bottom-right quarter used by the previous
+naming tool, accounting for PDF rotation and crop transforms. Filtering happens
+inside PDFium **before** the 1,500 UTF-16-unit per-page limit: unrelated drawing
+notes cannot consume the title-block budget even if they precede the title in PDF
+reading order. Text is returned once, without a duplicate full-page text/geometry
+dump. `characterCount` counts only regional text; `truncated` reports regional
+overflow. No whole-page extraction is offered by this workflow.
+
+For `no-title-block-text`, ambiguous or truncated snippets, the workflow tells the
+agent to request a **title-block image only** using `sheet.render` with the returned
+`region` as `bounds`, `mode: "plan"`, a path, and `maxDimension: 1600`. This lets
+the agent visually read scans or unusual title blocks without loading every
+drawing into context. Bluewing itself does not run OCR or a model. Unresolved
+pages should retain their names and be reported; the agent should not invent titles.
+
+**Apply** accepts up to 500 `{id,name}` entries, saves atomically as one revision
+and one Undo step, and preserves all other sheet fields. Duplicate IDs, missing
+sheets, blank names, and stale revisions reject the request. The workflow asks
+the agent to use the project ID/revision returned by its latest snippet read,
+and to reread affected names after conflicts. A full-project dump is not needed
+just to get revision metadata. No per-page user review is required.
+
+`sheet.naming.cancel` stops unfinished preparation and preserves completed results.
+Extraction errors remain explicit and can be retried with Start. The application
+session caches snippets using a 16 MiB serialized-string estimate (not a process
+memory bound), cleared on project close/reopen; renaming preserves cached text.
+Evicted/unrequested pages report `not-cached` and can be prepared in smaller groups.
+No project text is duplicated into the saved file.
+
 ## Performance recordings
 
 Record a slowdown while using the actual desktop app:

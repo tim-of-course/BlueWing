@@ -29,6 +29,34 @@ function entry(
 }
 export const applicationCommands = [
   entry(
+    'sheet.naming.start',
+    'Start the AI Page Naming workflow. Prefetch compact bottom-right title-block text for all sheets or sheetIds and return agent instructions. No names change until sheet.naming.apply.',
+    { sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 } },
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'sheet.naming.read',
+    'Read a compact batch of title-block snippets for the AI Page Naming workflow (default 5, maximum 20). Region filtering precedes the 1500-character per-page limit. Missing/unclear text includes crop bounds for agent visual inspection.',
+    {
+      sheetIds: { type: 'array', items: string, minItems: 1, maxItems: 2000 },
+      offset: { type: 'number', minimum: 0 },
+      limit: { type: 'number', minimum: 1 },
+    },
+    [],
+    false,
+    { offset: 0, limit: 5 },
+  ),
+  entry(
+    'sheet.naming.cancel',
+    'Cancel queued/in-progress text prefetch, preserving completed cached pages. No project changes.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
     'performance.start',
     'Start a bounded performance recording, including PDF/cache stages and supported browser responsiveness measurements. No project changes.',
     {},

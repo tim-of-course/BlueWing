@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { startProject } from './takeoff';
 import { sheetNamesWorkflow } from './sheet-names';
 
-test('built local sheet naming applies and persists chosen names', async ({
+test('built AI Page Naming prepares title blocks and gives an agent task', async ({
   page,
 }) => {
   const errors: string[] = [];

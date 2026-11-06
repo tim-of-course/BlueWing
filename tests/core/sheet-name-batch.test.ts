@@ -32,24 +32,36 @@ void test('reviewed sheet renames save atomically, preserve sheet data, and undo
   };
   const batch = {
     ...observation,
-    name: 'batch',
+    name: 'sheet.naming.apply',
     origin: 'ui',
     payload: {
-      commands: [
-        {
-          name: 'sheet.put',
-          payload: { ...project.sheets.one, name: 'A1.0 · FLOOR PLAN' },
-        },
-        {
-          name: 'sheet.put',
-          payload: { ...project.sheets.two, name: 'A2.0 · CEILING PLAN' },
-        },
+      sheets: [
+        { id: 'one', name: 'A1.0 · FLOOR PLAN' },
+        { id: 'two', name: 'A2.0 · CEILING PLAN' },
       ],
     },
   };
   await assert.rejects(session.dispatch(batch), /Disk full/);
   assert.deepEqual(session.project.sheets, project.sheets);
   fail = false;
+  for (const sheets of [
+    [
+      { id: 'one', name: 'Valid' },
+      { id: 'one', name: 'Duplicate' },
+    ],
+    [
+      { id: 'one', name: 'Valid' },
+      { id: 'missing', name: 'Missing' },
+    ],
+    [
+      { id: 'one', name: 'Valid' },
+      { id: 'two', name: '  ' },
+    ],
+  ]) {
+    await assert.rejects(session.dispatch({ ...batch, payload: { sheets } }));
+    assert.deepEqual(session.project.sheets, project.sheets);
+    assert.equal(saves, 0);
+  }
   await session.dispatch(batch);
   assert.equal(saves, 1);
   assert.equal(session.project.revision, project.revision + 1);

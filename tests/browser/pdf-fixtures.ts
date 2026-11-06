@@ -2,6 +2,28 @@ import type { AssetRange } from '../../src/platform/storage-model';
 
 const encoder = new TextEncoder();
 
+export function sheetTextPdf(): Uint8Array {
+  const page = (content: number, rotation = 0) =>
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 1000 800] /Rotate ${String(rotation)} /Resources << /Font << /F1 7 0 R >> >> /Contents ${String(content)} 0 R >>`;
+  return pdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R] /Count 4 >>',
+    page(8),
+    page(9, 90),
+    page(10),
+    page(11),
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    stream(
+      `BT /F1 0.1 Tf 0.2 TL 10 750 Td ${'(UNRELATED DRAWING NOTES) Tj T*\n'.repeat(2500)} ET BT /F1 18 Tf 650 100 Td (A101 NORTH WING FLOOR PLAN) Tj ET`,
+    ),
+    stream('BT /F1 18 Tf 650 650 Td (S201 STRUCTURAL PLAN) Tj ET'),
+    stream('0 0 20 20 re f'),
+    stream(
+      `BT /F1 0.1 Tf 0.2 TL 650 300 Td ${`(${'TITLE BLOCK NOTES '.repeat(10)}) Tj T*\n`.repeat(40)} ET`,
+    ),
+  ]);
+}
+
 function join(parts: Uint8Array[]): Uint8Array {
   const bytes = new Uint8Array(
     parts.reduce((sum, part) => sum + part.length, 0),

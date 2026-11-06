@@ -1,7 +1,6 @@
 import { imageDimension, PAGE_PREVIEW_DIMENSION } from './image-resolution';
 import { PdfiumDocument, PDFIUM_VERSION } from './pdfium-document';
 import type { PdfiumSource } from './pdfium-source';
-import type { SheetNameSuggestion } from './sheet-names';
 import type {
   PdfWorkerError,
   PdfWorkerRequest,
@@ -30,7 +29,6 @@ interface Operation {
 }
 const jobs = new Map<number, RenderJob>();
 const operations = new Map<number, Operation>();
-const names = new Map<string, Promise<SheetNameSuggestion>>();
 let pdf: PdfiumDocument | undefined;
 let rangeTransport: PdfiumSource | undefined;
 let active: RenderJob | undefined;
@@ -132,24 +130,6 @@ async function importSheets(
   );
   check();
   post({ type: 'result', id: message.id, value: sheets });
-}
-
-async function nameSheet(
-  message: Extract<PdfWorkerRequest, { type: 'name' }>,
-  check: () => void,
-): Promise<void> {
-  const document = documentProxy();
-  const { sheet } = message;
-  const key = `${String(sheet.pageIndex)}:${String(sheet.rotation ?? 0)}`;
-  let pending = names.get(key);
-  if (!pending) {
-    pending = document.name(sheet, check);
-    names.set(key, pending);
-    void pending.catch(() => names.delete(key));
-  }
-  const value = await pending;
-  check();
-  post({ type: 'result', id: message.id, value: { ...value } });
 }
 
 function cancel(id: number): void {
@@ -414,8 +394,12 @@ scope.addEventListener('message', ({ data: message }) => {
     case 'import':
       void operation(message.id, (check) => importSheets(message, check));
       break;
-    case 'name':
-      void operation(message.id, (check) => nameSheet(message, check));
+    case 'text':
+      void operation(message.id, async (check) => {
+        const value = await documentProxy().text(message.sheet, check);
+        check();
+        post({ type: 'result', id: message.id, value });
+      });
       break;
     case 'render':
       if (!pdf || fatalError) {

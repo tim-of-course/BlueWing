@@ -54,8 +54,13 @@ export function cliIntroduction(
     start: project
       ? 'project.inspect reads the current takeoff. Use projectId and the latest expectedRevision for edits.'
       : 'Open or create a project in Bluewing to begin.',
+    workflows: {
+      pageNaming: { title: 'AI Page Naming', start: 'sheet.naming.start' },
+    },
     commands: {
       project: 'project.inspect, project.create, project.open, sheet.render',
+      sheetNaming:
+        'sheet.naming.start, sheet.naming.read, sheet.naming.apply, sheet.naming.cancel',
       takeoff: 'geometry.put, group.put, assignment.put, quantities.inspect',
       construction: 'wall.put, construction.inspect, construction.render',
       review: 'snippet.render, review.inspect, wingman.flash',

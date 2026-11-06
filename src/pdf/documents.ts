@@ -1,6 +1,5 @@
 import type { Sheet } from '../core/types';
 import type { AssetRange } from '../platform/storage-model';
-import type { SheetNameSuggestion } from './sheet-names';
 import type { PerformanceRecorder } from '../performance/recorder';
 import type { RasterImage } from './worker-protocol';
 import { PdfWorkerClient } from './worker-client';
@@ -9,7 +8,6 @@ interface LoadedDocument {
   promise: Promise<PdfWorkerClient>;
   worker: PdfWorkerClient | undefined;
   users: number;
-  names: Map<string, Promise<SheetNameSuggestion>>;
 }
 
 /** PDF work is isolated from the UI; imported coordinates remain top-left viewports. */
@@ -33,7 +31,6 @@ export class PdfDocuments {
       promise: undefined as unknown as Promise<PdfWorkerClient>,
       worker: undefined,
       users: 0,
-      names: new Map(),
     };
     this.documents.set(id, entry);
     entry.promise = Promise.resolve().then(async () => {
@@ -117,21 +114,13 @@ export class PdfDocuments {
     return this.useDocument(id, (worker) => worker.import(id, name), source);
   }
 
-  async suggestName(sheet: Sheet): Promise<SheetNameSuggestion> {
-    return this.useDocument(sheet.assetId, async (worker, entry) => {
-      const key = `${String(sheet.pageIndex)}:${String(sheet.rotation ?? 0)}`;
-      let pending = entry.names.get(key);
-      if (!pending) {
-        pending = worker.suggestName(sheet);
-        entry.names.set(key, pending);
-      }
-      try {
-        return { ...(await pending) };
-      } catch (error) {
-        entry.names.delete(key);
-        throw error;
-      }
-    });
+  text(sheet: Sheet, signal?: AbortSignal) {
+    return this.useDocument(
+      sheet.assetId,
+      (worker) => worker.text(sheet, signal),
+      undefined,
+      signal,
+    );
   }
 
   raster(
@@ -228,7 +217,6 @@ export class PdfDocuments {
     if (entry) {
       this.documents.delete(id);
       entry.worker?.destroy();
-      entry.names.clear();
     }
     return Promise.resolve();
   }

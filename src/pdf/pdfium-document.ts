@@ -7,8 +7,13 @@ import {
 import wasmUrl from '@embedpdf/engine-runtime-wasm32/embedpdf.wasm?url';
 import type { Sheet } from '../core/types';
 import { PdfAvailabilityError, PdfiumSource } from './pdfium-source';
-import { suggestSheetName, type SheetTextItem } from './sheet-names';
 import type { PdfRenderBounds } from './worker-protocol';
+import {
+  pdfTitleBlockBounds,
+  titleBlockRegion,
+  TITLE_TEXT_LIMIT,
+  type PageText,
+} from './page-text';
 
 export const PDFIUM_VERSION = 'embedpdf-3.0.0-next.15';
 type Check = () => void;
@@ -308,93 +313,65 @@ export class PdfiumDocument {
     }
   }
 
-  name(sheet: Sheet, check: Check) {
-    const run = () => this.nameOnce(sheet, check);
+  text(sheet: Sheet, check: Check) {
+    const run = () => this.titleBlockOnce(sheet, check);
     return this.source ? this.source.complete(run, () => {}, check) : run();
   }
 
-  private async nameOnce(sheet: Sheet, check: Check) {
-    if ((sheet.rotation ?? 0) % 90 !== 0)
-      throw new Error('Invalid PDF page rotation');
+  private async titleBlockOnce(sheet: Sheet, check: Check): Promise<PageText> {
+    const bounds = pdfTitleBlockBounds(sheet);
     const page = await this.page(sheet.pageIndex, check, (pending) => pending);
-    const module = this.runtime.fn;
-    const memoryAccess = this.runtime.mem;
-    const text = module.FPDFText_LoadPage(page);
-    const memory = this.allocate(48);
+    const module = this.runtime.fn,
+      memoryAccess = this.runtime.mem;
+    let text = NULL_PTR,
+      memory = NULL_PTR;
     try {
-      const items: SheetTextItem[] = [];
-      let run: SheetTextItem | undefined;
-      const count = module.FPDFText_CountChars(text);
-      for (let index = 0; index < count; index++) {
-        if (index % 1024 === 0) {
-          await yieldPdf();
-          check();
-        }
-        const unicode = module.FPDFText_GetUnicode(text, index);
-        if (!unicode || unicode < 32) {
-          run = undefined;
-          continue;
-        }
-        const str = String.fromCodePoint(unicode);
-        if (!module.FPDFText_GetCharOrigin(text, index, memory, add(memory, 8)))
-          continue;
-        const x = Number(memoryAccess.peek(memory, 'f64'));
-        const y = Number(memoryAccess.peek(memory, 'f64', 8));
-        const angle = module.FPDFText_GetCharAngle(text, index);
-        const height = module.FPDFText_GetFontSize(text, index);
-        const cosine = Math.cos(angle),
-          sine = Math.sin(angle);
-        module.FPDFText_GetCharBox(
-          text,
-          index,
-          add(memory, 16),
-          add(memory, 24),
-          add(memory, 32),
-          add(memory, 40),
-        );
-        const width =
-          Math.abs(cosine) *
-            (Number(memoryAccess.peek(memory, 'f64', 24)) -
-              Number(memoryAccess.peek(memory, 'f64', 16))) +
-          Math.abs(sine) *
-            (Number(memoryAccess.peek(memory, 'f64', 40)) -
-              Number(memoryAccess.peek(memory, 'f64', 32)));
-        const dx = x - (run?.transform[4] ?? x),
-          dy = y - (run?.transform[5] ?? y);
-        const advance = dx * cosine + dy * sine;
-        if (
-          run &&
-          Math.abs(dx * sine - dy * cosine) < height * 0.2 &&
-          Math.abs((run.transform[0] ?? 0) - cosine * height) < 0.1 &&
-          advance >= 0 &&
-          advance - run.width < height * 2
-        ) {
-          run.str += str;
-          run.width = advance + width;
-        } else {
-          run = {
-            str,
-            transform: [
-              cosine * height,
-              sine * height,
-              -sine * height,
-              cosine * height,
-              x,
-              y,
-            ],
-            width,
-            height,
-          };
-          items.push(run);
-        }
-      }
-      return suggestSheetName(items, {
-        width: sheet.width,
-        height: sheet.height,
-        transform: sheet.pdfToPage ?? [1, 0, 0, -1, 0, sheet.height],
-      });
+      text = module.FPDFText_LoadPage(page);
+      if (!text) throw new Error('Unable to read title-block text');
+      check();
+      // Native bounded extraction excludes drawing text BEFORE counting/capping.
+      // Two calls replace thousands of JS/WASM per-character geometry calls.
+      const count = module.FPDFText_GetBoundedText(
+        text,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+        NULL_PTR,
+        0,
+      );
+      if (count < 0) throw new Error('Unable to read title-block text');
+      const capacity = Math.min(count, TITLE_TEXT_LIMIT) + 1;
+      memory = this.allocate(capacity * 2);
+      const copied = module.FPDFText_GetBoundedText(
+        text,
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+        memory,
+        capacity,
+      );
+      if (copied < 0 || copied > capacity)
+        throw new Error('Invalid title-block text response');
+      let value = (
+        new TextDecoder('utf-16le')
+          .decode(memoryAccess.readBytes(memory, copied * 2))
+          .split(String.fromCharCode(0), 1)[0] ?? ''
+      ).slice(0, TITLE_TEXT_LIMIT);
+      const last = value.charCodeAt(value.length - 1);
+      if (last >= 0xd800 && last <= 0xdbff) value = value.slice(0, -1);
+      value = value.trim();
+      check();
+      return {
+        status: value ? 'text' : 'no-title-block-text',
+        text: value,
+        region: titleBlockRegion(sheet),
+        characterCount: count,
+        truncated: count > TITLE_TEXT_LIMIT,
+      };
     } finally {
-      memoryAccess.free(memory);
+      if (memory) memoryAccess.free(memory);
       if (text) module.FPDFText_ClosePage(text);
       module.FPDF_ClosePage(page);
     }
