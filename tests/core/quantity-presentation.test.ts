@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import contract from '../fixtures/estimaker-takeoff-v1.json';
-import countsContract from '../fixtures/estimaker-counts-and-missing-v1.json';
+import contract from '../fixtures/estimaker-takeoff-v2.json';
+import countsContract from '../fixtures/estimaker-counts-and-missing-v2.json';
 import {
   calculateProject,
   exportQuantities,
@@ -49,7 +49,7 @@ void test('75 explicit 2ft pieces export 150 LF with quantity-only provenance an
   const result = takeoff(fixture());
   assert.deepEqual(result, contract);
   assert.equal(result.kind, 'bluewing.takeoff');
-  assert.equal(result.version, 1);
+  assert.equal(result.version, 2);
   assert.equal(result.project.revision, '0');
   assert.equal(result.calculationComplete, true);
   assert.equal(result.coverage.complete, false);
@@ -72,6 +72,7 @@ void test('75 explicit 2ft pieces export 150 LF with quantity-only provenance an
       'kind',
       'version',
       'project',
+      'takeoff',
       'exportedAt',
       'calculationComplete',
       'coverage',

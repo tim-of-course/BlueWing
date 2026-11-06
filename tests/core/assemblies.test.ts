@@ -214,7 +214,10 @@ void test('straight framing schedules preserve exact cut lengths, locations and 
   near(rows[0]?.stockLength_m, 3.6576);
   assert.equal(rows[1]?.location, 'Wall B');
   assert.match(exportPieces(project, 'csv'), /Wall B/);
-  assert.deepEqual(JSON.parse(exportPieces(project, 'json')), rows);
+  assert.deepEqual(
+    (JSON.parse(exportPieces(project, 'json')) as { rows: unknown }).rows,
+    rows,
+  );
   assignment(project).allowances.studs = { wastePercent: 10, packageSize: 20 };
   near(calculateProject(project).totals[0]?.amount, 60); // Three bundles, not four split by cut length.
   assert.equal(

@@ -268,6 +268,14 @@ export default function DrawingCanvas(props: {
         for (const id of group.geometryIds)
           colors[id] = group.color ?? '#3b82f6';
       }
+      for (const assignment of Object.values(
+        props.controller.project()?.assignments ?? {},
+      ))
+        if (assignment.direction === 'deduct')
+          for (const id of props.controller.project()?.groups[
+            assignment.groupId
+          ]?.geometryIds ?? [])
+            if (colors[id]) colors[id] = '#e25858';
       return colors;
     },
     {

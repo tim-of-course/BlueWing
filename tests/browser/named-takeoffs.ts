@@ -57,7 +57,7 @@ export async function namedTakeoffs(page: Page) {
           id: 'r',
           name: 'Count steel',
           geometryKinds: ['count'],
-          inputs: [],
+          inputs: [{ name: 'cut', type: 'number', unit: 'ft', default: 2 }],
           outputs: [
             {
               id: 'o',
@@ -65,6 +65,10 @@ export async function namedTakeoffs(page: Page) {
               materialId: 'steel',
               unit: 'ea',
               formula: 'count',
+              piece: {
+                role: 'stud',
+                cutLength: { formula: 'cut', unit: 'ft' },
+              },
               allowance: { wastePercent: 10, packageSize: 2 },
             },
           ],
@@ -137,6 +141,22 @@ export async function namedTakeoffs(page: Page) {
     context: { takeoffId: co, name: 'CO renamed' },
     totals: [{ amount: -4, deductions: 4 }],
   });
+  const quantityDownload = page.waitForEvent('download');
+  const purchased = await cli('quantities.exportEstiMaker', {
+    takeoffId: co,
+    payload: { path: 'co.estimaker.json' },
+  });
+  expect(purchased.exitCode, JSON.stringify(purchased.response)).toBe(0);
+  expect(
+    JSON.parse((purchased.response.data as { text: string }).text),
+  ).toMatchObject({
+    version: 2,
+    takeoff: { id: co, name: 'CO renamed', kind: 'change-order' },
+    rows: [
+      { quantity: -8, grossQuantity: 8, direction: 'deduct', pieceCount: 4 },
+    ],
+  });
+  expect((await quantityDownload).suggestedFilename()).toContain(co);
   const download = page.waitForEvent('download');
   const rendered = await cli('sheet.render', {
     takeoffId: co,
@@ -163,12 +183,22 @@ export async function namedTakeoffs(page: Page) {
   await expect(page.getByLabel('Active takeoff')).toBeEnabled();
   await page.getByLabel('Active takeoff').selectOption(co);
   await page.reload();
-  await page
-    .getByRole('button', { name: 'Open', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
   await expect(page.getByLabel('Active takeoff')).toHaveValue('main');
   await page.getByLabel('Active takeoff').selectOption(co);
   expect(
     (await cli('quantities.inspect', { takeoffId: co })).response.data,
   ).toMatchObject({ totals: [{ amount: -4 }] });
+  await mutate('takeoff.delete', { id: co });
+  await expect(page.getByLabel('Active takeoff')).toHaveValue('main');
+  await page
+    .getByLabel('New group name', { exact: true })
+    .fill('Post-delete Main');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page.getByLabel('Group name', { exact: true })).toHaveValue(
+    'Post-delete Main',
+  );
+  await mutate('history.undo', {});
+  await mutate('history.undo', {});
+  await page.getByLabel('Active takeoff').selectOption(co);
 }

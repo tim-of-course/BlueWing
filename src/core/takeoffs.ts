@@ -2,6 +2,7 @@ import { resolveConstruction } from './applied-assemblies';
 import type { CommandCall, Project, Takeoff } from './types';
 import type { CommandDefinition } from './commands';
 import { newId } from './geometry';
+import type { SheetPlacement } from './construction-types';
 
 export const ownedCollections = [
   'geometries',
@@ -253,15 +254,26 @@ export function manageTakeoff(project: Project, call: CommandCall): unknown {
   const headers = Object.values(source.construction?.headers ?? {}).filter(
     (h) => openings.some((o) => o.headerId === h.id),
   );
-  const levels = Object.values(source.construction?.levels ?? {});
   const sheets = new Set(
     [...selected].map((id) => required(source.geometries[id]).sheetId),
   );
   const placements = Object.values(
     source.construction?.placements ?? {},
   ).filter((p) => sheets.has(p.sheetId));
+  const usedLevels = new Set(
+    applied.map((item) => item.levelId).filter(Boolean),
+  );
+  const levels = Object.values(source.construction?.levels ?? {}).filter(
+    (level) => usedLevels.has(level.id),
+  );
   for (const item of [...openings, ...headers, ...levels, ...placements])
     remap(item.id);
+  for (const level of levels) {
+    const existing = Object.values(target.construction?.levels ?? {}).find(
+      (item) => item.name === level.name && item.elevation === level.elevation,
+    );
+    if (existing) ids[level.id] = existing.id;
+  }
   for (const a of assignments)
     for (const id of selected)
       if (required(source.groups[a.groupId]).geometryIds.includes(id)) {
@@ -325,10 +337,26 @@ export function manageTakeoff(project: Project, call: CommandCall): unknown {
       ['levels', levels],
       ['placements', placements],
     ] as const)
-      for (const item of items)
+      for (const item of items) {
+        if (collection === 'placements') {
+          const placement = rewrite(item) as SheetPlacement;
+          const existing = Object.values(target.construction.placements).find(
+            (p) => p.sheetId === placement.sheetId,
+          );
+          if (existing) {
+            if (
+              JSON.stringify({ ...placement, id: existing.id }) !==
+              JSON.stringify(existing)
+            )
+              throw new Error('Conflicting construction placement');
+            ids[item.id] = existing.id;
+            continue;
+          }
+        }
         Object.assign(target.construction[collection], {
           [remap(item.id)]: rewrite(structuredClone(item)),
         });
+      }
   }
   mergeTakeoff(project, target, before);
   (destination.copies ??= []).push({

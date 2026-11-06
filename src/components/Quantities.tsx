@@ -123,6 +123,7 @@ export default function Quantities(props: {
                         {entry.row?.description ?? entry.description}
                         <br />
                         <small>
+                          {entry.output.direction ?? 'add'} ·{' '}
                           {entry.output.materialId} ·{' '}
                           {
                             props.controller.project()?.groups[
@@ -167,6 +168,35 @@ export default function Quantities(props: {
                 </For>
               </tbody>
             </table>
+            <Show when={result().context?.kind === 'change-order'}>
+              <table>
+                <caption>
+                  Gross additions, deductions and signed net by material
+                </caption>
+                <thead>
+                  <tr>
+                    <th>Material</th>
+                    <th>Additions</th>
+                    <th>Deductions</th>
+                    <th>Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <For each={result().totals}>
+                    {(total) => (
+                      <tr>
+                        <td>
+                          {total.materialId} ({total.unit})
+                        </td>
+                        <td>{number(total.additions)}</td>
+                        <td>{number(total.deductions)}</td>
+                        <td>{number(total.amount)}</td>
+                      </tr>
+                    )}
+                  </For>
+                </tbody>
+              </table>
+            </Show>
             <Show when={props.controller.project()}>
               {(project) => (
                 <PieceSchedule project={project()} result={result()} />

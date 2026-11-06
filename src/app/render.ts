@@ -67,6 +67,10 @@ export async function renderImage(
     const colors: Record<string, string> = {};
     for (const group of Object.values(project.groups))
       for (const id of group.geometryIds) colors[id] = group.color ?? '#3b82f6';
+    for (const assignment of Object.values(project.assignments))
+      if (assignment.direction === 'deduct')
+        for (const id of project.groups[assignment.groupId]?.geometryIds ?? [])
+          colors[id] = '#e25858';
     paintTakeoff(
       context,
       Object.values(project.geometries).filter(

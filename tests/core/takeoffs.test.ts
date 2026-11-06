@@ -8,6 +8,9 @@ import {
 } from '../../src/core/calculations';
 import { takeoffProject, required } from '../../src/core/takeoffs';
 import { resolveConstruction } from '../../src/core/applied-assemblies';
+import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
+import { executeCommand } from '../../src/core/commands';
+import { importFixture } from '../fixtures/quantity-project';
 import type { CommandCall } from '../../src/core/types';
 
 function fixture() {
@@ -83,6 +86,43 @@ function fixture() {
     },
   };
 }
+void test('signed takeoff projection preserves intentional counts and missing-dimension zero rows', () => {
+  let project = importFixture();
+  project = executeCommand(project, {
+    name: 'takeoff.create',
+    payload: { id: 'co', name: 'CO count', kind: 'change-order' },
+  }).project;
+  project = executeCommand(project, {
+    name: 'takeoff.copyItems',
+    takeoffId: 'co',
+    payload: {
+      sourceTakeoffId: 'main',
+      geometryIds: Object.keys(project.geometries),
+      direction: 'deduct',
+    },
+  }).project;
+  const view = takeoffProject(project, 'co');
+  const result = estiMakerTakeoff(view, calculateProject(view));
+  const count = required(result.rows.find((row) => row.unit === 'count'));
+  assert.equal(count.quantity, -75);
+  assert.equal(count.grossQuantity, 75);
+  assert.equal(count.direction, 'deduct');
+  const missing = required(
+    result.rows.find((row) => row.description.includes('(missing quantity)')),
+  );
+  assert.equal(missing.quantity, 0);
+  assert.equal(missing.grossQuantity, 0);
+  assert.equal(missing.provenance.originalAmount, null);
+  assert.equal(missing.direction, 'deduct');
+  assert.equal(result.calculationComplete, false);
+  assert.ok(!('skipped' in result));
+  assert.equal(
+    estiMakerTakeoff(project, calculateProject(project)).rows.find(
+      (row) => row.unit === 'count',
+    )?.quantity,
+    75,
+  );
+});
 
 void test('takeoffs start empty; independent copies round positive purchases before sign and preserve gross zero-net detail', async () => {
   const f = fixture();
@@ -110,6 +150,15 @@ void test('takeoffs start empty; independent copies round positive purchases bef
     [[0, 4, 4]],
   );
   assert.equal(result.context?.takeoffId, 'co');
+  const purchase = estiMakerTakeoff(
+    takeoffProject(f.session.project, 'co'),
+    result,
+  );
+  assert.equal(purchase.takeoff.id, 'co');
+  assert.equal(purchase.rows.length, 2);
+  assert.equal(purchase.rows[0]?.direction, 'deduct');
+  assert.equal(purchase.rows[0].quantity, -4 / 0.3048);
+  assert.equal(purchase.rows[0].grossQuantity, 4 / 0.3048);
   const target = takeoffProject(f.session.project, 'co');
   assert.match(exportQuantities(target, 'csv'), /"co","co","deduct"/);
   const g = required(Object.values(target.geometries)[0]);
@@ -185,6 +234,22 @@ void test('ownership rejects cross-takeoff writes/references and phases reject d
     f.call({ name: 'takeoff.delete', payload: { id: 'main' } }),
     /Main/,
   );
+  await f.call({
+    name: 'sheet.put',
+    takeoffId: 'co',
+    payload: {
+      ...f.session.project.sheets.s,
+      calibration: { metresPerUnit: 2 },
+      name: 'Shared name',
+    },
+  });
+  assert.equal(f.session.project.sheets.s?.calibration?.metresPerUnit, 1);
+  assert.equal(
+    takeoffProject(f.session.project, 'co').sheets.s?.calibration
+      ?.metresPerUnit,
+    2,
+  );
+  assert.equal(f.session.project.sheets.s.name, 'Shared name');
   assert.equal(f.session.project.geometries.g?.points[0]?.x, 0);
 });
 
@@ -192,6 +257,19 @@ void test('copy/delete, failed saves, batch preview and undo/redo stay atomic in
   const f = fixture();
   await f.create();
   const before = f.session.project;
+  const grossPreview = await f.call({
+    name: 'preview',
+    takeoffId: 'co',
+    payload: {
+      commands: ['deduct', 'add'].map((direction) => ({
+        name: 'takeoff.copyItems',
+        payload: { sourceTakeoffId: 'main', geometryIds: ['g'], direction },
+      })),
+    },
+  });
+  assert.equal(grossPreview.quantityChanges?.[0]?.delta, 0);
+  assert.equal(grossPreview.quantityChanges[0].additionDelta, 4);
+  assert.equal(grossPreview.quantityChanges[0].deductionDelta, 4);
   await assert.rejects(f.copy('deduct', ['g', 'missing']));
   assert.deepEqual(f.session.project, before);
   f.fail(true);
@@ -250,10 +328,25 @@ void test('copy/delete, failed saves, batch preview and undo/redo stay atomic in
 void test('copied modeled walls remap openings and applied IDs; unresolved deductions stay incomplete', async () => {
   const f = fixture();
   await f.call({
+    name: 'level.put',
+    payload: { id: 'floor', name: 'Floor', elevation: 0 },
+  });
+  await f.call({
+    name: 'placement.put',
+    payload: {
+      id: 'place',
+      sheetId: 's',
+      pageOrigin: { x: 0, y: 0 },
+      worldOffset: { x: 1, y: 2, z: 0 },
+      rotation: 0,
+    },
+  });
+  await f.call({
     name: 'wall.put',
     payload: {
       id: 'wall',
       geometryId: 'g',
+      levelId: 'floor',
       baseElevation: 0,
       height: 3,
       studSpacing: 0.5,
@@ -285,6 +378,13 @@ void test('copied modeled walls remap openings and applied IDs; unresolved deduc
   assert.notEqual(opening.wallId, 'wall');
   assert.ok(walls[opening.wallId]);
   assert.ok(f.report('co').model.pieces.every((p) => p.direction === 'deduct'));
+  await f.copy('add');
+  assert.equal(
+    Object.keys(
+      required(takeoffProject(f.session.project, 'co').construction).placements,
+    ).length,
+    1,
+  );
   const recipe = required(
     Object.values(co.recipes).find((r) => r.id !== 'r' && r.wallTemplate),
   );
@@ -297,4 +397,42 @@ void test('copied modeled walls remap openings and applied IDs; unresolved deduc
   });
   assert.equal(f.report('co').complete, false);
   assert.deepEqual(f.report('main').outputs, baseline.outputs);
+});
+
+void test('takeoff caches never cross contexts, invalid deductions stay incomplete, and batch contexts cannot change', async () => {
+  const f = fixture();
+  await f.create();
+  await f.copy();
+  const main = f.session.calculationFor('main');
+  const co = f.session.calculationFor('co');
+  assert.equal(main.totals[0]?.amount, 4);
+  assert.equal(co.totals[0]?.amount, -4);
+  assert.equal(f.session.calculationFor('co'), co);
+  await assert.rejects(
+    f.call({
+      name: 'batch',
+      takeoffId: 'co',
+      payload: {
+        commands: [{ name: 'quantities.inspect', takeoffId: 'main' }],
+      },
+    }),
+  );
+  const view = takeoffProject(f.session.project, 'co');
+  const recipe = required(Object.values(view.recipes)[0]);
+  await f.call({
+    name: 'recipe.put',
+    takeoffId: 'co',
+    payload: {
+      ...recipe,
+      outputs: recipe.outputs.map((o) => ({ ...o, formula: 'length / 0' })),
+    },
+  });
+  const incomplete = f.session.calculationFor('co');
+  assert.equal(incomplete.complete, false);
+  assert.equal(incomplete.outputs[0]?.direction, 'deduct');
+  assert.throws(
+    () => estiMakerTakeoff(takeoffProject(f.session.project, 'co'), incomplete),
+    /Cannot export/,
+  );
+  assert.equal(f.session.calculationFor('main').totals[0]?.amount, 4);
 });

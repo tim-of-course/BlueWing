@@ -139,6 +139,8 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.equal(result.saved.name, 'Saved');
       assert.equal(result.saved.revision, 1);
       assert.equal(result.saved.takeoffs.co?.name, 'CO 1');
+      assert.ok(result.saved.takeoffs.co);
+      assert.ok(result.saved.takeoffs.co.calibrations.s);
       assert.equal(result.saved.takeoffs.co.calibrations.s.metresPerUnit, 2);
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
       assert.equal(result.saved.sheets.s?.assetId, 'pdf');

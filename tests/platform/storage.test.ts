@@ -177,7 +177,9 @@ void test('SQLite stores independent takeoff ownership, calibration and copy pro
   assert.deepEqual(loaded, session.project);
   assert.equal(Object.keys(takeoffProject(loaded, 'co').geometries).length, 1);
   assert.equal(loaded.takeoffs.co?.copies?.[0]?.sourceRevision, 1);
-  assert.equal(loaded.takeoffs.co?.calibrations.s.metresPerUnit, 1);
+  assert.ok(loaded.takeoffs.co);
+  assert.ok(loaded.takeoffs.co.calibrations.s);
+  assert.equal(loaded.takeoffs.co.calibrations.s.metresPerUnit, 1);
   await session.dispatch({
     ...session.observation,
     name: 'takeoff.delete',
@@ -312,7 +314,7 @@ void test('format 5 saves assembly fields atomically and retains them on reopen'
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    4,
+    5,
   );
   database.close();
 });
@@ -321,7 +323,7 @@ void test('old project formats are rejected without changing the saved file', as
   const { storage, database, backups } = fixture();
   await storage.open('unsupported', true);
   await storage.initialize(project());
-  for (const version of [1, 2, 3]) {
+  for (const version of [1, 2, 3, 4]) {
     database.prepare('UPDATE project SET format_version=?').run(version);
     await assert.rejects(storage.load(), /format|version/i);
     assert.equal(

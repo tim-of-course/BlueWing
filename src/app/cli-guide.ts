@@ -62,7 +62,7 @@ export function cliIntroduction(
       sheetNaming:
         'sheet.naming.start, sheet.naming.read, sheet.naming.apply, sheet.naming.cancel',
       takeoff:
-        'takeoff.list, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems; geometry.put, group.put, assignment.put, quantities.inspect',
+        'takeoff.list, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems, geometry.put, group.put, assignment.put, quantities.inspect',
       construction: 'wall.put, construction.inspect, construction.render',
       review: 'snippet.render, review.inspect, wingman.flash',
       conversation: 'messages.send, messages.read, messages.wait',

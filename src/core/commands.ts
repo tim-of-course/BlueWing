@@ -729,7 +729,13 @@ export function validateProject(
               name: string,
               kind: { type: 'string', enum: ['main', 'phase', 'change-order'] },
               mainTakeoffId: string,
-              owned: { type: 'object', additionalProperties: array(string) },
+              owned: {
+                type: 'object',
+                properties: Object.fromEntries(
+                  ownedCollections.map((key) => [key, array(string)]),
+                ),
+                additionalProperties: false,
+              },
               calibrations: {
                 type: 'object',
                 additionalProperties: object({ metresPerUnit: positive }),
@@ -799,6 +805,8 @@ export function validateProject(
         takeoff.mainTakeoffId !== mainId(project)
       )
         throw new Error('Change order must reference Main');
+      for (const sheetId of Object.keys(takeoff.calibrations))
+        requireEntity(project.sheets, sheetId, 'Calibration sheet');
       const view = takeoffProject(project, takeoff.id);
       validateProject(view, true);
     }
@@ -1044,6 +1052,13 @@ export function executeCommandOnDraft(
       {
         const sheet = structuredClone(payload) as unknown as Sheet;
         if (call.takeoffId && next.takeoffs[call.takeoffId]?.kind !== 'main') {
+          const takeoff = requireEntity(
+            next.takeoffs,
+            call.takeoffId,
+            'Takeoff',
+          );
+          if (sheet.calibration)
+            takeoff.calibrations[entityId] = structuredClone(sheet.calibration);
           const calibration = next.sheets[entityId]?.calibration;
           delete sheet.calibration;
           if (calibration) sheet.calibration = calibration;
@@ -1090,6 +1105,8 @@ export function executeCommandOnDraft(
         throw new Error('Remove takeoff work before deleting a shared sheet');
       for (const entry of Object.values(next.geometries))
         if (entry.sheetId === entityId) removeGeometry(next, entry.id);
+      for (const takeoff of Object.values(next.takeoffs))
+        Reflect.deleteProperty(takeoff.calibrations, entityId);
       Reflect.deleteProperty(next.sheets, entityId);
       break;
     case 'geometry.put':

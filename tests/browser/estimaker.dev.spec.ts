@@ -73,6 +73,7 @@ test('Quantities and CLI share purchased footage and count rows; source/review n
     {
       projectId: project.id,
       expectedRevision: project.revision,
+      takeoffId: 'main',
       payload: { commands },
     },
   );

@@ -87,7 +87,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         return result
 
     def call(name, payload=None, mutates=False, succeeds=True, timeout=90, **envelope):
-        request = {'payload': payload or {}}
+        request = {'payload': payload or {}, 'takeoffId': 'main'}
         if mutates:
             request.update(projectId=project_id, expectedRevision=revision)
         request.update(envelope)

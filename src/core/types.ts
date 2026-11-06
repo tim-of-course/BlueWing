@@ -199,6 +199,7 @@ export interface Measurement {
   diagnostic?: string;
 }
 export interface CalculationSource {
+  direction?: 'add' | 'deduct';
   pieceId?: string;
   surfaceId?: string;
   pieceRole?: string;

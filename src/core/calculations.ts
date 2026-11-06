@@ -409,6 +409,7 @@ export function calculateProject(project: Project): CalculationResult {
   for (const output of outputs) {
     output.direction =
       project.assignments[output.assignmentId]?.direction ?? 'add';
+    for (const source of output.sources) source.direction = output.direction;
     const key = JSON.stringify([
       output.materialId,
       output.unit,
@@ -478,6 +479,9 @@ export function exportQuantities(
     return JSON.stringify(quantityReport(result, project), null, 2);
   const rows: (string | number | boolean | null)[][] = [
     [
+      'projectId',
+      'revision',
+      'takeoffKind',
       'takeoffId',
       'takeoffName',
       'direction',
@@ -504,6 +508,9 @@ export function exportQuantities(
   ];
   for (const output of result.outputs)
     rows.push([
+      project.id,
+      project.revision,
+      result.context?.kind ?? '',
       result.context?.takeoffId ?? '',
       result.context?.name ?? '',
       output.direction ?? 'add',
@@ -546,6 +553,10 @@ export function pieceSchedule(
       output.sources.map((source) => {
         const geometry = project.geometries[source.geometryId];
         return {
+          projectId: project.id,
+          revision: project.revision,
+          takeoffName: result.context?.name ?? '',
+          takeoffKind: result.context?.kind ?? '',
           takeoffId: result.context?.takeoffId ?? '',
           direction: output.direction ?? 'add',
           sheet: project.sheets[geometry?.sheetId ?? '']?.name ?? '',
@@ -574,8 +585,17 @@ export function exportPieces(
   result: CalculationSnapshot = calculateProject(project),
 ): string {
   const rows = pieceSchedule(project, result);
-  if (format === 'json') return JSON.stringify(rows, null, 2);
+  if (format === 'json')
+    return JSON.stringify(
+      { context: { ...result.context, revision: project.revision }, rows },
+      null,
+      2,
+    );
   const keys = [
+    'projectId',
+    'revision',
+    'takeoffName',
+    'takeoffKind',
     'takeoffId',
     'direction',
     'sheet',

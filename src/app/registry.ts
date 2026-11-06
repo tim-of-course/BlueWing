@@ -30,7 +30,7 @@ function entry(
 export const applicationCommands = [
   entry(
     'quantities.exportEstiMaker',
-    'Save purchased LF/SF/count quantities as bluewing.takeoff v1 JSON for EstiMaker. Missing dimensions produce named zero-quantity rows; producer errors prevent export. No project changes. CLI requires an explicit path; UI can choose a destination.',
+    'Save purchased LF/SF/count quantities as bluewing.takeoff v2 JSON for EstiMaker. Missing dimensions produce named zero-quantity rows; producer errors prevent export. No project changes. Includes takeoff identity, contribution direction and signed quantities after positive purchasing. CLI requires envelope takeoffId and an explicit path; UI can choose a destination.',
     { path: string },
     [],
     false,

@@ -440,7 +440,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       aria-label="3D construction viewer"
     >
       <div class="construction-toolbar">
-        <strong>Construction · 3D</strong>
+        <strong>Construction · 3D · deductions red</strong>
         <label>
           View{' '}
           <select

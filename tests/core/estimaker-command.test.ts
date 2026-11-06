@@ -44,13 +44,18 @@ void test('registry CLI command saves exact shared JSON text with no save/revisi
   });
   try {
     await assert.rejects(
-      app.dispatch(parseCli(['quantities.exportEstiMaker'])),
+      app.dispatch(
+        parseCli(['quantities.exportEstiMaker', '{"takeoffId":"main"}']),
+      ),
       /explicit output path/,
     );
     const result = await app.dispatch(
       parseCli([
         'quantities.exportEstiMaker',
-        JSON.stringify({ payload: { path: 'C:/exports/estimate.json' } }),
+        JSON.stringify({
+          takeoffId: 'main',
+          payload: { path: 'C:/exports/estimate.json' },
+        }),
       ]),
     );
     const data = result.data as { path: string; text: string };
@@ -81,7 +86,10 @@ void test('registry CLI command saves exact shared JSON text with no save/revisi
       app.dispatch(
         parseCli([
           'quantities.exportEstiMaker',
-          JSON.stringify({ payload: { path: 'C:/exports/broken.json' } }),
+          JSON.stringify({
+            takeoffId: 'main',
+            payload: { path: 'C:/exports/broken.json' },
+          }),
         ]),
       ),
       /Cannot export to EstiMaker/,

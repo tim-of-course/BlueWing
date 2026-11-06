@@ -72,6 +72,7 @@ export interface ApplicationRequest extends CommandCall {
   messagesAfter?: number;
 }
 export interface ApplicationResult {
+  takeoff?: Pick<Project['takeoffs'][string], 'id' | 'name' | 'kind'>;
   data: unknown;
   projectId: string | null;
   revision: number | null;
@@ -175,7 +176,11 @@ export class Application {
     this.textPrefetch.clear();
     this.activeTakeoffId = mainId(project);
     this.session = new ProjectSession(project, this.storage);
-    this.session.subscribe(() => {
+    this.session.subscribe((accepted) => {
+      if (!this.activeTakeoffId || !accepted.takeoffs[this.activeTakeoffId]) {
+        this.activeTakeoffId = mainId(accepted);
+        this.disposeConstructionRenderer();
+      }
       this.publish();
     });
     this.publish();
@@ -235,10 +240,19 @@ export class Application {
       const scoped =
         !/^(project\.|takeoff\.(list|create|rename|delete)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
           request.name,
-        );
+        ) ||
+        (request.name === 'sheet.put' &&
+          typeof request.payload === 'object' &&
+          request.payload !== null &&
+          'calibration' in request.payload);
       if (scoped && request.origin === 'cli' && !request.takeoffId)
         throw new Error('Explicit takeoffId is required for takeoff commands');
       if (scoped && this.session) {
+        if (
+          request.projectId !== undefined &&
+          request.projectId !== this.session.observation.projectId
+        )
+          throw new Error('The requested project is no longer open');
         request.takeoffId ??=
           this.activeTakeoffId ?? mainId(this.session.project);
         requireTakeoff(this.session.project, request.takeoffId);
@@ -402,7 +416,7 @@ export class Application {
             };
             break;
           case 'quantities.exportEstiMaker': {
-            const project = this.project;
+            const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open or create a project first');
             if (
               request.projectId !== undefined &&
@@ -417,12 +431,16 @@ export class Application {
               throw new Error(
                 'Supply an explicit output path for the EstiMaker export',
               );
-            const takeoff = estiMakerTakeoff(project, this.calculate());
+            const calculation = this.session?.calculationFor(
+              project.takeoffId ?? mainId(project),
+            );
+            if (!calculation) throw new Error('Open a project first');
+            const takeoff = estiMakerTakeoff(project, calculation);
             const text = JSON.stringify(takeoff, null, 2);
             data = {
               path: await writeOutput(
                 this.native,
-                `${project.name}.estimaker.json`,
+                `${project.name}-${project.takeoffId ?? 'main'}.estimaker.json`,
                 new TextEncoder().encode(text),
                 path,
               ),
@@ -567,6 +585,19 @@ export class Application {
               camera,
               displayMode,
             });
+            const labelContext = canvas.getContext('2d');
+            if (labelContext) {
+              labelContext.fillStyle = '#ffffff';
+              labelContext.fillRect(0, canvas.height - 26, canvas.width, 26);
+              labelContext.fillStyle = '#111111';
+              labelContext.font = '14px sans-serif';
+              labelContext.fillText(
+                `${project.takeoffs[project.takeoffId ?? mainId(project)]?.name ?? ''} · ${project.takeoffId ?? 'main'} · deductions red`,
+                8,
+                canvas.height - 8,
+                canvas.width - 16,
+              );
+            }
             const blob = await new Promise<Blob>((resolve, reject) => {
               canvas.toBlob((value) => {
                 if (value) resolve(value);
@@ -589,6 +620,8 @@ export class Application {
               takeoffId: project.takeoffId,
               takeoffName:
                 project.takeoffs[project.takeoffId ?? mainId(project)]?.name,
+              takeoffKind:
+                project.takeoffs[project.takeoffId ?? mainId(project)]?.kind,
               contributionDirections: Object.fromEntries(
                 Object.values(project.assignments).map((a) => [
                   a.id,
@@ -792,8 +825,21 @@ export class Application {
             throw new Error('Unknown application command');
         }
       const observation = this.session?.observation;
+      const contextTakeoff =
+        scoped && request.takeoffId
+          ? this.session?.project.takeoffs[request.takeoffId]
+          : undefined;
       return {
         data,
+        ...(contextTakeoff
+          ? {
+              takeoff: {
+                id: contextTakeoff.id,
+                name: contextTakeoff.name,
+                kind: contextTakeoff.kind,
+              },
+            }
+          : {}),
         projectId: observation?.projectId ?? null,
         revision: observation?.expectedRevision ?? null,
       };
