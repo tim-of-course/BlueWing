@@ -5,6 +5,8 @@ import { NativeStorage } from '../../src/platform/storage';
 import type { NativeInvoke } from '../../src/platform/storage';
 import type { Statement } from '../../src/platform/storage-model';
 import type { Project } from '../../src/core/types';
+import { ProjectSession } from '../../src/core/session';
+import { takeoffProject } from '../../src/core/takeoffs';
 
 function fixture() {
   const database = new DatabaseSync(':memory:');
@@ -118,8 +120,87 @@ function fixture() {
     },
   };
 }
+void test('SQLite stores independent takeoff ownership, calibration and copy provenance through session saves', async () => {
+  const { storage, database, setFailure } = fixture();
+  await storage.open('takeoffs', true);
+  const initial = project();
+  initial.sheets.s = {
+    id: 's',
+    name: 'Plan',
+    assetId: 'pdf',
+    pageIndex: 0,
+    width: 100,
+    height: 100,
+    calibration: { metresPerUnit: 1 },
+  };
+  initial.geometries.g = {
+    id: 'g',
+    name: 'Count',
+    sheetId: 's',
+    kind: 'count',
+    points: [{ x: 1, y: 1 }],
+  };
+  await storage.initialize(initial);
+  const session = new ProjectSession(initial, storage);
+  await session.dispatch({
+    ...session.observation,
+    name: 'takeoff.create',
+    payload: { id: 'co', name: 'CO 1', kind: 'change-order' },
+  });
+  const before = session.project;
+  setFailure(true);
+  await assert.rejects(
+    session.dispatch({
+      ...session.observation,
+      name: 'takeoff.copyItems',
+      takeoffId: 'co',
+      payload: {
+        sourceTakeoffId: 'main',
+        geometryIds: ['g'],
+        direction: 'deduct',
+      },
+    }),
+  );
+  assert.deepEqual(await storage.load(), before);
+  setFailure(false);
+  await session.dispatch({
+    ...session.observation,
+    name: 'takeoff.copyItems',
+    takeoffId: 'co',
+    payload: {
+      sourceTakeoffId: 'main',
+      geometryIds: ['g'],
+      direction: 'deduct',
+    },
+  });
+  const loaded = await storage.load();
+  assert.deepEqual(loaded, session.project);
+  assert.equal(Object.keys(takeoffProject(loaded, 'co').geometries).length, 1);
+  assert.equal(loaded.takeoffs.co?.copies?.[0]?.sourceRevision, 1);
+  assert.equal(loaded.takeoffs.co?.calibrations.s.metresPerUnit, 1);
+  await session.dispatch({
+    ...session.observation,
+    name: 'takeoff.delete',
+    payload: { id: 'co' },
+  });
+  await session.dispatch({ ...session.observation, name: 'history.undo' });
+  assert.equal(
+    Object.keys(takeoffProject(await storage.load(), 'co').geometries).length,
+    1,
+  );
+  database.close();
+});
 const project = (): Project => ({
-  formatVersion: 4,
+  takeoffs: {
+    main: {
+      id: 'main',
+      name: 'Main',
+      kind: 'main',
+      owned: {},
+      calibrations: {},
+    },
+  },
+  formatVersion: 5,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -187,12 +268,12 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   database.close();
 });
 
-void test('format 4 saves assembly fields atomically and retains them on reopen', async () => {
+void test('format 5 saves assembly fields atomically and retains them on reopen', async () => {
   const { storage, database, setFailure } = fixture();
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 4);
+  assert.equal((await storage.load()).formatVersion, 5);
   const next: Project = {
     ...initial,
     revision: 1,
@@ -253,7 +334,7 @@ void test('old project formats are rejected without changing the saved file', as
   database.close();
 });
 
-void test('format 4 extensions survive reopen and backups run only when requested', async () => {
+void test('format 5 extensions survive reopen and backups run only when requested', async () => {
   const { storage, database, backups, setBackupFailure } = fixture();
   await storage.open('detailed', true);
   const initial = project();

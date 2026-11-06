@@ -495,6 +495,9 @@ export function executeDetailed(
   switch (call.name) {
     case 'construction.inspect':
       return {
+        projectId: project.id,
+        revision: project.revision,
+        takeoff: project.takeoffs[project.takeoffId ?? 'main'],
         ...calculation().model,
         applications: resolveConstruction(project),
       };
@@ -628,15 +631,18 @@ export function exportConstruction(
   schedule: 'pieces' | 'lengths' | 'materials' = 'pieces',
   result: ConstructionSnapshot = calculateProject(project).model,
 ): string {
+  const takeoff = project.takeoffs[project.takeoffId ?? 'main'];
   if (format === 'json')
     return JSON.stringify(
-      { projectId: project.id, revision: project.revision, ...result },
+      { projectId: project.id, revision: project.revision, takeoff, ...result },
       null,
       2,
     );
   if (schedule === 'materials') {
     return csv([
       [
+        'takeoffId',
+        'direction',
         'material',
         'unit',
         'stockLength_m',
@@ -646,6 +652,8 @@ export function exportConstruction(
         'complete',
       ],
       ...result.purchases.map((p) => [
+        takeoff?.id,
+        p.direction ?? 'add',
         p.materialId,
         'ea',
         p.stockLength,
@@ -655,6 +663,8 @@ export function exportConstruction(
         result.complete,
       ]),
       ...(result.surfacePurchases ?? []).map((purchase) => [
+        takeoff?.id,
+        purchase.direction ?? 'add',
         purchase.materialId,
         'm2',
         '',
@@ -674,10 +684,12 @@ export function exportConstruction(
         length: number;
         stock?: number | undefined;
         count: number;
+        direction: string;
       }
     >();
     for (const piece of result.pieces) {
       const key = JSON.stringify([
+        piece.direction,
         piece.materialId,
         piece.role,
         piece.cutLength.toFixed(8),
@@ -689,13 +701,25 @@ export function exportConstruction(
         length: piece.cutLength,
         stock: piece.stockLength,
         count: 0,
+        direction: piece.direction ?? 'add',
       };
       group.count++;
       groups.set(key, group);
     }
     return csv([
-      ['material', 'role', 'cutLength_m', 'stockLength_m', 'count', 'complete'],
+      [
+        'takeoffId',
+        'direction',
+        'material',
+        'role',
+        'cutLength_m',
+        'stockLength_m',
+        'count',
+        'complete',
+      ],
       ...[...groups.values()].map((g) => [
+        takeoff?.id,
+        g.direction,
         g.material,
         g.role,
         g.length,
@@ -707,6 +731,8 @@ export function exportConstruction(
   }
   return csv([
     [
+      'takeoffId',
+      'direction',
       'pieceId',
       'material',
       'role',
@@ -724,6 +750,8 @@ export function exportConstruction(
       'complete',
     ],
     ...result.pieces.map((p) => [
+      takeoff?.id,
+      p.direction ?? 'add',
       p.id,
       p.materialId,
       p.role,

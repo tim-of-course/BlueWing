@@ -1,4 +1,5 @@
 import { modeledOutputs } from './material-results';
+import { takeoffProject, takeoffContext } from './takeoffs';
 import type { CalculationSnapshot } from './calculation-state';
 import { purchaseAmount } from './purchasing';
 import { generateConstruction } from './construction';
@@ -220,6 +221,8 @@ function source(
   }
 }
 export function calculateProject(project: Project): CalculationResult {
+  project = takeoffProject(project);
+  const takeoff = takeoffContext(project);
   const outputs: CalculationOutput[] = [];
   const measured = new Map<string, Record<string, FormulaValue>>();
   const metrics = (geometry: Geometry) => {
@@ -368,6 +371,15 @@ export function calculateProject(project: Project): CalculationResult {
     }
   }
   const model = generateConstruction(project, resolveConstruction(project));
+  for (const collection of [
+    model.pieces,
+    model.surfaces,
+    model.purchases,
+    model.surfacePurchases ?? [],
+  ])
+    for (const item of collection)
+      item.direction =
+        project.assignments[item.assignmentId ?? '']?.direction ?? 'add';
   for (const assignment of Object.values(project.assignments)) {
     const recipe = project.recipes[assignment.recipeId];
     const group = project.groups[assignment.groupId];
@@ -395,6 +407,8 @@ export function calculateProject(project: Project): CalculationResult {
   complete &&= model.complete;
   const totals = new Map<string, QuantityTotal>();
   for (const output of outputs) {
+    output.direction =
+      project.assignments[output.assignmentId]?.direction ?? 'add';
     const key = JSON.stringify([
       output.materialId,
       output.unit,
@@ -409,9 +423,15 @@ export function calculateProject(project: Project): CalculationResult {
         : {}),
       ...(output.stockLength ? { stockLength: output.stockLength } : {}),
       amount: 0,
+      additions: 0,
+      deductions: 0,
       complete: true,
     };
-    total.amount += output.purchasedAmount;
+    if (output.direction === 'deduct')
+      total.deductions += output.purchasedAmount;
+    else total.additions += output.purchasedAmount;
+    total.amount +=
+      output.purchasedAmount * (output.direction === 'deduct' ? -1 : 1);
     total.complete &&= output.complete;
     totals.set(key, total);
   }
@@ -419,6 +439,12 @@ export function calculateProject(project: Project): CalculationResult {
     (output) => output.modeling === 'estimate',
   ).length;
   return {
+    context: {
+      projectId: project.id,
+      takeoffId: takeoff.id,
+      name: takeoff.name,
+      kind: takeoff.kind,
+    },
     outputs,
     totals: [...totals.values()],
     complete,
@@ -431,8 +457,12 @@ export function calculateProject(project: Project): CalculationResult {
     },
   };
 }
-export function quantityReport(result: CalculationSnapshot) {
+export function quantityReport(result: CalculationSnapshot, project?: Project) {
   return {
+    context: {
+      ...result.context,
+      ...(project ? { revision: project.revision } : {}),
+    },
     outputs: result.outputs,
     totals: result.totals,
     complete: result.complete,
@@ -444,9 +474,13 @@ export function exportQuantities(
   format: 'csv' | 'json',
   result: CalculationSnapshot = calculateProject(project),
 ): string {
-  if (format === 'json') return JSON.stringify(quantityReport(result), null, 2);
+  if (format === 'json')
+    return JSON.stringify(quantityReport(result, project), null, 2);
   const rows: (string | number | boolean | null)[][] = [
     [
+      'takeoffId',
+      'takeoffName',
+      'direction',
       'modeling',
       'groupId',
       'assignmentId',
@@ -470,6 +504,9 @@ export function exportQuantities(
   ];
   for (const output of result.outputs)
     rows.push([
+      result.context?.takeoffId ?? '',
+      result.context?.name ?? '',
+      output.direction ?? 'add',
       output.modeling,
       output.groupId,
       output.assignmentId,
@@ -509,6 +546,8 @@ export function pieceSchedule(
       output.sources.map((source) => {
         const geometry = project.geometries[source.geometryId];
         return {
+          takeoffId: result.context?.takeoffId ?? '',
+          direction: output.direction ?? 'add',
           sheet: project.sheets[geometry?.sheetId ?? '']?.name ?? '',
           geometryId: source.geometryId,
           location: geometry?.name ?? source.geometryId,
@@ -537,6 +576,8 @@ export function exportPieces(
   const rows = pieceSchedule(project, result);
   if (format === 'json') return JSON.stringify(rows, null, 2);
   const keys = [
+    'takeoffId',
+    'direction',
     'sheet',
     'geometryId',
     'location',

@@ -88,7 +88,9 @@ function selectedColor(
     ? new Color('#ffbd66')
     : selected.has(source.geometryId)
       ? new Color('#69a9e7')
-      : materialColor(source.materialId);
+      : source.direction === 'deduct'
+        ? new Color('#e25858')
+        : materialColor(source.materialId);
 }
 
 /** Triangulate in the face's own plane, preserving concave boundaries and original IDs. */
@@ -331,7 +333,12 @@ export class ConstructionRenderer {
         );
         matrix.setPosition(vector(frame.center).sub(this.origin));
         mesh.setMatrixAt(index, matrix);
-        mesh.setColorAt(index, materialColor(member.materialId));
+        mesh.setColorAt(
+          index,
+          member.direction === 'deduct'
+            ? new Color('#e25858')
+            : materialColor(member.materialId),
+        );
       }
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingBox();
@@ -346,7 +353,10 @@ export class ConstructionRenderer {
         edges: number[] = [];
       for (const source of model.surfaces) {
         const start = positions.length / 3;
-        const color = materialColor(source.materialId);
+        const color =
+          source.direction === 'deduct'
+            ? new Color('#e25858')
+            : materialColor(source.materialId);
         for (const face of surfaceFaces(source)) {
           for (const indices of triangulateFace(face)) {
             for (const index of indices) {

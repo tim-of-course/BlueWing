@@ -1,3 +1,5 @@
+import { takeoffProject, mainId, requireTakeoff } from '../core/takeoffs';
+import { calculateSnapshot } from '../core/calculation-state';
 import { invoke } from '@tauri-apps/api/core';
 import {
   createProject,
@@ -88,6 +90,18 @@ export class Application {
   library: AssemblyLibrary | null = null;
   session: ProjectSession | null = null;
   draftPending = false;
+  activeTakeoffId: string | null = null;
+  selectTakeoff(id: string): void {
+    if (!this.session) throw new Error('Open a project first');
+    if (this.draftPending)
+      throw new Error(
+        'Finish or cancel the current input before switching takeoffs',
+      );
+    requireTakeoff(this.session.project, id);
+    this.activeTakeoffId = id;
+    this.disposeConstructionRenderer();
+    this.publish();
+  }
   private queue: Promise<unknown> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
   private constructionRenderer: ReturnType<
@@ -119,11 +133,20 @@ export class Application {
     );
   }
   get project(): Project | null {
-    return this.session?.project ?? null;
+    const project = this.session?.project;
+    if (!project) return null;
+    const id = this.activeTakeoffId ?? mainId(project);
+    return takeoffProject(project, project.takeoffs[id] ? id : mainId(project));
+  }
+  private projectFor(id?: string): Project | null {
+    const project = this.session?.project;
+    return project && id ? takeoffProject(project, id) : this.project;
   }
   calculate() {
     if (!this.session) throw new Error('Open or create a project first');
-    return this.session.calculation;
+    const project = this.project;
+    if (!project) throw new Error('Open a project first');
+    return this.session.calculationFor(project.takeoffId ?? mainId(project));
   }
   observe(): Observation {
     const observation = this.session?.observation;
@@ -150,6 +173,7 @@ export class Application {
   }
   private attach(project: Project) {
     this.textPrefetch.clear();
+    this.activeTakeoffId = mainId(project);
     this.session = new ProjectSession(project, this.storage);
     this.session.subscribe(() => {
       this.publish();
@@ -208,6 +232,18 @@ export class Application {
         !request.name.startsWith('library.')
       )
         this.check(request);
+      const scoped =
+        !/^(project\.|takeoff\.(list|create|rename|delete)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
+          request.name,
+        );
+      if (scoped && request.origin === 'cli' && !request.takeoffId)
+        throw new Error('Explicit takeoffId is required for takeoff commands');
+      if (scoped && this.session) {
+        request.takeoffId ??=
+          this.activeTakeoffId ?? mainId(this.session.project);
+        requireTakeoff(this.session.project, request.takeoffId);
+      }
+
       let data: unknown;
       const payload = (request.payload ?? {}) as Record<string, unknown>;
       if (request.name === 'commands.list')
@@ -219,6 +255,8 @@ export class Application {
               payload: {},
               messagesAfter:
                 'optional nonnegative message cursor; reads are nondestructive',
+              takeoffId:
+                'required for takeoff reads, edits, batch, preview and renders; use takeoff.list',
               projectId: 'required for active project mutations',
               expectedRevision: 'required for active project mutations',
             },
@@ -253,7 +291,7 @@ export class Application {
           case 'sheet.naming.start':
           case 'sheet.naming.read':
           case 'sheet.naming.cancel': {
-            const project = this.project;
+            const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open or create a project first');
             if (
               request.projectId !== undefined &&
@@ -320,7 +358,7 @@ export class Application {
                   `Unknown command ${command}. Use bluewing help.`,
                 );
               data = found;
-            } else data = cliIntroduction(this.project);
+            } else data = cliIntroduction(this.projectFor(request.takeoffId));
             break;
           }
           case 'connect':
@@ -332,7 +370,7 @@ export class Application {
                 'Connection project does not match the open project. Copy a new prompt from Wingman.',
               );
             data = cliIntroduction(
-              this.project,
+              this.projectFor(request.takeoffId),
               (payload.mode as ConversationMode | undefined) ?? 'chat',
             );
             break;
@@ -393,7 +431,7 @@ export class Application {
             break;
           }
           case 'snippet.render': {
-            const project = this.project;
+            const project = this.projectFor(request.takeoffId);
             const snippet = project?.review?.snippets[payload.id as string];
             if (!project || !snippet) throw new Error('Snippet not found');
             const image = await renderImage(project, this.pdf, {
@@ -405,7 +443,7 @@ export class Application {
             });
             const path = await writeOutput(
               this.native,
-              `${snippet.name}.png`,
+              `${snippet.name}-${project.takeoffId ?? 'main'}.png`,
               image.bytes,
               payload.path as string,
             );
@@ -428,7 +466,7 @@ export class Application {
             break;
           }
           case 'construction.render': {
-            const project = this.project;
+            const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open a project first');
             if (
               payload.view !== undefined &&
@@ -457,7 +495,9 @@ export class Application {
               !project.construction?.levels[payload.levelId as string]
             )
               throw new Error('Level not found');
-            const result = this.calculate().model;
+            const result =
+              this.session?.calculationFor(project.takeoffId ?? mainId(project))
+                .model ?? calculateSnapshot(project).model;
             const resolved = resolveConstruction(project);
             const scene = buildConstructionScene(
               constructionSceneInput(result),
@@ -535,7 +575,7 @@ export class Application {
             });
             const path = await writeOutput(
               this.native,
-              'construction.png',
+              `construction-${project.takeoffId ?? 'main'}.png`,
               new Uint8Array(await blob.arrayBuffer()),
               payload.path as string,
             );
@@ -545,6 +585,16 @@ export class Application {
               height: canvas.height,
               revision: project.revision,
               camera,
+              projectId: project.id,
+              takeoffId: project.takeoffId,
+              takeoffName:
+                project.takeoffs[project.takeoffId ?? mainId(project)]?.name,
+              contributionDirections: Object.fromEntries(
+                Object.values(project.assignments).map((a) => [
+                  a.id,
+                  a.direction ?? 'add',
+                ]),
+              ),
               displayMode,
               complete: result.complete,
               diagnostics: result.diagnostics,
@@ -609,7 +659,7 @@ export class Application {
             const original = library.assemblies[payload.libraryId as string];
             if (!original) throw new Error('Library assembly not found');
             const id = payload.id as string;
-            if (this.project?.recipes[id])
+            if (this.projectFor(request.takeoffId)?.recipes[id])
               throw new Error('Project assembly id already exists');
             const assembly = copyAssembly(original, id);
             await this.session.dispatch({
@@ -673,7 +723,7 @@ export class Application {
             break;
           }
           case 'sheet.render': {
-            const project = this.project;
+            const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open a project first');
             const rendered = await renderImage(
               project,
@@ -682,7 +732,7 @@ export class Application {
             );
             const path = await writeOutput(
               this.native,
-              'sheet.png',
+              `sheet-${project.takeoffId ?? 'main'}.png`,
               rendered.bytes,
               payload.path as string,
             );

@@ -9,6 +9,7 @@ import {
   type CalculationSnapshot,
 } from './calculation-state';
 import { quantityChanges } from './quantity-changes';
+import { mainId, takeoffProject } from './takeoffs';
 import type {
   CommandCall,
   CommandRequest,
@@ -18,6 +19,7 @@ import type {
 } from './types';
 
 const collections = [
+  'takeoffs',
   'sheets',
   'geometries',
   'groups',
@@ -140,6 +142,7 @@ function restore(
 export class ProjectSession {
   #project: Project;
   #calculation: CalculationSnapshot | undefined;
+  #takeoffCalculations = new Map<string, CalculationSnapshot>();
   #queue: Promise<void> = Promise.resolve();
   #undo: HistoryEntry[] = [];
   #redo: HistoryEntry[] = [];
@@ -166,6 +169,15 @@ export class ProjectSession {
   /** One immutable result for the current calculation inputs, shared by all readers. */
   get calculation(): CalculationSnapshot {
     return (this.#calculation ??= calculateSnapshot(this.#project));
+  }
+  calculationFor(id: string): CalculationSnapshot {
+    if (id === mainId(this.#project)) return this.calculation;
+    let result = this.#takeoffCalculations.get(id);
+    if (!result) {
+      result = calculateSnapshot(takeoffProject(this.#project, id));
+      this.#takeoffCalculations.set(id, result);
+    }
+    return result;
   }
   /** Command metadata does not need a copy of the project's drawing and recipes. */
   get observation(): Pick<CommandRequest, 'projectId' | 'expectedRevision'> {
@@ -195,6 +207,10 @@ export class ProjectSession {
   }
   dispatch(request: CommandRequest): Promise<CommandResult> {
     const captured = structuredClone(request);
+    if (captured.name === 'takeoff.copyItems' && !captured.takeoffId)
+      return Promise.reject(
+        new Error('copyItems requires a destination takeoffId'),
+      );
     const operation = this.#queue.then(() => this.#execute(captured));
     this.#queue = operation.then(
       () => undefined,
@@ -218,10 +234,22 @@ export class ProjectSession {
     let changed = false;
     let data: unknown;
     const preview = request.name === 'preview';
-    const beforePreview = preview ? this.calculation : undefined;
-    let calculation = this.#calculation;
+    const scoped =
+      request.takeoffId !== undefined &&
+      request.takeoffId !== mainId(this.#project);
+    const beforePreview = preview
+      ? scoped
+        ? calculateSnapshot(takeoffProject(this.#project, request.takeoffId))
+        : this.calculation
+      : undefined;
+    let calculation = scoped
+      ? this.#takeoffCalculations.get(request.takeoffId ?? '')
+      : this.#calculation;
     let calculationChanged = false;
-    const readCalculation = () => (calculation ??= calculateSnapshot(next));
+    const readCalculation = () =>
+      (calculation ??= calculateSnapshot(
+        takeoffProject(next, request.takeoffId),
+      ));
     const execute = (call: CommandCall, validateResult: boolean) => {
       if (validateCommand(call).mutates && changesCalculation(next, call)) {
         calculationChanged = true;
@@ -242,7 +270,15 @@ export class ProjectSession {
           throw new Error(
             'Batches and previews cannot contain session control commands',
           );
-        const result = execute(call, false);
+        if (call.takeoffId && call.takeoffId !== request.takeoffId)
+          throw new Error('Batch commands must share the envelope takeoffId');
+        const result = execute(
+          {
+            ...call,
+            ...(request.takeoffId ? { takeoffId: request.takeoffId } : {}),
+          },
+          false,
+        );
         changed ||= result.changed;
         results.push(result.data);
       }
@@ -271,7 +307,9 @@ export class ProjectSession {
         ),
       };
     if (!changed) {
-      this.#calculation = calculation;
+      if (!scoped) this.#calculation = calculation;
+      else if (calculation && request.takeoffId)
+        this.#takeoffCalculations.set(request.takeoffId, calculation);
       return { project: structuredClone(next), data, changed, preview: false };
     }
 
@@ -279,7 +317,13 @@ export class ProjectSession {
       this.#historyLimit > 0
         ? difference(this.#project, next, request, calculationChanged)
         : undefined;
-    await this.#save(next, calculationChanged, calculation);
+    await this.#save(
+      next,
+      calculationChanged,
+      scoped ? undefined : calculation,
+    );
+    if (scoped && calculation && request.takeoffId)
+      this.#takeoffCalculations.set(request.takeoffId, calculation);
     if (entry) this.#undo.push(entry);
     if (this.#undo.length > this.#historyLimit) this.#undo.shift();
     this.#redo = [];
@@ -321,6 +365,7 @@ export class ProjectSession {
     await this.#persistence.save(this.project, structuredClone(next));
     this.#project = next;
     // A reader may have warmed the accepted cache while persistence was pending.
+    if (calculationChanged) this.#takeoffCalculations.clear();
     this.#calculation = calculationChanged
       ? calculation
       : (this.#calculation ?? calculation);

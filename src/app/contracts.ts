@@ -39,6 +39,8 @@ export interface WorkspaceContext {
   visibility: DrawingVisibility;
 }
 export interface WorkspaceController {
+  takeoffSources(): Project[];
+  selectTakeoff(id: string): void;
   preparationStatus: Accessor<PreparationStatus>;
   setPreparationPaused(paused: boolean): void;
   recordSheetPaint(pageId: string): void;

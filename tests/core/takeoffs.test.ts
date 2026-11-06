@@ -1,0 +1,300 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { createProject } from '../../src/core/geometry';
+import { ProjectSession } from '../../src/core/session';
+import {
+  calculateProject,
+  exportQuantities,
+} from '../../src/core/calculations';
+import { takeoffProject, required } from '../../src/core/takeoffs';
+import { resolveConstruction } from '../../src/core/applied-assemblies';
+import type { CommandCall } from '../../src/core/types';
+
+function fixture() {
+  const project = createProject('Job');
+  project.sheets.s = {
+    id: 's',
+    name: 'Plan',
+    assetId: 'pdf',
+    pageIndex: 0,
+    width: 100,
+    height: 100,
+    calibration: { metresPerUnit: 1 },
+  };
+  project.geometries.g = {
+    id: 'g',
+    name: 'Wall',
+    sheetId: 's',
+    kind: 'path',
+    points: [
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+    ],
+  };
+  project.groups.group = { id: 'group', name: 'Walls', geometryIds: ['g'] };
+  project.recipes.r = {
+    id: 'r',
+    name: 'Length',
+    geometryKinds: ['path'],
+    inputs: [],
+    outputs: [
+      {
+        id: 'o',
+        name: 'Length',
+        materialId: 'steel',
+        unit: 'm',
+        formula: 'length',
+        allowance: { wastePercent: 10, packageSize: 2 },
+      },
+    ],
+  };
+  project.assignments.a = {
+    id: 'a',
+    groupId: 'group',
+    recipeId: 'r',
+    inputs: {},
+    allowances: {},
+  };
+  let fail = false;
+  const session = new ProjectSession(project, {
+    save: () =>
+      fail ? Promise.reject(new Error('disk full')) : Promise.resolve(),
+  });
+  const call = (command: CommandCall) =>
+    session.dispatch({ ...command, ...session.observation });
+  const report = (id: string) =>
+    calculateProject(takeoffProject(session.project, id));
+  const create = (id = 'co', kind = 'change-order') =>
+    call({ name: 'takeoff.create', payload: { id, name: id, kind } });
+  const copy = (direction = 'deduct', geometryIds = ['g']) =>
+    call({
+      name: 'takeoff.copyItems',
+      takeoffId: 'co',
+      payload: { sourceTakeoffId: 'main', geometryIds, direction },
+    });
+  return {
+    session,
+    call,
+    report,
+    create,
+    copy,
+    fail: (value: boolean) => {
+      fail = value;
+    },
+  };
+}
+
+void test('takeoffs start empty; independent copies round positive purchases before sign and preserve gross zero-net detail', async () => {
+  const f = fixture();
+  await f.create();
+  assert.equal(f.report('co').outputs.length, 0);
+  const main = takeoffProject(f.session.project, 'main');
+  await f.copy();
+  await f.copy('add');
+  const result = f.report('co');
+  assert.equal(result.outputs.length, 2);
+  assert.deepEqual(
+    result.outputs.map((o) => [
+      o.baseAmount,
+      o.packageCount,
+      o.purchasedAmount,
+      o.direction,
+    ]),
+    [
+      [3, 2, 4, 'deduct'],
+      [3, 2, 4, 'add'],
+    ],
+  );
+  assert.deepEqual(
+    result.totals.map((t) => [t.amount, t.additions, t.deductions]),
+    [[0, 4, 4]],
+  );
+  assert.equal(result.context?.takeoffId, 'co');
+  const target = takeoffProject(f.session.project, 'co');
+  assert.match(exportQuantities(target, 'csv'), /"co","co","deduct"/);
+  const g = required(Object.values(target.geometries)[0]);
+  await f.call({
+    name: 'geometry.move',
+    takeoffId: 'co',
+    payload: { ids: [g.id], dx: 10, dy: 4 },
+  });
+  const r = required(Object.values(target.recipes)[0]);
+  await f.call({
+    name: 'recipe.put',
+    takeoffId: 'co',
+    payload: {
+      ...r,
+      name: 'Edited',
+      outputs: r.outputs.map((o) => ({ ...o, formula: 'length * 2' })),
+    },
+  });
+  await f.call({
+    name: 'sheet.calibrate',
+    takeoffId: 'co',
+    payload: {
+      id: 's',
+      start: { x: 0, y: 0 },
+      end: { x: 1, y: 0 },
+      distance: { value: 2, unit: 'm' },
+    },
+  });
+  const after = takeoffProject(f.session.project, 'main');
+  assert.deepEqual(after.geometries, main.geometries);
+  assert.deepEqual(after.recipes, main.recipes);
+  assert.deepEqual(after.sheets, main.sheets);
+  assert.equal(f.report('main').totals[0]?.amount, 4);
+  await assert.rejects(f.copy(), /Conflicting/);
+});
+
+void test('ownership rejects cross-takeoff writes/references and phases reject deductions', async () => {
+  const f = fixture();
+  await f.create();
+  await f.create('phase', 'phase');
+  for (const command of [
+    { name: 'geometry.move', payload: { ids: ['g'], dx: 1, dy: 0 } },
+    { name: 'geometry.put', payload: f.session.project.geometries.g },
+    {
+      name: 'group.put',
+      payload: { id: 'foreign', name: 'Foreign', geometryIds: ['g'] },
+    },
+    {
+      name: 'assignment.put',
+      payload: {
+        id: 'bad',
+        groupId: 'group',
+        recipeId: 'r',
+        inputs: {},
+        allowances: {},
+      },
+    },
+  ])
+    await assert.rejects(f.call({ ...command, takeoffId: 'co' }));
+  await assert.rejects(
+    f.call({
+      name: 'takeoff.copyItems',
+      takeoffId: 'phase',
+      payload: {
+        sourceTakeoffId: 'main',
+        geometryIds: ['g'],
+        direction: 'deduct',
+      },
+    }),
+    /Only change orders/,
+  );
+  await assert.rejects(
+    f.call({ name: 'takeoff.delete', payload: { id: 'main' } }),
+    /Main/,
+  );
+  assert.equal(f.session.project.geometries.g?.points[0]?.x, 0);
+});
+
+void test('copy/delete, failed saves, batch preview and undo/redo stay atomic in one project revision queue', async () => {
+  const f = fixture();
+  await f.create();
+  const before = f.session.project;
+  await assert.rejects(f.copy('deduct', ['g', 'missing']));
+  assert.deepEqual(f.session.project, before);
+  f.fail(true);
+  await assert.rejects(f.copy(), /disk full/);
+  assert.deepEqual(f.session.project, before);
+  f.fail(false);
+  await f.copy();
+  assert.equal(f.report('co').totals[0]?.amount, -4);
+  const copied = f.session.project;
+  assert.equal(copied.revision, before.revision + 1);
+  await f.call({ name: 'history.undo' });
+  assert.equal(f.report('co').outputs.length, 0);
+  await f.call({ name: 'history.redo' });
+  assert.equal(f.report('co').totals[0]?.amount, -4);
+  const preview = await f.call({
+    name: 'preview',
+    takeoffId: 'co',
+    payload: {
+      commands: [
+        {
+          name: 'takeoff.copyItems',
+          payload: {
+            sourceTakeoffId: 'main',
+            geometryIds: ['g'],
+            direction: 'add',
+          },
+        },
+        { name: 'quantities.inspect' },
+      ],
+    },
+  });
+  assert.equal(
+    calculateProject(takeoffProject(preview.project, 'co')).totals[0]?.amount,
+    0,
+  );
+  assert.equal(f.report('co').totals[0]?.amount, -4);
+  f.fail(true);
+  await assert.rejects(
+    f.call({ name: 'takeoff.delete', payload: { id: 'co' } }),
+  );
+  assert.ok(f.session.project.takeoffs.co);
+  f.fail(false);
+  await f.call({ name: 'takeoff.delete', payload: { id: 'co' } });
+  assert.equal(Object.keys(f.session.project.geometries).length, 1);
+  await f.call({ name: 'history.undo' });
+  assert.equal(f.report('co').totals[0]?.amount, -4);
+  const reopened = new ProjectSession(f.session.project, {
+    save: () => Promise.resolve(),
+  });
+  assert.equal(
+    calculateProject(takeoffProject(reopened.project, 'co')).totals[0]?.amount,
+    -4,
+  );
+});
+
+void test('copied modeled walls remap openings and applied IDs; unresolved deductions stay incomplete', async () => {
+  const f = fixture();
+  await f.call({
+    name: 'wall.put',
+    payload: {
+      id: 'wall',
+      geometryId: 'g',
+      baseElevation: 0,
+      height: 3,
+      studSpacing: 0.5,
+      stud: { materialId: 'stud', width: 0.04, depth: 0.09 },
+      track: { materialId: 'track', width: 0.04, depth: 0.09 },
+    },
+  });
+  await f.call({
+    name: 'opening.put',
+    payload: {
+      id: 'door',
+      wallId: 'wall',
+      distance: 1,
+      width: 1,
+      sill: 0,
+      height: 2,
+      jambCount: 1,
+    },
+  });
+  const baseline = f.report('main');
+  await f.create();
+  await f.copy();
+  const co = takeoffProject(f.session.project, 'co');
+  const walls = resolveConstruction(co).walls;
+  const opening = required(
+    Object.values(required(co.construction).openings)[0],
+  );
+  assert.notEqual(opening.id, 'door');
+  assert.notEqual(opening.wallId, 'wall');
+  assert.ok(walls[opening.wallId]);
+  assert.ok(f.report('co').model.pieces.every((p) => p.direction === 'deduct'));
+  const recipe = required(
+    Object.values(co.recipes).find((r) => r.id !== 'r' && r.wallTemplate),
+  );
+  const template = { ...required(recipe.wallTemplate) };
+  delete template.height;
+  await f.call({
+    name: 'recipe.put',
+    takeoffId: 'co',
+    payload: { ...recipe, wallTemplate: template },
+  });
+  assert.equal(f.report('co').complete, false);
+  assert.deepEqual(f.report('main').outputs, baseline.outputs);
+});

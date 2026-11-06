@@ -35,6 +35,7 @@ async function mutate(page: Page, name: string, payload: unknown) {
         payload,
         projectId: current.projectId,
         expectedRevision: current.revision,
+        takeoffId: 'main',
       },
     },
   );
@@ -57,7 +58,11 @@ export function cli<T = unknown>(
       const bridge = window as unknown as {
         wingmanCli(name: string, request: unknown): Promise<CliResult<T>>;
       };
-      return bridge.wingmanCli(name, { payload, messagesAfter });
+      return bridge.wingmanCli(name, {
+        payload,
+        messagesAfter,
+        takeoffId: 'main',
+      });
     },
     { name, payload, messagesAfter },
   );

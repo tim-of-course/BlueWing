@@ -1,3 +1,4 @@
+import { takeoffContext } from '../core/takeoffs';
 import type { Project } from '../core/types';
 import type { PdfDocuments } from '../pdf/documents';
 import { paintTakeoff } from '../components/canvas/paint';
@@ -17,6 +18,13 @@ export async function renderImage(
   pdf: PdfDocuments,
   options: RenderOptions,
 ) {
+  const takeoff = takeoffContext(project);
+  options = {
+    ...options,
+    label: [takeoff.name, takeoff.kind, takeoff.id, options.label]
+      .filter(Boolean)
+      .join(' · '),
+  };
   const sheet = project.sheets[options.sheetId];
   if (!sheet) throw new Error('Sheet not found');
   const bounds = options.bounds ?? {
@@ -127,6 +135,16 @@ export async function renderImage(
   return {
     bytes: new Uint8Array(await blob.arrayBuffer()),
     metadata: {
+      projectId: project.id,
+      takeoffId: takeoff.id,
+      takeoffName: takeoff.name,
+      takeoffKind: takeoff.kind,
+      directions: Object.fromEntries(
+        Object.values(project.assignments).map((a) => [
+          a.id,
+          a.direction ?? 'add',
+        ]),
+      ),
       sheetId: sheet.id,
       revision: project.revision,
       width: canvas.width,

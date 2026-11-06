@@ -153,6 +153,7 @@ export interface ConstructionData extends ConstructionContext {
   materials?: Record<string, MaterialApplication>;
 }
 export interface ConstructionSource {
+  direction?: 'add' | 'deduct';
   assignmentId?: string;
   recipeId?: string;
   groupId?: string;

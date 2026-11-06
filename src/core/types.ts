@@ -140,6 +140,7 @@ export interface AssemblyLibrary {
   assemblies: Record<string, Assembly>;
 }
 export interface Assignment {
+  direction?: 'add' | 'deduct';
   id: string;
   groupId: string;
   recipeId: string;
@@ -159,8 +160,26 @@ export interface Assignment {
     }
   >;
 }
+export interface Takeoff {
+  id: string;
+  name: string;
+  kind: 'main' | 'phase' | 'change-order';
+  mainTakeoffId?: string;
+  owned: Record<string, string[]>;
+  calibrations: Record<string, Calibration>;
+  construction?: ConstructionContext;
+  review?: ReviewData;
+  copies?: {
+    sourceTakeoffId: string;
+    sourceRevision: number;
+    ids: Record<string, string>;
+  }[];
+}
 export interface Project {
-  formatVersion: 4;
+  formatVersion: 5;
+  takeoffs: Record<string, Takeoff>;
+  /** Derived view context; never written by the session. */
+  takeoffId?: string;
   id: string;
   name: string;
   revision: number;
@@ -193,6 +212,7 @@ export interface CalculationSource {
 export interface CalculationOutput {
   /** Semantic formula/purchase bucket identity; independent of public output indexes. */
   quantityKey?: string;
+  direction?: 'add' | 'deduct';
   /** Formula estimates have no invented material geometry. */
   modeling: 'modeled' | 'estimate' | 'unresolved';
   groupId: string;
@@ -216,6 +236,8 @@ export interface CalculationOutput {
   diagnostics: string[];
 }
 export interface QuantityTotal {
+  additions: number;
+  deductions: number;
   cutLength?: Quantity;
   stockLength?: Quantity;
   materialId: string;
@@ -224,6 +246,12 @@ export interface QuantityTotal {
   complete: boolean;
 }
 export interface CalculationResult {
+  context?: {
+    projectId: string;
+    takeoffId: string;
+    name: string;
+    kind: Takeoff['kind'];
+  };
   model: ConstructionResult;
   coverage: {
     modeledOutputs: number;
@@ -238,6 +266,7 @@ export interface PersistencePort {
   save(previousProject: Project, nextProject: Project): Promise<void>;
 }
 export interface CommandCall {
+  takeoffId?: string;
   name: string;
   payload?: unknown;
 }

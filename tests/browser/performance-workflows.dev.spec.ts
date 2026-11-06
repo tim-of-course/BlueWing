@@ -173,6 +173,7 @@ async function populate(page: Page) {
   const result = await page.evaluate(
     ({ projectId, revision, commands }) =>
       window.wingmanCli('batch', {
+        takeoffId: 'main',
         projectId,
         expectedRevision: revision,
         payload: { commands },

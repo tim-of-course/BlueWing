@@ -33,7 +33,14 @@ export default function Quantities(props: {
     <section class="quantities">
       <div class="panel-heading">
         <div>
-          <h1>Quantities</h1>
+          <h1>
+            Quantities ·{' '}
+            {
+              props.controller.project()?.takeoffs[
+                props.controller.project()?.takeoffId ?? 'main'
+              ]?.name
+            }
+          </h1>
           <p>Trace each output to its group and drawing sources.</p>
         </div>
         <div class="button-row">

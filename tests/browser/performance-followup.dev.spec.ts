@@ -24,6 +24,7 @@ async function mutate(page: Page, name: string, payload: unknown) {
         payload,
         projectId: current.projectId,
         expectedRevision: current.revision,
+        takeoffId: 'main',
       },
     },
   );

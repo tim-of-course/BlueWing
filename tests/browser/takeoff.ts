@@ -131,7 +131,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   // WebKit replaces spaces with underscores in suggested download names.
   expect((await download).suggestedFilename()).toMatch(
-    /^Workflow[ _]fixture\.csv$/,
+    /^Workflow[ _]fixture-main\.csv$/,
   );
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(

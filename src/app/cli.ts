@@ -35,13 +35,19 @@ export function parseCli(args: string[], input?: string): ApplicationRequest {
   const fields = body as Record<string, unknown>;
   for (const key of Object.keys(fields))
     if (
-      !['payload', 'projectId', 'expectedRevision', 'messagesAfter'].includes(
-        key,
-      )
+      ![
+        'payload',
+        'projectId',
+        'takeoffId',
+        'expectedRevision',
+        'messagesAfter',
+      ].includes(key)
     )
       throw new Error(
         `Unknown request field ${key}. Put command parameters in payload.`,
       );
+  if (fields.takeoffId !== undefined && typeof fields.takeoffId !== 'string')
+    throw new Error('takeoffId must be a string');
   if (fields.projectId !== undefined && typeof fields.projectId !== 'string')
     throw new Error('projectId must be a string');
   if (
@@ -61,6 +67,9 @@ export function parseCli(args: string[], input?: string): ApplicationRequest {
     name,
     payload: fields.payload ?? {},
     origin: 'cli',
+    ...(typeof fields.takeoffId === 'string'
+      ? { takeoffId: fields.takeoffId }
+      : {}),
     ...(typeof fields.messagesAfter === 'number'
       ? { messagesAfter: fields.messagesAfter }
       : {}),

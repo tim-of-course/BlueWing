@@ -10,6 +10,7 @@ import {
 } from 'solid-js';
 import { createWorkspace } from './app/controller';
 import type { DrawingTool } from './app/contracts';
+import TakeoffControls from './components/TakeoffControls';
 import DrawingCanvas from './components/canvas/DrawingCanvas';
 import GroupInspector from './components/GroupInspector';
 import SelectionInspector from './components/SelectionInspector';
@@ -391,6 +392,10 @@ export default function App(props: { application?: Application }) {
         <Show when={controller.project()}>
           {(project) => (
             <>
+              <TakeoffControls
+                controller={controller}
+                disabled={controller.busy() || hasDraft()}
+              />
               <button
                 class="project-title"
                 type="button"

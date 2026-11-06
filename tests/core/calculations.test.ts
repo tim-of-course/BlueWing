@@ -18,7 +18,16 @@ function fixture(
   recipeId: string,
 ): Project {
   return {
-    formatVersion: 4,
+    takeoffs: {
+      main: {
+        id: 'main',
+        name: 'Main',
+        kind: 'main',
+        owned: {},
+        calibrations: {},
+      },
+    },
+    formatVersion: 5,
     id: 'project',
     name: 'Estimate',
     revision: 0,
@@ -185,6 +194,7 @@ void test('recipe edits and multiple outputs preserve output and material identi
   assert.equal(result.outputs[1]?.materialId, 'other');
   const json: unknown = JSON.parse(exportQuantities(project, 'json'));
   assert.deepEqual(json, {
+    context: { ...result.context, revision: project.revision },
     outputs: result.outputs,
     totals: result.totals,
     complete: result.complete,
