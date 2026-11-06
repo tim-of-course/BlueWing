@@ -5,6 +5,8 @@ export interface PaintTakeoffOptions {
   selectedIds?: string[];
   /** Geometry ID to CSS color. */
   colors?: Record<string, string>;
+  /** Apply dashes without replacing the geometry's category/group color. */
+  deductionIds?: readonly string[];
   /** Distinct category colors per trace. Empty means uncategorized. */
   categoryColors?: Record<string, string[]>;
   /** Page units per output pixel; keeps strokes and count markers legible. */
@@ -19,14 +21,19 @@ export function paintTakeoff(
 ): void {
   const pixel = options.unitsPerPixel ?? 1;
   const selected = new Set(options.selectedIds ?? []);
+  const deductions = new Set(options.deductionIds ?? []);
   context.save();
   context.lineCap = 'round';
   context.lineJoin = 'round';
+  const inheritedDash = context.getLineDash();
   const transform = context.getTransform();
   const outputPixel = Math.hypot(transform.a, transform.b) * pixel;
   for (const geometry of geometries) {
     const first = geometry.points[0];
     if (!first) continue;
+    const deduction = deductions.has(geometry.id);
+    context.lineCap = deduction ? 'butt' : 'round';
+    context.setLineDash(deduction ? [8 * pixel, 5 * pixel] : inheritedDash);
     if (options.categoryColors && !options.colors?.[geometry.id]) {
       paintCategoryTrace(
         context,
@@ -34,6 +41,7 @@ export function paintTakeoff(
         options.categoryColors[geometry.id] ?? [],
         pixel,
         selected.has(geometry.id),
+        deduction,
       );
       continue;
     }
@@ -82,6 +90,7 @@ function paintCategoryTrace(
   colors: readonly string[],
   pixel: number,
   selected: boolean,
+  deduction: boolean,
 ): void {
   const first = geometry.points[0];
   if (!first) return;
@@ -95,6 +104,8 @@ function paintCategoryTrace(
     if (closed) context.closePath();
   };
   context.save();
+  const dash = deduction ? [8 * pixel, 5 * pixel] : context.getLineDash();
+  context.setLineDash(dash);
   if (geometry.kind === 'count') {
     for (const point of geometry.points) {
       for (let index = 0; index < Math.max(1, colors.length); index++) {
@@ -105,10 +116,11 @@ function paintCategoryTrace(
         context.stroke();
         context.strokeStyle = colors[index] ?? '#718CA6';
         context.lineWidth = 3 * pixel;
-        if (!colors.length) context.setLineDash([2 * pixel, 2 * pixel]);
+        if (!colors.length && !deduction)
+          context.setLineDash([2 * pixel, 2 * pixel]);
         context.stroke();
       }
-      context.setLineDash([]);
+      context.setLineDash(dash);
       if (selected) {
         context.beginPath();
         context.arc(
@@ -131,6 +143,8 @@ function paintCategoryTrace(
     context.stroke();
     context.globalAlpha /= 0.45;
     const points = closed ? [...geometry.points, first] : geometry.points;
+    let runDistance = 0;
+    context.setLineDash([]);
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1],
         b = points[i];
@@ -140,6 +154,9 @@ function paintCategoryTrace(
         dy = (b.y - a.y) / (length || 1);
       context.beginPath();
       for (let distance = 0; distance < length; distance += 7 * pixel) {
+        // Keep the uncategorized hatch inside each deduction dash, leaving gaps clear.
+        const phase = ((runDistance + distance) / pixel) % 13;
+        if (deduction && (phase < 3 || phase > 5)) continue;
         const x = a.x + dx * distance,
           y = a.y + dy * distance;
         context.moveTo(x + (dy - dx) * 3 * pixel, y - (dx + dy) * 3 * pixel);
@@ -147,7 +164,9 @@ function paintCategoryTrace(
       }
       context.lineWidth = pixel;
       context.stroke();
+      runDistance += length;
     }
+    context.setLineDash(dash);
   } else {
     colors.forEach((color, index) => {
       const offset = (index - (colors.length - 1) / 2) * 5 * pixel;
@@ -164,7 +183,7 @@ function paintCategoryTrace(
     path(geometry.points);
     context.strokeStyle = '#172B4D';
     context.lineWidth = pixel;
-    context.setLineDash([3 * pixel, 3 * pixel]);
+    context.setLineDash(deduction ? dash : [3 * pixel, 3 * pixel]);
     context.stroke();
   }
   context.restore();

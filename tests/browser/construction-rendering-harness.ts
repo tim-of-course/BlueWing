@@ -416,7 +416,11 @@ function readNavigation() {
   return navigationCamera;
 }
 
-function categoryStrokes(zoom: number, colors: string[]) {
+function categoryStrokes(
+  zoom: number,
+  colors: string[],
+  draftStyle?: 'solid' | 'dashed',
+) {
   const canvas = document.createElement('canvas');
   canvas.width = 240;
   canvas.height = 100;
@@ -425,6 +429,7 @@ function categoryStrokes(zoom: number, colors: string[]) {
   context.fillStyle = '#fff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.scale(zoom, zoom);
+  if (draftStyle === 'dashed') context.setLineDash([2 / zoom, 8 / zoom]);
   paintTakeoff(
     context,
     [
@@ -439,7 +444,12 @@ function categoryStrokes(zoom: number, colors: string[]) {
         ],
       },
     ],
-    { categoryColors: { wall: colors }, unitsPerPixel: 1 / zoom },
+    {
+      ...(draftStyle
+        ? { colors: { wall: colors[0] ?? '#0077CC' } }
+        : { categoryColors: { wall: colors } }),
+      unitsPerPixel: 1 / zoom,
+    },
   );
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
   let blue = 0,
@@ -458,6 +468,77 @@ function categoryStrokes(zoom: number, colors: string[]) {
   return { blue, magenta, hatch, pale };
 }
 
+function categoryDeductionStrokes(
+  zoom: number,
+  kind: 'path' | 'area' | 'count',
+  selected: boolean,
+  uncategorized = false,
+) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 480;
+  canvas.height = 120;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas unavailable');
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.scale(zoom, zoom);
+  const points =
+    kind === 'count'
+      ? [{ x: 110, y: 60 }]
+      : kind === 'area'
+        ? [
+            { x: 20, y: 20 },
+            { x: 200, y: 20 },
+            { x: 200, y: 100 },
+            { x: 20, y: 100 },
+          ]
+        : [
+            { x: 20, y: 50 },
+            { x: 200, y: 50 },
+          ];
+  paintTakeoff(
+    context,
+    ['deduction', 'positive'].map((id, index) => ({
+      id,
+      name: id,
+      sheetId: 'sheet',
+      kind,
+      points: points.map((point) => ({
+        x: (point.x + 240 * index) / zoom,
+        y: point.y / zoom,
+      })),
+    })),
+    {
+      categoryColors: {
+        deduction: uncategorized ? [] : ['#0077CC', '#C023A0'],
+        positive: uncategorized ? [] : ['#0077CC', '#C023A0'],
+      },
+      selectedIds: selected ? ['deduction', 'positive'] : [],
+      deductionIds: ['deduction'],
+      unitsPerPixel: 1 / zoom,
+    },
+  );
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const sides = [
+    { blue: 0, magenta: 0, red: 0, ink: 0 },
+    { blue: 0, magenta: 0, red: 0, ink: 0 },
+  ];
+  for (let y = 0; y < canvas.height; y++)
+    for (let x = 0; x < canvas.width; x++) {
+      const side = sides[x < 240 ? 0 : 1];
+      if (!side) throw new Error('Missing pixel region');
+      const i = (y * canvas.width + x) * 4;
+      const r = pixels[i] ?? 255,
+        g = pixels[i + 1] ?? 255,
+        b = pixels[i + 2] ?? 255;
+      if (r < 20 && g > 80 && g < 160 && b > 150) side.blue++;
+      if (r > 130 && g < 80 && b > 100) side.magenta++;
+      if (r > 150 && g < 100 && b < 100) side.red++;
+      if (r < 245 || g < 245 || b < 245) side.ink++;
+    }
+  return { deduction: sides[0], positive: sides[1] };
+}
+
 Object.assign(window, {
   constructionRendering: {
     setupNavigation,
@@ -468,6 +549,7 @@ Object.assign(window, {
     screenshotCapture,
     planPlane,
     categoryStrokes,
+    categoryDeductionStrokes,
   },
 });
 export type ConstructionRenderingHarness = {
@@ -479,4 +561,5 @@ export type ConstructionRenderingHarness = {
   screenshotCapture: typeof screenshotCapture;
   planPlane: typeof planPlane;
   categoryStrokes: typeof categoryStrokes;
+  categoryDeductionStrokes: typeof categoryDeductionStrokes;
 };
