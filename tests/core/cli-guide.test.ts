@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { connectionPrompt, cliIntroduction } from '../../src/app/cli-guide';
 import { registry } from '../../src/app/registry';
-import { projectFolder } from '../../src/app/estimating-skill';
+import { estimatingSkill, projectFolder } from '../../src/app/estimating-skill';
 
 const project = { id: 'project-1', name: 'Clinic', revision: 3 };
 void test('connection prompts state the selected conversation intent and target the current project', () => {
@@ -108,4 +108,15 @@ void test('connection points agents to the estimating skill command', () => {
       registry.some((command) => command.name === workflow.start),
       workflow.start,
     );
+});
+void test('every command named in the estimating skill exists', () => {
+  const names = new Set(registry.map((command) => command.name));
+  const mentioned = new Set(
+    estimatingSkill.match(/\b[a-z]+(?:\.[a-zA-Z]+)+\b/g) ?? [],
+  );
+  const commands = [...mentioned].filter(
+    (name) => !/\.(html|json)$/.test(name),
+  );
+  assert.ok(commands.length > 5);
+  for (const name of commands) assert.ok(names.has(name), name);
 });
