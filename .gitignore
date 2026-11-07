@@ -14,3 +14,4 @@ output/
 *.bluewing.lock
 tests/platform/.compiled/
 __pycache__/
+.banana-split/
