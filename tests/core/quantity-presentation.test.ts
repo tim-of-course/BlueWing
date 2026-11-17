@@ -277,6 +277,7 @@ function modeledFixture() {
     summarizeMaterials(model);
     return {
       outputs: modeledOutputs(project, model),
+      sourceCoverage: calculateProject(project).sourceCoverage,
       model,
       totals: [],
       complete: true,

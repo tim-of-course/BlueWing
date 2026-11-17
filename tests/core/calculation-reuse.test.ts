@@ -772,7 +772,9 @@ void test('batch read/write/read sequences invalidate each draft edit and adopt 
         ).baseAmount,
         amount,
       );
-    assert.deepEqual(JSON.parse(data[4] as string), data[3]);
+    const { sourceCoverage, ...exported } = data[3] as Quantities;
+    assert.ok(sourceCoverage);
+    assert.deepEqual(JSON.parse(data[4] as string), exported);
     assert.equal(count(), 3);
     assert.notEqual(session.calculation, baseline);
     near(material(session.calculation, 'estimated-board').purchasedAmount, 864);

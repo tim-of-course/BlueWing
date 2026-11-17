@@ -7,6 +7,18 @@ const formatter = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 3,
 });
 const number = (value: number) => formatter.format(value);
+const coverageReasons = [
+  ['ungroupedGeometry', 'No group'],
+  ['geometryInUnassignedGroups', 'No assembly assigned to any group'],
+  [
+    'geometryWithIncompatibleRecipes',
+    'Drawing type incompatible with all assigned assemblies',
+  ],
+  [
+    'geometryWithoutOutputOrDiagnostic',
+    'Compatible assembly produced no output or diagnostic',
+  ],
+] as const;
 export default function Quantities(props: {
   controller: WorkspaceController;
   onError: (message: string) => void;
@@ -14,6 +26,15 @@ export default function Quantities(props: {
   navigationDisabled?: boolean;
 }) {
   const [filter, setFilter] = createSignal('');
+  const [coverageOpen, setCoverageOpen] = createSignal(false);
+  const coverage = () => props.controller.quantities()?.sourceCoverage;
+  const uncoveredCount = createMemo(() => {
+    const current = coverage();
+    return current
+      ? coverageReasons.reduce((sum, [key]) => sum + current[key].count, 0)
+      : 0;
+  });
+  const emptyCount = () => coverage()?.assignmentsWithEmptyGroups.count ?? 0;
   const reviewMarks = createMemo(() => {
     const project = props.controller.project();
     return project ? inspectReview(project).marks : [];
@@ -98,6 +119,85 @@ export default function Quantities(props: {
               estimates have no 3D placement. Waste and packaging are separate
               purchasing allowances.
             </p>
+            <Show when={uncoveredCount() || emptyCount()}>
+              <details
+                onToggle={(event) => setCoverageOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  <Show when={uncoveredCount()}>
+                    {uncoveredCount()} drawn{' '}
+                    {uncoveredCount() === 1 ? 'item is' : 'items are'} not in
+                    any quantity
+                  </Show>
+                  {uncoveredCount() && emptyCount() ? ' · ' : ''}
+                  <Show when={emptyCount()}>
+                    {emptyCount()}{' '}
+                    {emptyCount() === 1
+                      ? 'assignment has an empty group'
+                      : 'assignments have empty groups'}
+                  </Show>
+                </summary>
+                <Show when={coverageOpen()}>
+                  <For each={coverageReasons}>
+                    {([key, reason]) => (
+                      <Show when={result().sourceCoverage[key].count}>
+                        <p>
+                          {reason} ({result().sourceCoverage[key].count})
+                        </p>
+                        <ul>
+                          <For each={result().sourceCoverage[key].items}>
+                            {(item) => (
+                              <li>
+                                <button
+                                  type="button"
+                                  disabled={props.navigationDisabled}
+                                  onClick={() => {
+                                    props.controller.showGeometry(
+                                      item.geometryId,
+                                      item.groupId ?? '',
+                                    );
+                                    props.onShowDrawing();
+                                  }}
+                                >
+                                  {props.controller.project()?.geometries[
+                                    item.geometryId
+                                  ]?.name ?? item.geometryId}
+                                </button>{' '}
+                                {props.controller.project()?.sheets[
+                                  item.sheetId
+                                ]?.name ?? item.sheetId}{' '}
+                                · {item.kind}
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    )}
+                  </For>
+                  <Show when={emptyCount()}>
+                    <p>Assignments to empty groups ({emptyCount()})</p>
+                    <ul>
+                      <For
+                        each={
+                          result().sourceCoverage.assignmentsWithEmptyGroups
+                            .items
+                        }
+                      >
+                        {(item) => (
+                          <li>
+                            {props.controller.project()?.groups[item.groupId]
+                              ?.name ?? item.groupId}
+                            {' / '}
+                            {props.controller.project()?.recipes[item.recipeId]
+                              ?.name ?? item.recipeId}
+                          </li>
+                        )}
+                      </For>
+                    </ul>
+                  </Show>
+                </Show>
+              </details>
+            </Show>
             <Show when={!result().complete}>
               <p class="warning" role="status">
                 Totals are incomplete. Review the diagnostics below before using

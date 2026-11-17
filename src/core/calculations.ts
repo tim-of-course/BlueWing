@@ -18,6 +18,8 @@ import type {
   QuantityTotal,
   Recipe,
   RecipeOutput,
+  SourceCoverage,
+  UncoveredGeometry,
 } from './types';
 import { measureGeometry } from './geometry';
 import { prepareFormula, formulaOutput, formulaQuantity } from './formula';
@@ -223,6 +225,61 @@ function source(
     return { geometryId, inputs, value: null, diagnostic: message(error) };
   }
 }
+function sourceCoverage(
+  project: Project,
+  assignedKinds: Map<string, Set<Geometry['kind']>>,
+  accounted: Set<string>,
+  emptyAssignments: SourceCoverage['assignmentsWithEmptyGroups']['items'],
+): SourceCoverage {
+  type Reason = Exclude<keyof SourceCoverage, 'assignmentsWithEmptyGroups'>;
+  const missing = new Map<
+    string,
+    { item: UncoveredGeometry; reason: Reason }
+  >();
+  for (const geometry of Object.values(project.geometries)) {
+    if (accounted.has(geometry.id)) continue;
+    missing.set(geometry.id, {
+      item: {
+        geometryId: geometry.id,
+        sheetId: geometry.sheetId,
+        kind: geometry.kind,
+      },
+      reason: 'ungroupedGeometry',
+    });
+  }
+  const coverage: SourceCoverage = {
+    ungroupedGeometry: { count: 0, items: [] },
+    geometryInUnassignedGroups: { count: 0, items: [] },
+    geometryWithIncompatibleRecipes: { count: 0, items: [] },
+    geometryWithoutOutputOrDiagnostic: { count: 0, items: [] },
+    assignmentsWithEmptyGroups: {
+      count: emptyAssignments.length,
+      items: emptyAssignments,
+    },
+  };
+  if (!missing.size) return coverage;
+  for (const group of Object.values(project.groups)) {
+    const kinds = assignedKinds.get(group.id);
+    for (const id of group.geometryIds) {
+      const entry = missing.get(id);
+      if (!entry || entry.reason === 'geometryWithoutOutputOrDiagnostic')
+        continue;
+      if (kinds?.has(entry.item.kind))
+        entry.reason = 'geometryWithoutOutputOrDiagnostic';
+      else if (kinds) entry.reason = 'geometryWithIncompatibleRecipes';
+      else if (entry.reason === 'ungroupedGeometry')
+        entry.reason = 'geometryInUnassignedGroups';
+      else continue;
+      entry.item.groupId = group.id;
+    }
+  }
+  for (const { item, reason } of missing.values()) {
+    coverage[reason].items.push(item);
+    coverage[reason].count++;
+  }
+  return coverage;
+}
+
 export function calculateProject(project: Project): CalculationResult {
   project = takeoffProject(project);
   const takeoff = takeoffContext(project);
@@ -261,6 +318,9 @@ export function calculateProject(project: Project): CalculationResult {
     return prepared(variables);
   };
   const definitions = new Map<Recipe, ReturnType<typeof assemblyOutputs>>();
+  const assignedKinds = new Map<string, Set<Geometry['kind']>>();
+  const emptyAssignments: SourceCoverage['assignmentsWithEmptyGroups']['items'] =
+    [];
   let complete = true;
   for (const assignment of Object.values(project.assignments)) {
     const recipe = project.recipes[assignment.recipeId];
@@ -268,6 +328,17 @@ export function calculateProject(project: Project): CalculationResult {
     if (!recipe) {
       complete = false;
       continue;
+    }
+    if (group) {
+      const kinds = assignedKinds.get(group.id) ?? new Set<Geometry['kind']>();
+      for (const kind of recipe.geometryKinds) kinds.add(kind);
+      assignedKinds.set(group.id, kinds);
+      if (!group.geometryIds.length)
+        emptyAssignments.push({
+          assignmentId: assignment.id,
+          groupId: group.id,
+          recipeId: recipe.id,
+        });
     }
     let definition = definitions.get(recipe);
     if (!definition) {
@@ -412,10 +483,16 @@ export function calculateProject(project: Project): CalculationResult {
   outputs.push(...positioned);
   complete &&= model.complete;
   const totals = new Map<string, QuantityTotal>();
+  const accounted = new Set<string>();
+  for (const diagnostic of model.diagnostics)
+    if (diagnostic.geometryId) accounted.add(diagnostic.geometryId);
   for (const output of outputs) {
     output.direction =
       project.assignments[output.assignmentId]?.direction ?? 'add';
-    for (const source of output.sources) source.direction = output.direction;
+    for (const source of output.sources) {
+      source.direction = output.direction;
+      accounted.add(source.geometryId);
+    }
     const key = JSON.stringify([
       output.materialId,
       output.unit,
@@ -456,6 +533,12 @@ export function calculateProject(project: Project): CalculationResult {
     totals: [...totals.values()],
     complete,
     model,
+    sourceCoverage: sourceCoverage(
+      project,
+      assignedKinds,
+      accounted,
+      emptyAssignments,
+    ),
     coverage: {
       modeledOutputs: outputs.filter((output) => output.modeling === 'modeled')
         .length,
@@ -474,6 +557,33 @@ export function quantityReport(result: CalculationSnapshot, project?: Project) {
     totals: result.totals,
     complete: result.complete,
     coverage: result.coverage,
+  };
+}
+export function inspectQuantities(
+  result: CalculationSnapshot,
+  project: Project,
+) {
+  const coverage = result.sourceCoverage;
+  const named = (list: typeof coverage.ungroupedGeometry) => ({
+    count: list.count,
+    items: list.items.map((item) => ({
+      ...item,
+      name: project.geometries[item.geometryId]?.name ?? item.geometryId,
+    })),
+  });
+  return {
+    ...quantityReport(result, project),
+    sourceCoverage: {
+      ungroupedGeometry: named(coverage.ungroupedGeometry),
+      geometryInUnassignedGroups: named(coverage.geometryInUnassignedGroups),
+      geometryWithIncompatibleRecipes: named(
+        coverage.geometryWithIncompatibleRecipes,
+      ),
+      geometryWithoutOutputOrDiagnostic: named(
+        coverage.geometryWithoutOutputOrDiagnostic,
+      ),
+      assignmentsWithEmptyGroups: coverage.assignmentsWithEmptyGroups,
+    },
   };
 }
 export function exportQuantities(
