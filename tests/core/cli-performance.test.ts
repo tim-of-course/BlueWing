@@ -39,14 +39,14 @@ function fixture() {
 void test('CLI duration covers dispatch, result formatting and message delivery', async () => {
   const { application, recorder, advance } = fixture();
   const message: Message = {
-    id: 1,
+    get id() {
+      advance(3);
+      return 1;
+    },
     sender: 'agent',
     text: 'Done',
     createdAt: '2026-10-07T12:00:00.000Z',
-    get attachments() {
-      advance(3);
-      return [];
-    },
+    attachments: [],
   };
   application.dispatch = () => {
     advance(20);
@@ -65,13 +65,7 @@ void test('CLI duration covers dispatch, result formatting and message delivery'
   assert.equal(result.exitCode, 0);
   assert.equal(result.response.ok, true);
   assert.ok('data' in result.response);
-  assert.deepEqual(result.response.data, {
-    id: 1,
-    sender: 'agent',
-    text: 'Done',
-    createdAt: '2026-10-07T12:00:00.000Z',
-    attachments: [],
-  });
+  assert.deepEqual(result.response.data, { id: 1 });
   assert.deepEqual(recorder.report().events, [
     {
       sequence: 1,

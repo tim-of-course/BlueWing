@@ -235,14 +235,15 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
             'height': sheet_image['height'],
             'dataUrl': 'data:image/png;base64,' + base64.b64encode(image_bytes).decode('ascii'),
         }]}, projectId=project_id)
-        first = sent['data']
+        first, = sent['messages']
+        assert sent['data'] == {'id': first['id']}
         assert first['sender'] == 'agent' and first['text'] == 'Please check this plan'
         attachment(first, image_bytes)
         assert sent['messagesProjectId'] == project_id and sent['messages'] == [first]
-        assert command('messages.read', {'after': 0}) == [first]
-        assert command('messages.read', {'after': 0}) == [first]  # nondestructive
+        assert call('messages.read')['messages'] == [first]
+        assert call('messages.read')['messages'] == [first]  # nondestructive
         cursor = first['id']
-        assert command('messages.read', messagesAfter=cursor) == []
+        assert call('messages.read', messagesAfter=cursor)['messages'] == []
         assert call('project.inspect', messagesAfter=cursor)['messages'] == []
         failed = call('wingman.annotate', {'annotations': annotations}, succeeds=False)
         assert failed['messages'] == [first] and failed['messagesProjectId'] == project_id
@@ -264,17 +265,17 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         assert pending.poll() is None, 'Unrelated commands ended the waiting read'
         second_response = call('messages.send', {'text': 'The wall is ready to review'},
                                messagesAfter=cursor, timeout=10)
-        second = second_response['data']
+        second, = second_response['messages']
         assert second['id'] > cursor and second_response['messages'] == [second]
         stdout, stderr = pending.communicate(timeout=10)
         delivered = response('messages.read', waiting_request, pending.returncode, stdout, stderr)
-        assert delivered['data'] == [second] and delivered['messages'] == [second]
+        assert delivered['data'] is None and delivered['messages'] == [second]
         assert delivered['messagesProjectId'] == project_id
-        assert command('messages.read', {'after': cursor}) == [second]
-        assert command('messages.read', {'after': second['id'], 'waitMs': 100}) == []
+        assert call('messages.read', messagesAfter=cursor)['messages'] == [second]
+        assert call('messages.read', {'waitMs': 100}, messagesAfter=second['id'])['messages'] == []
         # The native convenience command renews after 25 seconds without
         # emitting intermediate output or returning on its own agent messages.
-        waiting_request = {'projectId': project_id, 'messagesAfter': second['id'],
+        waiting_request = {'projectId': project_id, 'takeoffId': 'main', 'messagesAfter': second['id'],
                            'payload': {'timeoutMs': 27000}}
         began = time.monotonic()
         pending = subprocess.Popen(argv('messages.wait'), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -286,17 +287,18 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         stdout, stderr = pending.communicate(timeout=40)
         waited = response('messages.wait', waiting_request, pending.returncode, stdout, stderr)
         assert time.monotonic() - began >= 26
-        assert waited['data']['status'] == 'timeout' and waited['data']['messages'] == []
+        assert waited['data']['status'] == 'timeout' and waited['messages'] == []
+        assert 'messages' not in waited['data']
         assert waited['data']['projectId'] == project_id
         wait_token = waited['data']['waitToken']
-        assert command('messages.wait', {'after': second['id'], 'timeoutMs': 0})['status'] == 'timeout'
+        assert command('messages.wait', {'timeoutMs': 0}, messagesAfter=second['id'])['status'] == 'timeout'
         call('messages.wait', {'timeoutMs': 1.5}, succeeds=False)
         history = [first, second]
         assert command('project.inspect') == baseline
         # Undo still targets the last estimate edit, not chat or presentation.
         command('history.undo', mutates=True)
         assert 'detail' not in command('project.inspect').get('review', {}).get('snippets', {})
-        assert command('messages.read') == history
+        assert call('messages.read')['messages'] == history
         command('history.redo', mutates=True)
         saved = command('project.inspect')
         original_id = project_id
@@ -318,26 +320,27 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         start()
         command('project.open', {'path': str(project_path)})
         assert project_id == original_id and command('project.inspect') == saved
-        assert command('messages.wait', {'after': second['id'], 'timeoutMs': 0,
-                                         'waitToken': wait_token})['status'] == 'ended'
+        assert command('messages.wait', {'timeoutMs': 0, 'waitToken': wait_token},
+                       messagesAfter=second['id'])['status'] == 'ended'
         reopened = call('messages.read')
-        assert reopened['data'] == history and reopened['messages'] == history
-        attachment(reopened['data'][0], image_bytes)
-        assert command('messages.read', messagesAfter=second['id']) == []
+        assert reopened['data'] is None and reopened['messages'] == history
+        attachment(reopened['messages'][0], image_bytes)
+        assert call('messages.read', messagesAfter=second['id'])['messages'] == []
 
         # A cursor from a different project must not suppress this conversation.
         command('project.close', mutates=True)
         command('project.create', {'name': 'Other conversation', 'path': str(data / 'other.bluewing')})
         other_id = project_id
-        assert command('messages.read') == []
+        assert call('messages.read')['messages'] == []
         command('project.close', mutates=True)
         opened = call('project.open', {'path': str(project_path)}, projectId=other_id,
                       messagesAfter=second['id'])
         assert opened['messagesProjectId'] == original_id and opened['messages'] == history
         mismatch = call('messages.send', {'text': 'Wrong project'}, projectId=other_id,
                         messagesAfter=second['id'], succeeds=False)
-        assert mismatch['messages'] == history and mismatch['messagesProjectId'] == original_id
-        assert command('messages.read') == history
+        assert mismatch['messages'] == [] and mismatch['messagesProjectId'] == other_id
+        assert 'Project changed' in mismatch['error']['message']
+        assert call('messages.read')['messages'] == history
     finally:
         if pending is not None and pending.poll() is None:
             pending.kill()

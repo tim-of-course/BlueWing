@@ -643,7 +643,7 @@ export const detailedCommands: CommandDefinition[] = [
       `${kind}.put`,
       kind === 'wall' || kind === 'ceiling'
         ? `Supply a complete resolved ${kind}. Creates an assembly and assignment for a new item, or saves local differences for an existing item.`
-        : `Replace the ${kind} record. Omitted optional fields are cleared.`,
+        : `Replace the ${kind} record. Omitted optional fields are cleared.${kind === 'opening' ? ' The opening also deducts from every modeled finish and insulation surface on the same trace.' : ''}`,
       constructionSchemas[collection],
       true,
       putExamples[collection],

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { connectionPrompt, cliIntroduction } from '../../src/app/cli-guide';
 import { Application } from '../../src/app/application';
+import { parseCli } from '../../src/app/cli';
 import { cliCommandIndex, registry } from '../../src/app/registry';
 import { estimatingSkill, projectFolder } from '../../src/app/estimating-skill';
 
@@ -29,6 +30,14 @@ void test('connection prompts state the selected conversation intent and target 
     /keep questions, progress, and answers in our external chat/,
   );
   assert.ok(!chat.includes('messages.wait'));
+  for (const prompt of [chat, wingman]) {
+    assert.match(
+      prompt,
+      /messageHistory.*clearly open requests.*ask if unsure/,
+    );
+    assert.match(prompt, /one agent per conversation/);
+    assert.match(prompt, /uncertain send.*messages.read before sending again/);
+  }
   assert.ok(!wingman.includes('token='));
 });
 void test(
@@ -81,10 +90,64 @@ void test('PowerShell prompt uses quoted stdin and the installed executable', ()
   );
   assert.match(prompt, /\$env:BLUEWING_DATA_DIR = 'C:\\Tim''s Data'/);
   assert.match(prompt, /\| & 'C:\\Tim''s Apps\\bluewing.exe' connect --stdin/);
+  assert.match(prompt, /Reuse \$OutputEncoding in each new shell/);
 });
+void test(
+  'Windows PowerShell preserves Unicode in copied commands and file-backed requests',
+  { skip: process.platform !== 'win32' },
+  () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'bluewing-stdin-'));
+    try {
+      writeFileSync(
+        join(cwd, 'connect'),
+        "process.stdout.write(require('node:fs').readFileSync(0).toString('base64'))",
+      );
+      const text = 'I’m checking “Clinic” — 8′ (‘quoted’, ‚low‛)';
+      const prompt = connectionPrompt(
+        { cliPath: 'node', shell: 'powershell', dataDir: 'Clinic’s data' },
+        { id: text, name: 'Clinic' },
+        'wingman',
+      );
+      const command = prompt.split('\n\n')[1];
+      assert.ok(command);
+      const execute = (source: string) => {
+        const encoded = Buffer.from(source, 'utf16le').toString('base64');
+        const output = execFileSync(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+          { cwd, encoding: 'utf8' },
+        );
+        return Buffer.from(output.trim(), 'base64').toString('utf8').trimEnd();
+      };
+      const connected = parseCli(['connect'], execute(command));
+      assert.equal(connected.projectId, text);
+      assert.deepEqual(connected.payload, { mode: 'wingman' });
+      const request = JSON.stringify({ payload: { text } });
+      writeFileSync(join(cwd, 'request.json'), request, 'utf8');
+      const encoding = command.slice(0, command.indexOf(';') + 1);
+      assert.match(encoding, /UTF8Encoding\]::new\(\$false\)/);
+      assert.deepEqual(
+        parseCli(
+          ['messages.send'],
+          execute(
+            encoding +
+              " Get-Content -Raw -Encoding UTF8 -LiteralPath request.json | & 'node' connect --stdin",
+          ),
+        ).payload,
+        { text },
+      );
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  },
+);
 void test('short introduction points to real commands without the full schemas', () => {
   const guide = cliIntroduction(project, 'wingman');
   assert.deepEqual(guide.project, project);
+  assert.match(
+    guide.messages,
+    /messageHistory on connect.*highest processed ID from either list/,
+  );
   const names = new Set(cliCommandIndex.map((command) => command.name));
   for (const group of Object.values(guide.commands))
     for (const command of group.split(', '))

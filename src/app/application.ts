@@ -212,6 +212,15 @@ export class Application {
   private check(request: ApplicationRequest, required = true) {
     checkObservation(this.session?.observation, request, required);
   }
+  private checkWingmanProject(request: ApplicationRequest) {
+    if (
+      request.projectId !== undefined &&
+      request.projectId !== this.session?.observation.projectId
+    )
+      throw new Error(
+        'Project changed. The requested Wingman project is no longer open.',
+      );
+  }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
     if (
@@ -244,6 +253,8 @@ export class Application {
         : enqueue;
     if (performance) return schedule(() => this.dispatchPerformance(request));
     return schedule(async () => {
+      if (request.name.startsWith('wingman.'))
+        this.checkWingmanProject(request);
       const definition = registry.find((entry) => entry.name === request.name);
       if (!definition)
         throw new Error(`Unknown command ${request.name}. Use bluewing help.`);
@@ -987,20 +998,11 @@ export class Application {
   ): Promise<ApplicationResult> {
     const definition = registry.find((entry) => entry.name === request.name);
     if (!definition) throw new Error('Unknown messaging command');
+    this.checkWingmanProject(request);
     validatePayload(definition.schema, request.payload ?? {});
-    if (
-      request.projectId !== undefined &&
-      request.projectId !== this.session?.observation.projectId
-    )
-      throw new Error('Message project does not match the open project');
     const payload = (request.payload ?? {}) as Record<string, unknown>;
     if (typeof payload.waitMs === 'number' && payload.waitMs > 25000)
       throw new Error('waitMs must be at most 25000');
-    if (
-      typeof payload.after === 'number' &&
-      !Number.isSafeInteger(payload.after)
-    )
-      throw new Error('after must be a nonnegative integer');
     if (
       payload.timeoutMs !== undefined &&
       !Number.isSafeInteger(payload.timeoutMs)
@@ -1009,7 +1011,7 @@ export class Application {
     if (request.name === 'messages.wait') {
       const revision = this.session?.observation.expectedRevision ?? null;
       const data = await this.messaging.wait(
-        (payload.after as number | undefined) ?? request.messagesAfter ?? 0,
+        request.messagesAfter,
         (payload.timeoutMs as number | undefined) ?? 25000,
         payload.waitToken as string | undefined,
       );
@@ -1023,7 +1025,7 @@ export class Application {
             request.origin === 'cli' ? 'agent' : 'user',
           )
         : await this.messaging.read(
-            (payload.after as number | undefined) ?? request.messagesAfter ?? 0,
+            request.messagesAfter,
             (payload.waitMs as number | undefined) ?? 0,
           );
     const observation = this.session?.observation;

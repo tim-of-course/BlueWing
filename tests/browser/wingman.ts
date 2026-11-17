@@ -761,16 +761,11 @@ export async function messagingWorkflow(page: Page) {
     (await cli(page, 'project.inspect', {}, cursor)).response.messages,
   ).toEqual([]);
   // A pending long poll must leave the application command queue available.
-  const waiting = cli<Message[]>(
-    page,
-    'messages.read',
-    { after: cursor, waitMs: 25000 },
-    cursor,
-  );
+  const waiting = cli<null>(page, 'messages.read', { waitMs: 25000 }, cursor);
   const conversationWait = cli<MessageWait>(
     page,
     'messages.wait',
-    { after: cursor, timeoutMs: 25000 },
+    { timeoutMs: 25000 },
     cursor,
   );
   await expect(
@@ -783,13 +778,13 @@ export async function messagingWorkflow(page: Page) {
   ).toBe(true);
   expect((await cli(page, 'project.inspect', {}, cursor)).exitCode).toBe(0);
   await sendText(page, 'The read must not block editing');
-  expect((await waiting).response.data).toEqual(
+  expect((await waiting).response.messages).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ text: 'The read must not block editing' }),
     ]),
   );
-  expect((await conversationWait).response.data).toMatchObject({
-    status: 'messages',
+  expect((await conversationWait).response).toMatchObject({
+    data: { status: 'messages' },
     messages: expect.arrayContaining([
       expect.objectContaining({ text: 'The read must not block editing' }),
     ]),
@@ -807,14 +802,14 @@ export async function messagingWorkflow(page: Page) {
   const stopped = cli<MessageWait>(
     page,
     'messages.wait',
-    { after: latest, timeoutMs: 25000 },
+    { timeoutMs: 25000 },
     latest,
   );
   await page
     .getByRole('button', { name: 'End conversation', exact: true })
     .click();
-  expect((await stopped).response.data).toMatchObject({
-    status: 'ended',
+  expect((await stopped).response).toMatchObject({
+    data: { status: 'ended' },
     messages: [],
   });
   await expect(
@@ -849,7 +844,12 @@ export async function messagingWorkflow(page: Page) {
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(
     'I can still reply while paused',
   );
+  const resumeWait = cli<MessageWait>(page, 'messages.wait', {}, latest);
+  await expect(
+    page.getByText('Waiting for your message', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Resume CLI', exact: true }).click();
+  expect((await resumeWait).response.data.status).toBe('resumed');
   expect((await cli(page, 'project.inspect')).exitCode).toBe(0);
   expect(
     await originalRow.evaluate(

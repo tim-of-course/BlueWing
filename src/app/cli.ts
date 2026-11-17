@@ -23,13 +23,11 @@ export function parseCli(args: string[], input?: string): ApplicationRequest {
     !argument || argument === '--help' || argument === 'help'
       ? 'help'
       : argument;
+  const json = (input ?? args[1] ?? '{}').replace(/^\uFEFF/, '');
   const source =
-    name === 'help' &&
-    input === undefined &&
-    args[1] &&
-    !args[1].startsWith('{')
+    name === 'help' && input === undefined && args[1] && !json.startsWith('{')
       ? JSON.stringify({ payload: { command: args[1] } })
-      : (input ?? args[1] ?? '{}');
+      : json;
   const body: unknown = JSON.parse(source);
   if (!body || typeof body !== 'object' || Array.isArray(body))
     throw new Error('Request must be a JSON object');
@@ -121,21 +119,36 @@ export async function dispatchCli(
   let request: ApplicationRequest | undefined;
   let finish: FinishPerformanceSpan | undefined;
   let success = false;
-  const delivery = (wait?: MessageWait) => {
-    if (wait)
-      return {
-        messagesProjectId: wait.projectId,
-        messages: wait.messages.map(wireMessage),
-        ...(wait.messages.some((message) => message.sender === 'user')
-          ? { messageGuidance }
-          : {}),
-      };
-    const { projectId, messages } = application.messaging.delivery(
-      request?.messagesAfter ?? 0,
-      request?.projectId,
-    );
+  let connectHistory: { projectId: string | null; lastId: number } | undefined;
+  const delivery = (
+    snapshot?: { projectId: string | null; messages: Message[] },
+    openedProjectId?: string,
+  ) => {
+    const bound = request?.projectId;
+    const { projectId, messages: rows } =
+      snapshot && (bound === undefined || bound === snapshot.projectId)
+        ? {
+            projectId: snapshot.projectId,
+            messages: snapshot.messages.map(wireMessage),
+          }
+        : application.messaging.delivery(
+            openedProjectId && bound !== undefined && bound !== openedProjectId
+              ? 0
+              : (request?.messagesAfter ?? 0),
+            openedProjectId ?? bound,
+          );
+    const historyEnd =
+      connectHistory?.projectId === projectId
+        ? connectHistory.lastId
+        : Infinity;
+    const messages = connectHistory
+      ? rows.filter((row) => row.id > historyEnd)
+      : rows;
     return {
       messagesProjectId: projectId,
+      ...(connectHistory
+        ? { messageHistory: rows.filter((row) => row.id <= historyEnd) }
+        : {}),
       messages,
       ...(messages.some((message) => message.sender === 'user')
         ? { messageGuidance }
@@ -145,29 +158,50 @@ export async function dispatchCli(
   try {
     request = parseCli(args, input);
     const name = request.name;
+    if (name === 'connect') {
+      connectHistory = {
+        projectId: application.messaging.status().projectId,
+        lastId: application.messaging.lastMessageId,
+      };
+    }
     const definition = registry.find((entry) => entry.name === name);
     if (definition && !definition.name.startsWith('performance.'))
       // Includes queue wait and response formatting, before the native roundtrip.
       finish = application.performance?.span('cli.command', {
         purpose: definition.name,
       });
+    if (request.messagesAfter !== undefined)
+      application.messaging.checkCursor(
+        request.messagesAfter,
+        request.projectId,
+      );
     const result = await application.dispatch(request);
-    if (request.name === 'messages.send')
-      result.data = wireMessage(result.data as Message);
-    if (request.name === 'messages.read')
-      result.data = (result.data as Message[]).map(wireMessage);
-    const wait =
-      request.name === 'messages.wait'
-        ? (result.data as MessageWait)
-        : undefined;
-    if (wait)
-      result.data = { ...wait, messages: wait.messages.map(wireMessage) };
+    let snapshot;
+    if (name === 'messages.send')
+      result.data = { id: (result.data as Message).id };
+    if (name === 'messages.read') {
+      snapshot = {
+        projectId: result.projectId,
+        messages: result.data as Message[],
+      };
+      result.data = null;
+    }
+    if (name === 'messages.wait') {
+      const { messages, ...wait } = result.data as MessageWait;
+      snapshot = { projectId: wait.projectId, messages };
+      result.data = wait;
+    }
     const reply = {
       exitCode: 0,
       response: {
         ok: true,
         ...result,
-        ...delivery(wait),
+        ...delivery(
+          snapshot,
+          request.name === 'project.open'
+            ? (result.projectId ?? undefined)
+            : undefined,
+        ),
       },
     };
     success = true;

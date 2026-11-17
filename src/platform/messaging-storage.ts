@@ -25,7 +25,10 @@ function browserMessages(
         : store.get(projectId);
       transaction.oncomplete = () => {
         db.close();
-        resolve(messages ?? (request.result as Message[] | undefined) ?? []);
+        resolve(
+          messages ??
+            (request.result === undefined ? [] : (request.result as Message[])),
+        );
       };
       transaction.onabort = () => {
         db.close();
@@ -45,18 +48,47 @@ export function messagingStorage(native: boolean): MessagingStorage {
   };
   return {
     async read(projectId) {
-      if (!native) return browserMessages(projectId);
-      const data = await invoke<string | null>('app_data_read', {
-        key: await key(projectId),
-      });
-      const messages = data ? (JSON.parse(data) as Message[]) : [];
+      let messages: Message[];
+      if (native) {
+        const data = await invoke<string | null>('app_data_read', {
+          key: await key(projectId),
+        });
+        messages = data === null ? [] : (JSON.parse(data) as Message[]);
+      } else messages = await browserMessages(projectId);
+      if (!Array.isArray(messages)) throw new Error('Invalid message list');
+      let lastId = 0;
       for (const message of messages) {
+        if (
+          !Number.isSafeInteger(message.id) ||
+          message.id <= lastId ||
+          !['user', 'agent'].includes(message.sender) ||
+          typeof message.text !== 'string' ||
+          typeof message.createdAt !== 'string' ||
+          !Array.isArray(message.attachments)
+        )
+          throw new Error('Invalid Wingman message');
+        lastId = message.id;
         for (const attachment of message.attachments) {
-          if (attachment.path && attachment.dataUrl.endsWith(',')) {
-            const file = await invoke<{ data: string }>('read_file', {
-              path: attachment.path,
-            });
-            attachment.dataUrl += file.data;
+          if (
+            typeof attachment.id !== 'string' ||
+            typeof attachment.name !== 'string' ||
+            typeof attachment.dataUrl !== 'string' ||
+            !Number.isFinite(attachment.width) ||
+            !Number.isFinite(attachment.height) ||
+            (attachment.path !== undefined &&
+              typeof attachment.path !== 'string')
+          )
+            throw new Error('Invalid Wingman attachment');
+          if (native && attachment.path && attachment.dataUrl.endsWith(',')) {
+            try {
+              const file = await invoke<{ data: string }>('read_file', {
+                path: attachment.path,
+              });
+              attachment.dataUrl += file.data;
+              delete attachment.unavailable;
+            } catch {
+              attachment.unavailable = true;
+            }
           }
         }
       }
