@@ -47,6 +47,7 @@ import {
 } from './material-layout';
 import {
   detailedCommands,
+  pagePoint,
   wallTemplateSchema,
   ceilingTemplateSchema,
   wallOverrideSchema,
@@ -60,6 +61,7 @@ import {
 } from './detailed-commands';
 
 export interface PayloadSchema {
+  description?: string;
   type?: 'object' | 'array' | 'string' | 'number' | 'boolean';
   nullable?: boolean;
   properties?: Record<string, PayloadSchema>;
@@ -91,37 +93,88 @@ const object = (
   required,
   additionalProperties: false,
 });
-const array = (items: PayloadSchema): PayloadSchema => ({
+const array = (items: PayloadSchema, description?: string): PayloadSchema => ({
   type: 'array',
   items,
+  ...(description ? { description } : {}),
 });
 const positive: PayloadSchema = { type: 'number', minimum: Number.MIN_VALUE };
 const point = object({ x: number, y: number });
-const combined3dAlignment = object({ offset: point, rotation: number });
+const translation = {
+  dx: { ...number, description: 'Page points right.' },
+  dy: { ...number, description: 'Page points down.' },
+};
+const alignmentFields = {
+  offset: {
+    ...point,
+    description: 'World XY translation in metres after rotation.',
+  },
+  rotation: {
+    ...number,
+    description: 'Radians about world +Z after sheet placement.',
+  },
+};
+const combined3dAlignment = {
+  ...object(alignmentFields),
+  description: 'Presentation transform for combined multi-sheet 3D views.',
+};
+const lengthUnit: PayloadSchema = {
+  type: 'string',
+  enum: ['m', 'mm', 'ft', 'in'],
+};
+const distance = object({ value: positive, unit: lengthUnit });
 const unit: PayloadSchema = {
   type: 'string',
   enum: ['m', 'mm', 'ft', 'in', 'm2', 'ft2', 'ea', 'scalar'],
 };
-const wastePercent: PayloadSchema = { type: 'number', minimum: 0 };
-const allowance = object({ wastePercent, packageSize: positive }, [
-  'wastePercent',
-]);
+const wastePercent: PayloadSchema = {
+  type: 'number',
+  minimum: 0,
+  description: 'Percent of base quantity added before rounding (10 means 10%).',
+};
+const packageSize: PayloadSchema = {
+  ...positive,
+  description: 'Quantity per whole package in the declared output unit.',
+};
+const allowance = object({ wastePercent, packageSize }, ['wastePercent']);
 const allowanceOverride = object(
-  { wastePercent, packageSize: { ...positive, nullable: true } },
+  { wastePercent, packageSize: { ...packageSize, nullable: true } },
   [],
 );
 const sheet = object(
   {
     id: string,
     name: string,
-    assetId: string,
-    pageIndex: { type: 'number', minimum: 0 },
-    order: number,
-    width: positive,
-    height: positive,
-    rotation: number,
-    pdfToPage: { type: 'array', items: number, minItems: 6, maxItems: 6 },
-    calibration: object({ metresPerUnit: positive }),
+    assetId: { ...string, description: 'Stored PDF asset ID.' },
+    pageIndex: {
+      type: 'number',
+      minimum: 0,
+      description: 'Zero-based page in the source PDF.',
+    },
+    order: {
+      ...number,
+      description: 'Sheet display order. Defaults to pageIndex.',
+    },
+    width: {
+      ...positive,
+      description: 'Rotated page width in points (72 per paper inch).',
+    },
+    height: { ...positive, description: 'Rotated page height in points.' },
+    rotation: { ...number, description: 'PDF page rotation in degrees.' },
+    pdfToPage: {
+      type: 'array',
+      items: number,
+      minItems: 6,
+      maxItems: 6,
+      description:
+        'Original PDF to rotated page points: [a,b,c,d,e,f] maps (x,y) to (ax+cy+e,bx+dy+f).',
+    },
+    calibration: object({
+      metresPerUnit: {
+        ...positive,
+        description: 'Real metres per page point, shared by all takeoffs.',
+      },
+    }),
     combined3dAlignment,
   },
   ['id', 'name', 'assetId', 'pageIndex', 'width', 'height'],
@@ -130,16 +183,41 @@ const geometry = object({
   id: string,
   name: string,
   sheetId: string,
-  kind: { type: 'string', enum: ['path', 'area', 'count'] },
-  points: array(point),
+  kind: {
+    type: 'string',
+    enum: ['path', 'area', 'count'],
+    description: 'Open polyline, closed polygon or independent count markers.',
+  },
+  points: {
+    ...array(pagePoint),
+    description:
+      'With pixelToPage [0.5,0,0,0.5,100,50], pixel (20,40) is page point (110,70).',
+  },
 });
+const geometryIds = {
+  ...array(string),
+  description:
+    'Unique geometry IDs in this takeoff. Membership can span sheets.',
+};
 const group = object(
-  { id: string, name: string, geometryIds: array(string), color: string },
+  {
+    id: string,
+    name: string,
+    geometryIds,
+    color: { ...string, description: 'Optional group highlight color.' },
+  },
   ['id', 'name', 'geometryIds'],
 );
 const lengthFormula = object({
-  formula: string,
-  unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
+  formula: {
+    ...string,
+    description: 'Length expression using geometry metrics and recipe inputs.',
+  },
+  unit: {
+    ...lengthUnit,
+    description:
+      'Result unit of this expression. Schedules normalize lengths to metres.',
+  },
 });
 const leafAssemblySchema = object(
   {
@@ -155,33 +233,64 @@ const leafAssemblySchema = object(
         {
           name: string,
           type: { type: 'string', enum: ['number', 'boolean'] },
-          unit,
-          default: value,
+          unit: {
+            ...unit,
+            description:
+              'Unit for numeric input values, defaults and minimums. Use scalar for booleans.',
+          },
+          default: {
+            ...value,
+            description:
+              'Fallback when the assignment supplies no value. Omit to require an input.',
+          },
           minimum: number,
         },
         ['name', 'type', 'unit'],
       ),
+      'Named variables available to formulas and assignment overrides.',
     ),
     outputs: array(
       object(
         {
           id: string,
           name: string,
-          materialId: string,
-          unit,
-          formula: string,
-          allowance,
+          materialId: {
+            ...string,
+            description:
+              'Purchasing identity used to combine compatible outputs.',
+          },
+          unit: {
+            ...unit,
+            description: 'Unit for calculated and purchased amounts.',
+          },
+          formula: {
+            ...string,
+            description:
+              'Base quantity per compatible geometry before waste and packages.',
+          },
+          allowance: {
+            ...allowance,
+            description: 'Default waste and packaging for this output.',
+          },
           piece: object(
             {
               role: string,
-              cutLength: lengthFormula,
-              stockLength: lengthFormula,
+              cutLength: {
+                ...lengthFormula,
+                description: 'Required length of one installed piece.',
+              },
+              stockLength: {
+                ...lengthFormula,
+                description:
+                  'Purchased length per piece, at least the cut length.',
+              },
             },
             ['role', 'cutLength'],
           ),
         },
         ['id', 'name', 'materialId', 'unit', 'formula', 'allowance'],
       ),
+      'Material quantities calculated per compatible trace and aggregated for purchasing.',
     ),
   },
   ['id', 'name', 'geometryKinds', 'inputs', 'outputs'],
@@ -190,14 +299,28 @@ export const assemblySchema: PayloadSchema = {
   ...leafAssemblySchema,
   properties: {
     ...leafAssemblySchema.properties,
-    wallTemplate: wallTemplateSchema,
-    ceilingTemplate: ceilingTemplateSchema,
-    materialTemplate: materialTemplateSchema,
+    wallTemplate: {
+      ...wallTemplateSchema,
+      description: 'Live construction defaults for path members of the group.',
+    },
+    ceilingTemplate: {
+      ...ceilingTemplateSchema,
+      description: 'Live ceiling defaults for area members of the group.',
+    },
+    materialTemplate: {
+      ...materialTemplateSchema,
+      description:
+        'Positioned material layout. Lengths and world XY origins use metres, rotations use radians.',
+    },
     components: array(
       object({
         id: string,
         assembly: leafAssemblySchema,
-        bindings: { type: 'object', additionalProperties: string },
+        bindings: {
+          type: 'object',
+          additionalProperties: string,
+          description: 'Component input name to shared input name.',
+        },
       }),
     ),
   },
@@ -205,22 +328,53 @@ export const assemblySchema: PayloadSchema = {
 const recipe = assemblySchema;
 const inputValues: PayloadSchema = {
   type: 'object',
+  description:
+    'Values by recipe input name, in each declared unit (e.g. ft or in), or booleans.',
   additionalProperties: value,
 };
 const assignment = object(
   {
-    direction: { type: 'string', enum: ['add', 'deduct'] },
+    direction: {
+      type: 'string',
+      enum: ['add', 'deduct'],
+      description:
+        'Defaults to add. Only change orders can deduct. Enter positive quantities.',
+    },
     id: string,
     groupId: string,
-    recipeId: string,
+    recipeId: {
+      ...string,
+      description:
+        'ID of the project recipe or assembly applied to this group.',
+    },
     inputs: inputValues,
-    allowances: { type: 'object', additionalProperties: allowanceOverride },
-    geometryInputs: { type: 'object', additionalProperties: inputValues },
-    wallOverrides: wallOverrideSchema,
-    ceilingOverrides: ceilingOverrideSchema,
-    materialOverrides: materialOverrideSchema,
+    allowances: {
+      type: 'object',
+      additionalProperties: allowanceOverride,
+      description:
+        'Overrides by output ID. Omitted fields inherit the recipe allowance; packageSize null clears package rounding. Use {} for recipe defaults.',
+    },
+    geometryInputs: {
+      type: 'object',
+      additionalProperties: inputValues,
+      description: 'Overrides assignment inputs for individual geometry IDs.',
+    },
+    wallOverrides: {
+      ...wallOverrideSchema,
+      description: 'Group-wide changes to the wall template.',
+    },
+    ceilingOverrides: {
+      ...ceilingOverrideSchema,
+      description: 'Group-wide changes to the ceiling template.',
+    },
+    materialOverrides: {
+      ...materialOverrideSchema,
+      description: 'Group-wide changes to the material template.',
+    },
     geometryDetails: {
       type: 'object',
+      description:
+        'By geometry ID. Optional applied item ID and settings for that trace. Local values override group-wide settings.',
       additionalProperties: object(
         {
           id: string,
@@ -244,7 +398,7 @@ const commands = array(
 const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   [
     'commands.list',
-    'List commands, payload schemas, and examples.',
+    'List command names, effects and mutation flags. Use help <command> for its payload.',
     object({}),
     false,
     {},
@@ -252,14 +406,19 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   [
     'construction.alignment.put',
     'Set a presentation-only combined 3D alignment (metres/radians).',
-    object({ sheetId: string, offset: point, rotation: number }),
+    object({ sheetId: string, ...alignmentFields }),
     true,
     { sheetId: 'sheet-1', offset: { x: 0, y: 0 }, rotation: 0 },
   ],
   [
     'construction.alignment.delete',
     'Clear a combined 3D alignment.',
-    object({ sheetId: string }),
+    object({
+      sheetId: {
+        ...string,
+        description: 'Sheet whose saved presentation transform is removed.',
+      },
+    }),
     true,
     { sheetId: 'sheet-1' },
   ],
@@ -269,8 +428,19 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     object({
       sheetId: string,
       referenceSheetId: string,
-      sourcePoints: { ...array(point), minItems: 1, maxItems: 2 },
-      referencePoints: { ...array(point), minItems: 1, maxItems: 2 },
+      sourcePoints: {
+        ...array(pagePoint),
+        minItems: 1,
+        maxItems: 2,
+        description:
+          'Control points on sheetId. One preserves rotation, two solve rotation and translation.',
+      },
+      referencePoints: {
+        ...array(pagePoint),
+        minItems: 1,
+        maxItems: 2,
+        description: 'Matching points on referenceSheetId in the same order.',
+      },
     }),
     true,
     {
@@ -318,7 +488,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'sheet.put',
-    'Add or replace a sheet; assetId references separately stored PDF bytes and pageIndex is zero based.',
+    'Replace the whole sheet record, including calibration. Omitted optional fields are cleared. Use sheet.naming.apply to rename.',
     sheet,
     true,
     {
@@ -348,14 +518,8 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     'Set a PDF sheet scale from printed paper and real distances (72 page units per paper inch).',
     object({
       id: string,
-      paper: object({
-        value: positive,
-        unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
-      }),
-      real: object({
-        value: positive,
-        unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
-      }),
+      paper: { ...distance, description: 'Printed length on paper.' },
+      real: { ...distance, description: 'Corresponding real-world length.' },
     }),
     true,
     {
@@ -369,12 +533,12 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     'Calibrate two page points against a physical distance.',
     object({
       id: string,
-      start: point,
-      end: point,
-      distance: object({
-        value: positive,
-        unit: { type: 'string', enum: ['m', 'mm', 'ft', 'in'] },
-      }),
+      start: pagePoint,
+      end: pagePoint,
+      distance: {
+        ...distance,
+        description: 'Known real-world length between start and end.',
+      },
     }),
     true,
     {
@@ -393,11 +557,11 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'geometry.put',
-    'Add or replace complete geometry. Supply a stable UUID id.',
+    'Replace geometry in page coordinates. Convert image pixels with the pixelToPage transform returned by the render they came from.',
     geometry,
     true,
     {
-      id: 'geometry-1',
+      id: 'original-wall-id',
       name: 'Wall',
       sheetId: 'sheet-1',
       kind: 'path',
@@ -410,37 +574,37 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   [
     'geometry.move',
     'Translate selected objects in page units.',
-    object({ ids: array(string), dx: number, dy: number }),
+    object({ ids: array(string), ...translation }),
     true,
-    { ids: ['geometry-1'], dx: 10, dy: 0 },
+    { ids: ['original-wall-id'], dx: 10, dy: 0 },
   ],
   [
     'geometry.copy',
-    'Copy geometry to a new id without copying memberships.',
-    object({ id: string, newId: string, dx: number, dy: number }, ['id']),
+    'Copy a trace, translating its page points. Modeled applications get independent groups and assignments.',
+    object({ id: string, newId: string, ...translation }, ['id']),
     true,
-    { id: 'geometry-1', dx: 10 },
+    { id: 'original-wall-id', dx: 10 },
   ],
   [
     'geometry.delete',
     'Delete geometry and its memberships.',
     id,
     true,
-    { id: 'geometry-1' },
+    { id: 'original-wall-id' },
   ],
   [
     'group.put',
-    'Add or replace a flat reusable group and unique memberships.',
+    'Replace the group and its memberships. Omitted optional fields are cleared.',
     group,
     true,
-    { id: 'group-1', name: 'Walls', geometryIds: ['geometry-1'] },
+    { id: 'group-1', name: 'Walls', geometryIds: ['original-wall-id'] },
   ],
   [
     'group.members',
     'Replace group memberships.',
-    object({ id: string, geometryIds: array(string) }),
+    object({ id: string, geometryIds }),
     true,
-    { id: 'group-1', geometryIds: ['geometry-1'] },
+    { id: 'group-1', geometryIds: ['original-wall-id'] },
   ],
   [
     'group.copy',
@@ -458,7 +622,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'recipe.put',
-    'Add or replace an editable project recipe; assignments use the new definition.',
+    'Replace the project recipe used by its assignments. Omitted optional fields are cleared.',
     recipe,
     true,
     {
@@ -481,7 +645,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ['recipe.delete', 'Delete an unused recipe.', id, true, { id: 'custom' }],
   [
     'assignment.put',
-    'Add or replace an assignment using declared input units and output allowance overrides. Omitted allowance fields inherit recipe values. Set packageSize to null to clear package rounding.',
+    'Replace a group assignment. Omitted optional fields, including per-geometry overrides, are cleared. Allowance overrides inherit omitted fields from the recipe.',
     assignment,
     true,
     {
@@ -501,15 +665,21 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'quantities.inspect',
-    'Calculate quantities with geometry sources and incomplete totals, and report uncovered drawing objects and assignments to empty groups.',
+    'Read this takeoff’s source quantities, diagnostics, allowances, purchases and material totals in their reported units, plus sourceCoverage: drawing objects that reach no quantity and assignments to empty groups.',
     object({}),
     false,
     {},
   ],
   [
     'quantities.export',
-    'Export derived quantities as CSV or JSON.',
-    object({ format: { type: 'string', enum: ['csv', 'json'] } }),
+    'Return this takeoff’s quantity report as text.',
+    object({
+      format: {
+        type: 'string',
+        enum: ['csv', 'json'],
+        description: 'CSV output rows or the full JSON quantity report.',
+      },
+    }),
     false,
     { format: 'csv' },
   ],
@@ -529,14 +699,14 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'history.undo',
-    'Undo a session edit and save a new revision.',
+    'Undo the latest project-wide edit, including desktop edits. Ignores takeoffId and saves a new revision.',
     object({}),
     true,
     {},
   ],
   [
     'history.redo',
-    'Redo an edit and save a new revision.',
+    'Redo the last project-wide undo, including desktop edits. Ignores takeoffId and saves a new revision.',
     object({}),
     true,
     {},
@@ -582,6 +752,16 @@ export const commandRegistry: readonly CommandDefinition[] = [
   ...detailedCommands,
   ...takeoffCommands,
 ];
+export function commandIndex(definitions: readonly CommandDefinition[]) {
+  return definitions
+    .map(({ name, description, mutates }) => ({
+      name,
+      description: description.split(/(?<=\.)\s+/, 1)[0] ?? description,
+      mutates,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function record(item: unknown): item is Record<string, unknown> {
   return typeof item === 'object' && item !== null && !Array.isArray(item);
 }
@@ -1082,7 +1262,7 @@ export function executeCommandOnDraft(
   let data: unknown = null;
   switch (call.name) {
     case 'commands.list':
-      data = commandRegistry;
+      data = commandIndex(commandRegistry);
       break;
     case 'notes.read':
       data = { markdown: next.notes ?? '' };

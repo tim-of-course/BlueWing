@@ -50,9 +50,9 @@ export function cliIntroduction(
       ? { id: project.id, name: project.name, revision: project.revision }
       : null,
     usage: 'bluewing <command> <JSON request> (or <command> --stdin)',
-    help: 'bluewing help <command> returns its payload schema and examples; commands.list returns the full registry.',
+    help: 'commands.list indexes commands. bluewing help <command> gives its schema and examples. Wrap only the example payload in the request envelope: {"payload":{...}}. Substitute IDs from your project.',
     start: project
-      ? 'project.inspect reads project metadata and records. Use takeoff.list and takeoff.select to set CLI context (starts on Main, independent of UI). Envelope takeoffId overrides one request; scoped results echo effective identity. Use projectId and the latest expectedRevision for edits.'
+      ? 'Use takeoff.list and takeoff.select for CLI context (starts on Main, independent of UI). Envelope takeoffId overrides one request. For project edits include projectId and the latest expectedRevision.'
       : 'Open or create a project in Bluewing to begin.',
     skill:
       'Before any takeoff or estimating work, run estimating.skill and follow it. It holds our scopes, takeoff standards, and handoff document.',
@@ -61,12 +61,16 @@ export function cliIntroduction(
       pageNaming: { title: 'AI Page Naming', start: 'sheet.naming.start' },
     },
     commands: {
-      project: 'project.inspect, project.create, project.open, sheet.render',
+      project:
+        'project.inspect, project.create, project.open, sheet.render, sheet.scale, sheet.calibrate',
       sheetNaming:
         'sheet.naming.start, sheet.naming.read, sheet.naming.apply, sheet.naming.cancel',
       takeoff:
-        'takeoff.list, takeoff.select, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems, geometry.put, group.put, assignment.put, quantities.inspect',
-      construction: 'wall.put, construction.inspect, construction.render',
+        'takeoff.list, takeoff.select, takeoff.create, takeoff.rename, takeoff.delete, takeoff.inspect, takeoff.copyItems, geometry.put, group.put, assignment.put, quantities.inspect, quantities.exportEstiMaker',
+      assemblies: 'library.inspect, assembly.import, assembly.put',
+      construction:
+        'wall.put, wall.fromAssembly, opening.put, ceiling.fromAssembly, construction.inspect, construction.render',
+      changes: 'preview, batch, history.undo',
       review: 'snippet.render, review.inspect, wingman.flash',
       notes: 'notes.read, notes.search, notes.write',
       conversation: 'messages.send, messages.read, messages.wait',

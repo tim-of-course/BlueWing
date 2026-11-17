@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { connectionPrompt, cliIntroduction } from '../../src/app/cli-guide';
-import { registry } from '../../src/app/registry';
+import { Application } from '../../src/app/application';
+import { cliCommandIndex, registry } from '../../src/app/registry';
 import { estimatingSkill, projectFolder } from '../../src/app/estimating-skill';
 
 const project = { id: 'project-1', name: 'Clinic', revision: 3 };
@@ -84,7 +85,7 @@ void test('PowerShell prompt uses quoted stdin and the installed executable', ()
 void test('short introduction points to real commands without the full schemas', () => {
   const guide = cliIntroduction(project, 'wingman');
   assert.deepEqual(guide.project, project);
-  const names = new Set(registry.map((command) => command.name));
+  const names = new Set(cliCommandIndex.map((command) => command.name));
   for (const group of Object.values(guide.commands))
     for (const command of group.split(', '))
       assert.ok(names.has(command), command);
@@ -109,14 +110,42 @@ void test('connection points agents to the estimating skill command', () => {
       workflow.start,
     );
 });
-void test('every command named in the estimating skill exists', () => {
-  const names = new Set(registry.map((command) => command.name));
+void test('command index covers estimating skill commands and leaves schemas to targeted help', async () => {
+  const app = new Application(false);
+  const { data } = await app.dispatch({ name: 'commands.list' });
+  const { commands, protocol } = data as {
+    commands: typeof cliCommandIndex;
+    protocol: { request: object };
+  };
+  assert.ok(protocol.request);
+  const names = new Set(commands.map((command) => command.name));
+  assert.deepEqual(
+    [...names],
+    registry.map(({ name }) => name).sort((a, b) => a.localeCompare(b)),
+  );
+  for (const entry of commands) {
+    assert.deepEqual(Object.keys(entry).sort(), [
+      'description',
+      'mutates',
+      'name',
+    ]);
+    assert.ok(entry.description);
+    assert.equal(typeof entry.mutates, 'boolean');
+  }
+  const help = await app.dispatch({
+    name: 'help',
+    payload: { command: 'geometry.put' },
+  });
+  assert.deepEqual(
+    help.data,
+    registry.find(({ name }) => name === 'geometry.put'),
+  );
   const mentioned = new Set(
     estimatingSkill.match(/\b[a-z]+(?:\.[a-zA-Z]+)+\b/g) ?? [],
   );
-  const commands = [...mentioned].filter(
+  const skillCommands = [...mentioned].filter(
     (name) => !/\.(html|json)$/.test(name),
   );
-  assert.ok(commands.length > 5);
-  for (const name of commands) assert.ok(names.has(name), name);
+  assert.ok(skillCommands.length > 5);
+  for (const name of skillCommands) assert.ok(names.has(name), name);
 });

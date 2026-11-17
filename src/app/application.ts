@@ -50,7 +50,7 @@ import {
   writeOutput,
 } from './files';
 import type { ImportedFile } from './files';
-import { applicationCommands, registry } from './registry';
+import { applicationCommands, cliCommandIndex, registry } from './registry';
 import { renderImage, type RenderOptions } from './render';
 import { Messaging, type Attachment } from './messaging';
 import {
@@ -262,7 +262,7 @@ export class Application {
       const payload = (request.payload ?? {}) as Record<string, unknown>;
       if (request.name === 'commands.list')
         data = {
-          commands: registry,
+          commands: cliCommandIndex,
           protocol: {
             invocation: 'bluewing <command> <JSON request>',
             request: {
