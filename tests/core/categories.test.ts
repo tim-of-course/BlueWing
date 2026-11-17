@@ -20,7 +20,7 @@ import {
   geometryMatchesCategories,
   filterConstructionCategories,
 } from '../../src/core/categories';
-import { offsetStroke } from '../../src/core/category-strokes';
+import { offsetStroke, stripeScale } from '../../src/core/category-strokes';
 import { recordChanges } from '../../src/platform/storage-model';
 import {
   visibleDrawingIds,
@@ -359,4 +359,14 @@ void test('parallel strokes offset in display coordinates without changing autho
       false,
     ).every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
   );
+});
+
+void test('category stripes keep full size at 100% zoom and slim down when zoomed out', () => {
+  // unitsPerPixel is page units per screen pixel: 1 at 100%, 0.5 at 200%, 2.5 at 40%.
+  assert.equal(stripeScale(1), 1);
+  assert.equal(stripeScale(0.5), 1);
+  assert.equal(stripeScale(2), 0.5);
+  assert.equal(stripeScale(2.5), 0.4);
+  // Never thinner than 40% so a single scope stays visible on a fitted sheet.
+  assert.equal(stripeScale(10), 0.4);
 });

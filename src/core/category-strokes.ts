@@ -30,3 +30,11 @@ export function offsetStroke(
     };
   });
 }
+
+/**
+ * Screen scale for parallel category stripes: full size at 100% zoom and above,
+ * slimmer when zoomed out so several scopes on one trace do not bury the plan.
+ */
+export function stripeScale(unitsPerPixel: number): number {
+  return Math.min(1, Math.max(0.4, 1 / unitsPerPixel));
+}
