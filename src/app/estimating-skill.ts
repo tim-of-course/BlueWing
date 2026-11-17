@@ -9,7 +9,7 @@ Follow this skill for any takeoff or estimating work in Bluewing. It holds our c
 Each scope is listed with its exact assembly category name in quotes.
 
 - Light gauge metal framing: "Light-gauge metal framing".
-- Wood blocking, including structural blocking and equipment backing: "Wood blocking/backing". If the job is wood framed, exclude all wood work; it is left to the framers. Check the structural sheets, general notes and wall types to decide.
+- Wood blocking, including structural blocking and equipment backing: "Wood blocking/backing". If the job is wood framed, exclude all wood work; it is left to the framers. Check the structural sheets, general notes and wall types to decide. On a metal framed job, blocking and backing shown on the plans goes with the framing whenever we frame the walls, even when the request names only part of the job (for example "the new partitions"). Leave it out only when the user says to.
 - Sheathing and FRP, including Zip board and FRP-like panels such as Marlite: "Sheathing/FRP".
 - Moisture barriers, such as liquid applied barriers and Tyvek: "Moisture barriers".
 - Drywall hanging and finishing: "Drywall hang/finish".
@@ -33,12 +33,21 @@ Other combinations are rare. Infer the package from the user's request and the d
 - Read the project notes (notes.read, or notes.search for a topic). Earlier agents and people record job facts there, so use them instead of rediscovering them.
 - Check the takeoffs with takeoff.list. Work in Main unless the user names a phase or change order. If they do, switch to it with takeoff.select before working. The selection lasts until you change it and does not move the user's view. Check the takeoff named in each result.
 - In a change order, enter removed work as deductions and new work as additions. For changed work, copy the original from Main as a deduction (takeoff.copyItems) and draw the replacement as an addition.
-- If the sheets are not already named from the plan page labels, run the AI Page Naming workflow (sheet.naming.start) without asking.
+- When you work in a phase or change order, also put its takeoffId on every request. The selected takeoff is shared with anyone else using the CLI. connect and takeoff.list show which one is selected.
+- If the sheets are not already named from the plan page labels, run the AI Page Naming workflow (sheet.naming.start) without asking. Rename sheets only through that workflow: sheet.put replaces the whole sheet record and erases its scale.
+- Set each sheet's scale from the scale printed for the view you will measure (sheet.scale), and check one printed dimension against it before tracing. A sheet has one scale, so do not measure a detail drawn at a different scale on that sheet. Leave sheets you only read uncalibrated.
+
+## Talking to the user
+
+- Before long work, tell the user in one line what you are about to do. Report at real milestones, not after every step.
+- In Wingman, write short plain text with no Markdown, and ask one question at a time.
+- When the user points at something ("this wall"), confirm which item they mean before you change it. Show it with a highlighted sheet.render if that is quicker than asking.
 
 ## Project notes
 
 Record job facts in the project notes as you find them, with the sheet and detail where each was found. Include:
 - the scope package and framing type
+- for each sheet you measure: the printed scale and the dimension you checked it against
 - ceiling and deck heights
 - wall heights for each wall type, part by part (framing, kicks, drywall, sheathing, FRP, insulation)
 - insulation types and who does roof insulation
@@ -54,7 +63,15 @@ Read the notes before writing, and keep other people's text. Notes are plain Mar
 - Take off footage (LF or SF) for every item. Where it is reasonable or the documents are specific, also get item counts and sizes, for example how many studs of each size.
 - When the documents leave a quantity uncertain, carry the larger quantity and flag it as an assumption. Never leave the item out and never use the smaller quantity. Example: 10 ft ceilings and 12 ft deck with no indication of how far up the drywall goes: carry drywall to deck and flag it.
 - Before finishing, ask the user when the larger quantity is massively larger. Example: 10 ft ceilings under a 20 ft deck. Raise any other significant blocking factor with the user while you work, too. Do not leave these only for the handoff document.
-- Use 10% waste by default. Use a different waste only when there is a special reason, and record that reason in the handoff document's assumptions. EstiMaker adds no waste of its own, so the waste set in Bluewing is final.
+- Use 5% waste on everything Bluewing models from the drawing: framing members, and modeled drywall and ceiling surfaces. The modeled starter assemblies already default to 5%. Use 10% on formula estimates. Use a different waste only when there is a special reason, and record that reason in the handoff document's assumptions. EstiMaker adds no waste of its own, so the waste set in Bluewing is final.
+- When you change the waste on an assignment, send only the waste. The package size and anything else you leave out stay as the assembly has them.
+- Bluewing packs the real cut pieces of studs, track and grid members into stock sticks across the whole takeoff, by scope and material, and then adds waste. Use those purchased quantities. Do not build your own stick schedule.
+- Enter each door and window opening once, on the framed wall (opening.put). It comes out of the modeled drywall and insulation on that wall automatically, so do not enter it again on the other scopes. A formula estimate does not see openings.
+- Break out work that prices differently as its own line by giving it its own material name. Always break out drywall above 10 ft from the floor, because it costs more to install: give the wall one board finish up to 10 ft and a second, separately named finish from 10 ft to the top.
+- Inputs on a group's assignment apply to every item in the group. Put a one-off deduction or extra on the single item it belongs to, not on the group.
+- Trace each continuous ceiling field as one area. Two areas side by side add wall angle along the edge they share.
+- geometry.copy makes another item of the same kind with the same assemblies, so its quantities are added. For a bare trace, use geometry.put with a new id.
+- Before you finish, read sourceCoverage in quantities.inspect. It lists drawn items that are in no quantity. Assign each one, or say in the handoff document why it is reference only.
 - Every item must have a quantity. An item missing a dimension, calibration or piece size (it shows as "(missing quantity)" in the EstiMaker export) is a blocking item. Fix it, or list it under Items needing a decision. The handoff document stays Draft while any remain.
 
 ## 3D visualization
@@ -76,7 +93,7 @@ Put this exact element in the document head:
 <script type="application/json" id="bluewing-handoff">{"draft": true}</script>
 
 - Use {"draft": true} while you are still working or are waiting on blocking items.
-- Change it to {"draft": false} when you have finished and are satisfied the takeoff and document are ready for human review.
+- Change it to {"draft": false} when you have finished and are satisfied the takeoff and document are ready for human review. Before you do, check that quantities.inspect and construction.inspect report complete, that every item in sourceCoverage is accounted for, and that the EstiMaker export (below) reports no missing-quantity rows.
 - Complete ({"draft": false}) means only that you finished and are satisfied it is ready for human review. It does not mean a human approved it or that quantities are verified. Never describe it that way. Do not track whether a human has reviewed it.
 - Also show the status as visible text near the top of the document, "Status: Draft" or "Status: Complete", so it reads correctly in any browser. Keep the visible text and the JSON in agreement.
 - The Bluewing viewer only reads this flag to show Draft or Complete. It does not store or link the document to the project.
@@ -116,7 +133,7 @@ Use these sections in this order. Leave out a section only when it would be empt
 
 ## EstiMaker export
 
-As the last step, after finishing the handoff document, export the takeoff quantities with quantities.exportEstiMaker. Save the file in projectFolder, named <project>-<takeoffId>.estimaker.json. Tell the user its path.
+Export the takeoff quantities with quantities.exportEstiMaker before you set the handoff document to Complete. Save the file in projectFolder, named <project>-<takeoffId>.estimaker.json. The result gives missingQuantityRowCount. Anything above zero is a blocking item: fix it and export again, or leave the handoff document Draft. If you change the takeoff afterward, export again so the file matches. Tell the user its path.
 `;
 
 /** Folder containing a project file path, for Windows or POSIX separators. */
