@@ -147,6 +147,10 @@ Use `bluewing help <command>` or `commands.list` for complete schemas. Commands 
 
 `assignment.put` replaces a complete assignment. Geometry overrides must reference group members. Removing a member or geometry removes its overrides in the same undoable edit. Duplicating a group copies assignments and overrides while retaining geometry references.
 
+**Duplicate** and `geometry.copy` add another trace to every group the original belongs to. Each compatible assignment gains one contribution with the same category, direction and per-trace settings. The copy has its own modeled applications, openings and header details. On a calibrated sheet, an offset copy also moves the room’s ceiling or joist grid origin by the same world-space distance. The CLI returns `geometry` and the lists `groupIds`, `assignmentIds`, `applicationIds`, `openingIds`, `headerIds` and `conditionIds`. Group and assignment IDs identify existing records. Undo removes the duplicate and its details together.
+
+A copied junction keeps its shared members when the owning wall application is also on the duplicated trace. When another trace owns the members, the new junction detaches with a count of zero. The original owner continues to supply those members.
+
 Project format 6 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 2 in `data/assemblies-v2.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 7 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
 
 ## Review and verification

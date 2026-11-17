@@ -4,7 +4,8 @@ import type {
   CalculationSnapshot,
   ConstructionSnapshot,
 } from './calculation-state';
-import { validateConstruction } from './construction';
+import { sheetPointToWorld, validateConstruction } from './construction';
+import { newId } from './geometry';
 import type { ConstructionData, Wall, Ceiling } from './construction-types';
 import {
   applyMaterialAssembly,
@@ -904,71 +905,175 @@ export function pruneDetailed(project: Project): void {
   pruneReview(project);
 }
 
+/** A moved room keeps its grid in the same position relative to its boundary. */
+function copyWorldOffset(project: Project, sourceId: string, copyId: string) {
+  const geometry = project.geometries[sourceId];
+  const first = geometry?.points[0];
+  const copied = project.geometries[copyId]?.points[0];
+  if (!geometry || !first || !copied || geometry.kind !== 'area') return;
+  const scale = project.sheets[geometry.sheetId]?.calibration?.metresPerUnit;
+  if (!scale || (copied.x === first.x && copied.y === first.y)) return;
+  const placement = Object.values(project.construction?.placements ?? {}).find(
+    (item) => item.sheetId === geometry.sheetId,
+  );
+  const from = sheetPointToWorld(first, scale, placement);
+  const to = sheetPointToWorld(copied, scale, placement);
+  return { x: to.x - from.x, y: to.y - from.y };
+}
+
 export function copyDetailedGeometry(
   project: Project,
   sourceId: string,
   newGeometryId: string,
-): void {
+) {
   const resolved = resolveConstruction(project);
+  const groupIds = new Set<string>();
+  for (const group of Object.values(project.groups)) {
+    if (!group.geometryIds.includes(sourceId)) continue;
+    group.geometryIds.push(newGeometryId);
+    groupIds.add(group.id);
+  }
+
+  // Membership supplies the application ID unless an authored ID already uses it.
+  function applicationId(assignmentId: string | undefined) {
+    const id = `${assignmentId ?? ''}/${newGeometryId}`;
+    return resolved.walls[id] ||
+      resolved.ceilings[id] ||
+      resolved.materials?.[id]
+      ? newId()
+      : id;
+  }
+
+  // Shared junctions refer to a condition by both its owner wall and local ID.
+  const walls = new Map(
+    Object.values(resolved.walls)
+      .filter((wall) => wall.geometryId === sourceId)
+      .map((wall) => [
+        wall.id,
+        {
+          id: applicationId(wall.assignmentId),
+          conditions: new Map(
+            (wall.conditions ?? [])
+              .filter((c) => !c.ownerWallId || c.ownerWallId === wall.id)
+              .map((c) => [c.id, newId()]),
+          ),
+        },
+      ]),
+  );
+  const offset = copyWorldOffset(project, sourceId, newGeometryId);
+  const assignmentIds: string[] = [];
+  const applicationIds: string[] = [];
+  const openingIds: string[] = [];
+  const conditionIds = new Set<string>();
+  const geometry = project.geometries[newGeometryId];
   for (const assignment of Object.values(project.assignments)) {
-    const group = project.groups[assignment.groupId];
     const recipe = project.recipes[assignment.recipeId];
-    if (
-      !group?.geometryIds.includes(sourceId) ||
-      !(
-        recipe?.wallTemplate ||
-        recipe?.ceilingTemplate ||
-        recipe?.materialTemplate
-      )
-    )
-      continue;
-    const id = crypto.randomUUID();
-    const originalId =
-      assignment.geometryDetails?.[sourceId]?.id ??
-      `${assignment.id}/${sourceId}`;
-    const sourceWall = resolved.walls[originalId];
-    const groupId = crypto.randomUUID(),
-      assignmentId = crypto.randomUUID();
-    project.groups[groupId] = {
-      id: groupId,
-      name: `${group.name} copy`,
-      geometryIds: [newGeometryId],
-    };
-    const details = structuredClone(
-      assignment.geometryDetails?.[sourceId] ?? {},
-    );
-    details.id = id;
-    if (sourceWall?.conditions)
-      details.wall = {
-        ...details.wall,
-        conditions: sourceWall.conditions.map((condition) => {
-          const copy = { ...condition };
-          delete copy.ownerWallId;
-          return copy;
-        }),
+    if (!recipe || !groupIds.has(assignment.groupId)) continue;
+    const inputs = assignment.geometryInputs?.[sourceId];
+    if (inputs)
+      (assignment.geometryInputs ??= {})[newGeometryId] =
+        structuredClone(inputs);
+
+    const compatible = geometry && recipe.geometryKinds.includes(geometry.kind);
+    if (compatible) assignmentIds.push(assignment.id);
+    const sourceDetail = assignment.geometryDetails?.[sourceId];
+    const modeled =
+      compatible &&
+      (recipe.wallTemplate ||
+        recipe.ceilingTemplate ||
+        recipe.materialTemplate);
+    if (!modeled && !sourceDetail) continue;
+    const detail = structuredClone(sourceDetail ?? {});
+    const originalId = detail.id ?? `${assignment.id}/${sourceId}`;
+    const wall =
+      modeled && recipe.wallTemplate ? resolved.walls[originalId] : undefined;
+    const copy = wall && walls.get(wall.id);
+    const id = copy?.id ?? applicationId(assignment.id);
+    if (sourceDetail?.id || id !== `${assignment.id}/${newGeometryId}`)
+      detail.id = id;
+    if (modeled) applicationIds.push(id);
+
+    if (wall?.conditions?.length) {
+      (detail.wall ??= {}).conditions = wall.conditions.map((source) => {
+        const condition = structuredClone(source);
+        const owner = walls.get(source.ownerWallId ?? wall.id);
+        condition.id = owner?.conditions.get(source.id) ?? newId();
+        if (!owner) {
+          // The original junction's members were counted on a different trace.
+          condition.count = 0;
+          delete condition.ownerWallId;
+          delete condition.memberOffsets;
+        } else if (source.ownerWallId) {
+          condition.ownerWallId = owner.id;
+        }
+        conditionIds.add(condition.id);
+        return condition;
+      });
+    }
+    for (const opening of detail.material?.openings ?? []) {
+      opening.id = newId();
+      openingIds.push(opening.id);
+    }
+    if (offset && modeled) {
+      const grid =
+        recipe.ceilingTemplate && resolved.ceilings[originalId]?.grid;
+      if (grid)
+        ((detail.ceiling ??= {}).grid ??= {}).origin = {
+          x: grid.origin.x + offset.x,
+          y: grid.origin.y + offset.y,
+        };
+      const origin =
+        recipe.materialTemplate &&
+        resolved.materials?.[originalId]?.template.origin;
+      if (origin)
+        (detail.material ??= {}).origin = {
+          x: origin.x + offset.x,
+          y: origin.y + offset.y,
+        };
+    }
+    if (sourceDetail || Object.keys(detail).length)
+      (assignment.geometryDetails ??= {})[newGeometryId] = detail;
+  }
+
+  const copied = copyWallOpenings(project.construction, walls);
+  return {
+    groupIds: [...groupIds],
+    assignmentIds,
+    applicationIds,
+    openingIds: [...openingIds, ...copied.openingIds],
+    headerIds: copied.headerIds,
+    conditionIds: [...conditionIds],
+  };
+}
+
+function copyWallOpenings(
+  context: Project['construction'],
+  walls: ReadonlyMap<string, { id: string }>,
+) {
+  const headers = new Map<string, string>();
+  const openingIds: string[] = [];
+  if (context) {
+    for (const original of Object.values(context.openings)) {
+      const wall = walls.get(original.wallId);
+      if (!wall) continue;
+      const opening = {
+        ...structuredClone(original),
+        id: newId(),
+        wallId: wall.id,
       };
-    project.assignments[assignmentId] = {
-      ...structuredClone(assignment),
-      id: assignmentId,
-      groupId,
-      geometryInputs: {
-        [newGeometryId]: structuredClone(
-          assignment.geometryInputs?.[sourceId] ?? {},
-        ),
-      },
-      geometryDetails: { [newGeometryId]: details },
-    };
-    for (const opening of Object.values(project.construction?.openings ?? {})) {
-      if (opening.wallId !== originalId) continue;
-      const copy = {
-        ...structuredClone(opening),
-        id: crypto.randomUUID(),
-        wallId: id,
-      };
-      const context = (project.construction ??= emptyConstructionContext());
-      context.openings[copy.id] = copy;
+      const header = original.headerId && context.headers[original.headerId];
+      if (header) {
+        // Openings that shared a header on the source share one independent copy.
+        const id = headers.get(header.id) ?? newId();
+        context.headers[id] ??= { ...structuredClone(header), id };
+        headers.set(header.id, id);
+        opening.headerId = id;
+      }
+      context.openings[opening.id] = opening;
+      openingIds.push(opening.id);
     }
   }
+  return { openingIds, headerIds: [...headers.values()] };
 }
 
 function csv(rows: (string | number | boolean | null | undefined)[][]): string {
