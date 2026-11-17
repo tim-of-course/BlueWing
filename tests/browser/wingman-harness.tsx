@@ -3,6 +3,7 @@ import App from '../../src/App';
 import { Application } from '../../src/app/application';
 import { dispatchCli } from '../../src/app/cli';
 import type { CliConnection } from '../../src/app/cli-guide';
+import type { WingmanVisual } from '../../src/app/wingman-types';
 import '../../src/styles.css';
 
 // Exercise the desktop CLI interpreter against the real UI with browser storage.
@@ -13,6 +14,23 @@ Object.assign(window, {
   },
   wingmanCli: (name: string, request = {}) =>
     dispatchCli(application, [name, JSON.stringify(request)]),
+  wingmanPublish: (visual: WingmanVisual) =>
+    application.presentation?.publish(visual),
+  wingmanHoldLibraryRead: () => {
+    const read = application.libraryStore.read.bind(application.libraryStore);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    application.libraryStore.read = async () => {
+      await gate;
+      return read();
+    };
+    return () => {
+      application.libraryStore.read = read;
+      release();
+    };
+  },
   wingmanCalculation: () => application.calculate(),
   wingmanPerformance: () => application.performance.report(),
   wingmanWatchModelBuilds: async () => {

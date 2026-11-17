@@ -52,6 +52,8 @@ export interface WorkspaceController {
   savePerformanceRecording(): Promise<void>;
   messaging: Messaging;
   cliConnection: Accessor<CliConnection | null>;
+  lastCliContact: Accessor<number | null>;
+  cliExecuting: Accessor<boolean>;
   setPresentation(presentation: WingmanPresentation | undefined): void;
   captureContext(): WorkspaceContext;
   restoreContext(context: WorkspaceContext): void;

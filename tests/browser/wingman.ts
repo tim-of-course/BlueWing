@@ -173,10 +173,61 @@ export async function sendText(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(text);
 }
+export async function activityWorkflow(page: Page) {
+  const noContact = page.getByText('No AI connected yet', { exact: true });
+  const working = page.getByText('AI is working', { exact: true });
+  await expect(noContact).toBeVisible();
+  await page.getByRole('button', { name: 'Wingman chat' }).click();
+  await expect(noContact).toBeVisible();
+  const start = Date.now() + 60_000;
+  await page.clock.setFixedTime(start);
+  expect((await cli(page, 'unknown.command')).exitCode).not.toBe(0);
+  const justActive = page.getByText('AI last active 0 s ago', { exact: true });
+  await expect(justActive).toBeVisible();
+  await page.clock.setFixedTime(start + 65_000);
+  await expect(page.getByText('AI last active 1 min ago')).toBeVisible({
+    timeout: 10_000,
+  });
+  expect((await cli(page, 'messages.read')).exitCode).toBe(0);
+  await expect(justActive).toBeVisible();
+
+  const release = await page.evaluateHandle(() => {
+    const bridge = window as unknown as {
+      wingmanHoldLibraryRead(): () => void;
+    };
+    return bridge.wingmanHoldLibraryRead();
+  });
+  const pending = cli(page, 'library.inspect');
+  try {
+    await expect(working).toBeVisible();
+    expect((await cli(page, 'performance.status')).exitCode).toBe(0);
+    await expect(working).toBeVisible();
+  } finally {
+    await release.evaluate((finish) => {
+      finish();
+    });
+    await release.dispose();
+  }
+  expect((await pending).exitCode).toBe(0);
+  await expect(justActive).toBeVisible();
+  const wait = cli(page, 'messages.wait', { timeoutMs: 25000 });
+  await expect(page.getByText('Waiting for your message')).toBeVisible();
+  await expect(justActive).toBeHidden();
+  await page.getByRole('button', { name: 'End conversation' }).click();
+  expect((await wait).exitCode).toBe(0);
+  await expect(justActive).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await expect(noContact).toBeVisible();
+}
+
 export async function keyboardWorkflow(page: Page) {
   await page.getByRole('button', { name: 'Wingman chat', exact: true }).click();
   const input = page.getByLabel('Message', { exact: true });
   const log = page.getByRole('log', { name: 'Messages' });
+  await expect(log).toHaveText(
+    'Messages are saved here. Your AI sees them on its next Bluewing command.',
+  );
   await input.fill('First line');
   await input.press('Shift+Enter');
   await input.evaluate((element: HTMLTextAreaElement) => {
@@ -200,6 +251,58 @@ export async function keyboardWorkflow(page: Page) {
   await input.press('Enter');
   await expect(log).toContainText('Composed message');
   await expect(input).toHaveValue('');
+}
+
+export async function unreadWorkflow(page: Page) {
+  const chat = page.getByRole('button', { name: 'Wingman chat' });
+  expect(
+    (await cli(page, 'messages.send', { text: 'Previous reply' })).exitCode,
+  ).toBe(0);
+  await expect(chat).toHaveText('Chat (1)');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await expect(chat).toHaveText('Chat');
+  expect(
+    (await cli(page, 'messages.send', { text: 'New reply' })).exitCode,
+  ).toBe(0);
+  await expect(chat).toHaveText('Chat (1)');
+  await chat.click();
+  const log = page.getByRole('log', { name: 'Messages' });
+  await expect(log).toContainText('Previous reply');
+  await expect(log).toContainText('New reply');
+  await chat.click();
+  await expect(chat).toHaveText('Chat');
+}
+
+export async function transcriptWorkflow(page: Page) {
+  await page.getByRole('button', { name: 'Wingman chat' }).click();
+  const log = page.getByRole('log', { name: 'Messages' });
+  const reply = async (text: string) => {
+    expect((await cli(page, 'messages.send', { text })).exitCode).toBe(0);
+    await expect(log).toContainText(text);
+  };
+  const gap = () =>
+    log.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  await reply(
+    Array.from({ length: 40 }, (_, i) => `Wall ${String(i)}`).join('\n'),
+  );
+  await expect.poll(gap).toBeLessThanOrEqual(1);
+  await log.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  expect(await gap()).toBeGreaterThan(20);
+  await reply('Additional dimensions');
+  expect(await log.evaluate((el) => el.scrollTop)).toBe(0);
+  await log.evaluate((el) => {
+    el.scrollTop = el.scrollHeight - el.clientHeight - 3;
+  });
+  await reply('Last dimension');
+  await expect.poll(gap).toBeLessThanOrEqual(1);
+  await log.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await sendText(page, 'My correction');
+  await expect.poll(gap).toBeLessThanOrEqual(1);
 }
 
 export async function browserPromptWorkflow(page: Page) {
@@ -307,6 +410,62 @@ export async function promptWorkflow(page: Page) {
   await page.getByRole('button', { name: 'Chat only', exact: true }).click();
   await expect(fallback).toHaveValue(prompts[1] ?? '');
 }
+export async function draftWorkflow(page: Page) {
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Create project', exact: true })
+    .click();
+  await page.getByLabel('Project name', { exact: true }).fill('Second job');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Second job', exact: true }),
+  ).toBeVisible();
+  const recent = page.getByLabel('Recent projects');
+  await recent.selectOption({ label: 'Wingman fixture' });
+  await expect(
+    page.getByRole('button', { name: 'Wingman fixture', exact: true }),
+  ).toBeVisible();
+  const chat = page.getByRole('button', { name: 'Wingman chat' });
+  await chat.click();
+  const input = page.getByLabel('Message', { exact: true });
+  await input.fill('Keep this correction');
+  await chat.click();
+  await recent.selectOption({ label: 'Second job' });
+  await expect(page.getByRole('alert')).toContainText(
+    'Send or discard your Wingman draft.',
+  );
+  await expect(
+    page.getByRole('button', { name: 'Wingman fixture', exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole('alert')
+    .getByRole('button', { name: 'Dismiss' })
+    .click();
+  await drawWall(page);
+  const sheetId = await page
+    .getByLabel('Drawing canvas', { exact: true })
+    .getAttribute('data-sheet-id');
+  expect(
+    (
+      await cli(page, 'sheet.render', {
+        sheetId,
+        path: 'draft-view.png',
+        maxDimension: 320,
+      })
+    ).exitCode,
+  ).toBe(0);
+  await page.getByRole('button', { name: 'Expand Wingman view' }).click();
+  await page.getByRole('button', { name: 'Swap to agent view' }).click();
+  await page.getByRole('button', { name: 'Return to your view' }).click();
+  await chat.click();
+  await expect(input).toHaveValue('Keep this correction');
+  await input.fill('');
+  await recent.selectOption({ label: 'Second job' });
+  await expect(
+    page.getByRole('button', { name: 'Second job', exact: true }),
+  ).toBeVisible();
+}
+
 export async function viewWorkflow(page: Page) {
   await drawWall(page);
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
@@ -395,6 +554,35 @@ export async function viewWorkflow(page: Page) {
   await expect
     .poll(async () => (await inspect(page)).data.main.plan?.bounds)
     .not.toEqual(firstSwap?.bounds);
+  // Both renders publish in one frame while the first camera update is pending.
+  const latest = (await inspect(page)).data.agent;
+  if (!latest || latest.view.kind !== 'plan')
+    throw new Error('Expected a published plan');
+  const catchUp = page.getByRole('button', { name: 'Show latest agent view' });
+  await expect(catchUp).toBeHidden();
+  await page.evaluate((source) => {
+    const bridge = window as unknown as {
+      wingmanPublish(visual: WingmanVisual): void;
+    };
+    if (source.view.kind !== 'plan') throw new Error('Expected a plan');
+    for (const x of [120, 320])
+      bridge.wingmanPublish({
+        ...source,
+        view: {
+          ...source.view,
+          bounds: { x, y: 100, width: 100, height: 100 },
+        },
+      });
+  }, latest);
+  const centerX = async () => {
+    const bounds = (await inspect(page)).data.main.plan?.bounds;
+    return bounds && bounds.x + bounds.width / 2;
+  };
+  await expect(catchUp).toBeEnabled();
+  await expect.poll(centerX).toBeCloseTo(170);
+  await catchUp.click();
+  await expect.poll(centerX).toBeCloseTo(370);
+  await expect(catchUp).toBeHidden();
   await page
     .getByRole('button', { name: 'Return to your view', exact: true })
     .click();
@@ -1120,6 +1308,16 @@ export async function captureWorkflow(page: Page) {
     },
     true,
   );
+  await expect(page.locator('.wingman-attachments img')).toHaveCount(3);
+  await expect(page.getByLabel('Message', { exact: true })).toHaveValue('');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText(
+    'Send or discard your Wingman draft.',
+  );
+  await page
+    .getByRole('alert')
+    .getByRole('button', { name: 'Dismiss' })
+    .click();
   await expect(page.locator('.wingman-attachments img')).toHaveCount(3);
   await page
     .getByRole('button', { name: 'Remove Screenshot 2', exact: true })

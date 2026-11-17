@@ -3,20 +3,31 @@ import { expect, test } from '@playwright/test';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import {
+  activityWorkflow,
   captureErrors,
   captureWorkflow,
+  draftWorkflow,
   messagingWorkflow,
   keyboardWorkflow,
   promptWorkflow,
   modelWorkflow,
   startWingmanProject,
+  transcriptWorkflow,
+  unreadWorkflow,
   viewWorkflow,
   warmSwapWorkflow,
 } from './wingman';
 
 for (const [name, workflow] of [
+  ['CLI activity since opening the project', activityWorkflow],
   ['connection prompts and clipboard fallback', promptWorkflow],
   ['Enter sends, Shift+Enter and composition do not', keyboardWorkflow],
+  ['chat follows the reader or their own message', transcriptWorkflow],
+  ['reopened chat only badges new replies', unreadWorkflow],
+  [
+    'Wingman drafts protect project switches and allow view swaps',
+    draftWorkflow,
+  ],
   ['CLI renders and exact view restoration', viewWorkflow],
   [
     'warm swaps and collapse reuse source pixels with live annotations',

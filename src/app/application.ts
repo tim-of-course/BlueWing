@@ -85,6 +85,11 @@ export class Application {
   readonly performance = new PerformanceRecorder();
   readonly messaging: Messaging;
   cliConnection: CliConnection | null = null;
+  lastCliContact: number | null = null;
+  private runningCliCommands = 0;
+  get cliExecuting(): boolean {
+    return this.runningCliCommands > 0;
+  }
   presentation?: WingmanPresentation | undefined;
   readonly storage;
   readonly pdf;
@@ -178,6 +183,11 @@ export class Application {
       listener();
     });
   }
+  recordCliContact(): void {
+    if (!this.session) return;
+    this.lastCliContact = Date.now();
+    this.publish();
+  }
   private attach(project: Project) {
     this.textPrefetch.clear();
     this.activeTakeoffId = mainId(project);
@@ -204,26 +214,35 @@ export class Application {
   }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
-    if (request.name.startsWith('performance.')) {
-      // A recording can stop/export while a long render or import is still queued.
-      const run = () => this.dispatchPerformance(request);
-      return request.origin === 'cli'
-        ? this.messaging.scheduleCli((operation) => operation(), run)
-        : run();
-    }
     if (
       request.name === 'messages.read' ||
       request.name === 'messages.send' ||
       request.name === 'messages.wait'
     )
       return this.dispatchMessage(request);
+    const session = this.session;
+    // Performance commands can run alongside a queued render or import.
+    const performance = request.name.startsWith('performance.');
     const enqueue = (operation: () => Promise<ApplicationResult>) =>
-      this.schedule(operation);
+      performance ? operation() : this.schedule(operation);
     const schedule =
       request.origin === 'cli'
         ? (operation: () => Promise<ApplicationResult>) =>
-            this.messaging.scheduleCli(enqueue, operation)
+            this.messaging.scheduleCli(enqueue, async () => {
+              if (!session || session !== this.session) return operation();
+              this.runningCliCommands++;
+              this.publish();
+              try {
+                return await operation();
+              } finally {
+                if (session === this.session) {
+                  this.runningCliCommands--;
+                  this.publish();
+                }
+              }
+            })
         : enqueue;
+    if (performance) return schedule(() => this.dispatchPerformance(request));
     return schedule(async () => {
       const definition = registry.find((entry) => entry.name === request.name);
       if (!definition)
@@ -775,6 +794,8 @@ export class Application {
             break;
           }
           case 'project.close': {
+            if (this.presentation?.hasMessageDraft())
+              throw new Error('Send or discard your Wingman draft.');
             if (this.draftPending)
               throw new Error(
                 'Finish or cancel the current drawing or editor draft before closing the project',
@@ -785,6 +806,8 @@ export class Application {
             this.textPrefetch.clear();
             const clearing = this.pdf.clear();
             this.session = null;
+            this.lastCliContact = null;
+            this.runningCliCommands = 0;
             this.disposeConstructionRenderer();
             this.publish();
             await clearing;

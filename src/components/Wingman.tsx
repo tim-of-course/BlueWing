@@ -46,7 +46,12 @@ export default function Wingman(props: Props) {
   const [messages, setMessages] = createSignal(initialConversation.messages, {
     name: 'wingman.messages',
   });
+  let transcript: HTMLDivElement | undefined;
+  let followMessages = true;
   let messageCursor = initialConversation.messages.at(-1)?.id ?? 0;
+  const [lastRead, setLastRead] = createSignal(messageCursor, {
+    name: 'wingman.lastRead',
+  });
   onCleanup(
     messaging.subscribe((change) => {
       setConversation(messaging.status());
@@ -55,13 +60,46 @@ export default function Wingman(props: Props) {
         change === 'bind' ? 0 : messageCursor,
       ).messages;
       messageCursor = incoming.at(-1)?.id ?? 0;
-      if (change === 'bind') setMessages(incoming);
-      else setMessages((previous) => [...previous, ...incoming]);
+      // Measure before the new rows change the height of the log.
+      const distanceFromBottom = transcript
+        ? transcript.scrollHeight -
+          transcript.scrollTop -
+          transcript.clientHeight
+        : 0;
+      followMessages =
+        change === 'bind' ||
+        distanceFromBottom <= 4 ||
+        incoming.some((message) => message.sender === 'user');
+      if (change === 'bind') {
+        // The conversation rebinds whenever the project opens, closes or switches.
+        setVisual(null);
+        setLastRead(messageCursor);
+        setMessages(incoming);
+      } else setMessages((previous) => [...previous, ...incoming]);
     }),
   );
-  const [visual, setVisual] = createSignal<WingmanVisual | null>(null, {
-    name: 'wingman.agentView',
-  });
+  const projectId = createMemo(() => props.controller.project()?.id ?? null);
+  // A memo only notifies when the takeoff changes, not on every project edit.
+  const takeoffId = createMemo(
+    () => props.controller.project()?.takeoffId ?? null,
+    { name: 'wingman.takeoffId' },
+  );
+  const [publishedVisual, setVisual] = createSignal<WingmanVisual | null>(
+    null,
+    { name: 'wingman.agentView' },
+  );
+  // A view published for another project or takeoff is never shown, including
+  // in the frame before the switch clears it.
+  const visual = createMemo(
+    () => {
+      const published = publishedVisual();
+      return published?.projectId === projectId() &&
+        published.takeoffId === takeoffId()
+        ? published
+        : null;
+    },
+    { name: 'wingman.currentAgentView' },
+  );
   const [returnView, setReturnView] =
     createSignal<WorkspaceViewSnapshot | null>(null, {
       name: 'wingman.returnView',
@@ -77,13 +115,37 @@ export default function Wingman(props: Props) {
   const [capturing, setCapturing] = createSignal(false);
   const [sending, setSending] = createSignal(false);
   const [error, setError] = createSignal('');
-  const [lastRead, setLastRead] = createSignal(0);
   const [promptOpen, setPromptOpen] = createSignal(false);
   const [copyStatus, setCopyStatus] = createSignal('');
   const [fallbackPrompt, setFallbackPrompt] = createSignal('');
+  const [now, setNow] = createSignal(Date.now(), { name: 'wingman.clock' });
+  createEffect(
+    controller.lastCliContact,
+    (contact) => {
+      if (contact === null) return;
+      const timer = setInterval(() => setNow(Date.now()), 5000);
+      return () => {
+        clearInterval(timer);
+      };
+    },
+    { name: 'wingman.activityClock' },
+  );
+  const activity = createMemo(
+    () => {
+      if (controller.cliExecuting()) return 'AI is working';
+      const contact = controller.lastCliContact();
+      if (contact === null) return 'No AI connected yet';
+      const seconds = Math.max(0, Math.floor((now() - contact) / 1000));
+      const age =
+        seconds < 60
+          ? `${String(seconds)} s`
+          : `${String(Math.floor(seconds / 60))} min`;
+      return `AI last active ${age} ago`;
+    },
+    { name: 'wingman.activity' },
+  );
   let composing = false;
   let glowTimer: ReturnType<typeof setTimeout> | undefined;
-  let transcript: HTMLDivElement | undefined;
   let screenshotNumber = 0;
   const unread = createMemo(() =>
     chatOpen()
@@ -126,7 +188,7 @@ export default function Wingman(props: Props) {
     setError('');
     try {
       await props.applyView(view);
-      setPendingView(false);
+      if ('context' in view || view === visual()) setPendingView(false);
     } finally {
       setChangingView(false);
     }
@@ -134,17 +196,19 @@ export default function Wingman(props: Props) {
   function publish(next: WingmanVisual) {
     if (next.projectId !== props.controller.project()?.id) return;
     if (next.takeoffId !== props.controller.project()?.takeoffId) return;
-    setVisual(structuredClone(next));
+    const current = structuredClone(next);
+    setVisual(current);
     if (swapped()) {
       if (props.navigationDisabled || changingView()) setPendingView(true);
       else
-        void apply(next).catch((cause: unknown) => {
+        void apply(current).catch((cause: unknown) => {
           setPendingView(true);
           setError(cause instanceof Error ? cause.message : String(cause));
         });
     }
   }
   const presentation: WingmanPresentation = {
+    hasMessageDraft: () => text().trim() !== '' || attachments().length > 0,
     publish,
     inspect: () => ({
       main: props.captureView(),
@@ -217,17 +281,10 @@ export default function Wingman(props: Props) {
       clearTimeout(glowTimer);
     };
   });
-  const projectId = createMemo(() => props.controller.project()?.id ?? null);
-  // A memo only notifies when the takeoff changes, not on every project edit.
-  const takeoffId = createMemo(
-    () => props.controller.project()?.takeoffId ?? null,
-    { name: 'wingman.takeoffId' },
-  );
   createEffect(
     () => takeoffId(),
     () => {
       planImages.clear();
-      setVisual(null);
       setReturnView(null);
       setSwapped(false);
       setPendingView(false);
@@ -238,7 +295,6 @@ export default function Wingman(props: Props) {
     () => projectId(),
     () => {
       planImages.clear();
-      setVisual(null);
       setReturnView(null);
       setSwapped(false);
       setPendingView(false);
@@ -246,7 +302,6 @@ export default function Wingman(props: Props) {
       setAttachments([]);
       setCapturing(false);
       setError('');
-      setLastRead(0);
       setPromptOpen(false);
       setCopyStatus('');
       setFallbackPrompt('');
@@ -256,9 +311,8 @@ export default function Wingman(props: Props) {
   createEffect(
     () => ({ open: chatOpen(), messages: messages() }),
     ({ open }) => {
-      if (open) {
-        if (transcript) transcript.scrollTop = transcript.scrollHeight;
-      }
+      if (open && transcript && followMessages)
+        transcript.scrollTop = transcript.scrollHeight;
     },
     { name: 'wingman.readConversation' },
   );
@@ -330,12 +384,15 @@ export default function Wingman(props: Props) {
             <section class="wingman-chat" aria-label="Wingman conversation">
               <div class="wingman-chat-title">
                 <strong>Conversation</strong>
-                <span>With your AI</span>
+                <span>
+                  {conversation().waiting ? 'With your AI' : activity()}
+                </span>
               </div>
               <div
                 class="wingman-messages"
                 ref={(element) => {
                   transcript = element;
+                  followMessages = true;
                 }}
                 role="log"
                 aria-label="Messages"
@@ -343,7 +400,8 @@ export default function Wingman(props: Props) {
               >
                 <Show when={!messages().length}>
                   <p class="wingman-empty">
-                    Send a message or attach a screenshot for your connected AI.
+                    Messages are saved here. Your AI sees them on its next
+                    Bluewing command.
                   </p>
                 </Show>
                 <For each={messages()}>
@@ -547,7 +605,16 @@ export default function Wingman(props: Props) {
               </Show>
             </section>
           </Show>
-          <Show when={conversation().waiting}>
+          <Show
+            when={conversation().waiting}
+            fallback={
+              // With the chat open the same line is in its title, so the
+              // transcript keeps its height.
+              <Show when={!chatOpen()}>
+                <div class="wingman-swap-hint">{activity()}</div>
+              </Show>
+            }
+          >
             <div class="wingman-waiting">
               <span role="status">Waiting for your message</span>
               <button
