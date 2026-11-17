@@ -452,6 +452,7 @@ export function generateMaterialLayout(
   application: MaterialApplication,
   context: Pick<ConstructionContext, 'levels' | 'placements'>,
   maxElements = 50000,
+  traceOpenings: MaterialOpening[] = [],
 ): ConstructionResult {
   const template = application.template;
   validateMaterialTemplate(template);
@@ -639,9 +640,9 @@ export function generateMaterialLayout(
       diagnostic('missing-height', 'Surface height is unresolved');
       return result;
     }
-    const openings = template.openings ?? [];
+    const localOpenings = template.openings ?? [];
     if (
-      openings.some(
+      localOpenings.some(
         (opening) => opening.distance + opening.width > length + EPS,
       )
     ) {
@@ -651,16 +652,14 @@ export function generateMaterialLayout(
       );
       return result;
     }
-    if (
-      openings.some(
-        (opening) =>
-          opening.sill + opening.height > present(template.height) + EPS,
-      )
-    )
-      diagnostic(
-        'opening-above-surface',
-        'Surface opening exceeds the finish height; its displayed intersection is provisional until the dimensions are confirmed',
-      );
+    const height = template.height;
+    const openings = [
+      ...localOpenings,
+      ...traceOpenings.map((opening) => ({
+        ...opening,
+        sill: opening.sill - elevation,
+      })),
+    ].filter((o) => o.sill < height - EPS && o.sill + o.height > EPS);
     const layers = present(template.layers),
       thickness =
         template.thickness === undefined

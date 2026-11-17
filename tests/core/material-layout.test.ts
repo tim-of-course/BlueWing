@@ -392,7 +392,8 @@ void test('missing dimensions, misplaced openings and generation limits remain v
     { id: 'door', distance: 0, width: 2, sill: 2, height: 2 },
   ];
   const above = generateMaterialLayout(project, application, context);
-  assert.equal(above.diagnostics[0]?.code, 'opening-above-surface');
+  assert.equal(above.complete, true);
+  assert.deepEqual(above.diagnostics, []);
   close(
     above.surfaces.reduce((sum, surface) => sum + surface.area, 0),
     28,

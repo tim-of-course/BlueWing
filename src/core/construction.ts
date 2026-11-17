@@ -4,6 +4,7 @@ import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
 import { summarizeMaterials } from './material-results';
 import {
   generateMaterialLayout,
+  type MaterialOpening,
   validateMaterialTemplate,
   materialGeometryKind,
 } from './material-layout';
@@ -498,10 +499,19 @@ export function generateConstruction(
     records: Record<string, T>,
   ) => Object.values(records).sort((a, b) => a.id.localeCompare(b.id));
   const openingsByWall = new Map<string, Opening[]>();
+  // Surfaces share a trace datum. Sheet placement translates every application equally.
+  const openingsByTrace = new Map<string, MaterialOpening[]>();
+  const wallBase = (wall: Wall) =>
+    wall.baseElevation +
+    (wall.levelId ? present(data.levels[wall.levelId]).elevation : 0);
   for (const opening of ordered(data.openings)) {
     const bucket = openingsByWall.get(opening.wallId) ?? [];
     bucket.push(opening);
     openingsByWall.set(opening.wallId, bucket);
+    const wall = present(data.walls[opening.wallId]);
+    const traceOpenings = openingsByTrace.get(wall.geometryId) ?? [];
+    traceOpenings.push({ ...opening, sill: wallBase(wall) + opening.sill });
+    openingsByTrace.set(wall.geometryId, traceOpenings);
   }
   integer(
     options.maxPieces ?? CONSTRUCTION_GENERATION_BUDGET,
@@ -649,9 +659,7 @@ export function generateConstruction(
         );
         continue;
       }
-      const base =
-        wall.baseElevation +
-        (wall.levelId ? present(data.levels[wall.levelId]).elevation : 0);
+      const base = wallBase(wall);
       const at = (s: number, h: number, offset = 0, directionStation = s) =>
         line.at(s, base + h, offset, directionStation);
       for (const condition of wall.conditions ?? []) {
@@ -1191,43 +1199,64 @@ export function generateConstruction(
           }
         }
       }
-      // Vertical decomposition makes each emitted face polygon opening-free, including slope crossings.
-      const faceBreaks = sorted([
-        ...breaks,
-        ...openings.flatMap((o) => [o.distance, o.distance + o.width]),
-      ]);
-      for (let i = 1; i < faceBreaks.length; i++) {
-        const a = present(faceBreaks[i - 1]);
-        const b = present(faceBreaks[i]);
-        const ha = heightAt(wall, a);
-        const hb = heightAt(wall, b, true);
-        const active = openings.filter(
-          (o) => o.distance < b - EPS && o.distance + o.width > a + EPS,
+      if (!wall.finishes?.length) continue;
+      const wallOpenings = (openingsByTrace.get(wall.geometryId) ?? [])
+        .map((opening) => ({ ...opening, sill: opening.sill - base }))
+        .filter((o) => {
+          if (o.sill + o.height <= EPS || o.distance >= line.length - EPS)
+            return false;
+          const end = Math.min(line.length, o.distance + o.width);
+          return (
+            o.sill < heightAt(wall, o.distance) - EPS ||
+            o.sill < heightAt(wall, end, true) - EPS ||
+            wall.topProfile?.points.some(
+              (p) =>
+                p.distance > o.distance &&
+                p.distance < end &&
+                p.height > o.sill + EPS,
+            )
+          );
+        });
+      for (const finish of wall.finishes) {
+        const faceOpenings = wallOpenings.filter(
+          (o) => o.sill < (finish.height ?? Infinity) - EPS,
         );
-        const splits = [a, b];
-        for (const finish of wall.finishes ?? []) {
+        // Vertical decomposition makes each emitted face polygon opening-free, including slope crossings.
+        const faceBreaks = sorted([
+          ...breaks,
+          ...faceOpenings
+            .flatMap((o) => [o.distance, o.distance + o.width])
+            .filter((s) => s > 0 && s < line.length),
+        ]);
+        for (let i = 1; i < faceBreaks.length; i++) {
+          const a = present(faceBreaks[i - 1]);
+          const b = present(faceBreaks[i]);
+          const ha = heightAt(wall, a);
+          const hb = heightAt(wall, b, true);
+          const active = faceOpenings.filter(
+            (o) => o.distance < b - EPS && o.distance + o.width > a + EPS,
+          );
+          const splits = [a, b];
           const height = finish.height;
           if (height !== undefined && (height - ha) * (height - hb) < 0)
             splits.push(a + ((b - a) * (height - ha)) / (hb - ha));
-        }
-        for (const o of active)
-          for (const z of [o.sill, o.sill + o.height])
-            if ((z - ha) * (z - hb) < 0)
-              splits.push(a + ((b - a) * (z - ha)) / (hb - ha));
-        const xs = sorted(splits);
-        for (let j = 1; j < xs.length; j++) {
-          const x = present(xs[j - 1]);
-          const y = present(xs[j]);
-          const hx = ha + ((hb - ha) * (x - a)) / (b - a);
-          const hy = ha + ((hb - ha) * (y - a)) / (b - a);
-          const bands = subtract(
-            0,
-            Math.max(hx, hy),
-            active.map((o) => [o.sill, o.sill + o.height]),
-          );
-          for (let k = 0; k < bands.length; k++) {
-            const [low, high] = present(bands[k]);
-            for (const finish of wall.finishes ?? []) {
+          for (const o of active)
+            for (const z of [o.sill, o.sill + o.height])
+              if ((z - ha) * (z - hb) < 0)
+                splits.push(a + ((b - a) * (z - ha)) / (hb - ha));
+          const xs = sorted(splits);
+          for (let j = 1; j < xs.length; j++) {
+            const x = present(xs[j - 1]);
+            const y = present(xs[j]);
+            const hx = ha + ((hb - ha) * (x - a)) / (b - a);
+            const hy = ha + ((hb - ha) * (y - a)) / (b - a);
+            const bands = subtract(
+              0,
+              Math.max(hx, hy),
+              active.map((o) => [o.sill, o.sill + o.height]),
+            );
+            for (let k = 0; k < bands.length; k++) {
+              const [low, high] = present(bands[k]);
               const tx = Math.min(high, hx, finish.height ?? Infinity);
               const ty = Math.min(high, hy, finish.height ?? Infinity);
               const area =
@@ -1385,6 +1414,7 @@ export function generateConstruction(
       application,
       data,
       budget,
+      openingsByTrace.get(application.geometryId),
     );
     result.pieces.push(...generated.pieces);
     result.surfaces.push(...generated.surfaces);
