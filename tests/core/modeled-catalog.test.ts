@@ -520,6 +520,70 @@ void test('one framed door cuts independent finish and insulation scopes on its 
   near(estimate.baseAmount, 80);
 });
 
+void test('high drywall on the same face has its own modeled quantity, purchase and export line', () => {
+  let project = framedTrace();
+  const lower = {
+    id: 'lower',
+    materialId: 'board-A',
+    face: 'front' as const,
+    layers: 1,
+    height: 10 * ft,
+    wastePercent: 0,
+  };
+  const upper = {
+    id: 'upper',
+    materialId: 'board-B',
+    face: 'front' as const,
+    layers: 1,
+    startHeight: 10 * ft,
+    wastePercent: 0,
+  };
+  const framing = project.recipes['steel-framing'];
+  assert.ok(framing?.wallTemplate);
+  project = command(project, 'assembly.put', {
+    ...framing,
+    wallTemplate: { ...framing.wallTemplate, finishes: [lower, upper] },
+  });
+  project = command(project, 'assignment.put', {
+    ...applied(project),
+    wallOverrides: { height: 14 * ft, stud: { stockLength: 16 * ft } },
+  });
+  for (const hasDoor of [false, true]) {
+    if (hasDoor) project = command(project, 'opening.put', door);
+    const result = calculateProject(project);
+    linked(result);
+    const purchases = result.model.surfacePurchases ?? [];
+    const outputs = result.outputs.filter((row) => row.unit === 'ft2');
+    const exported = estiMakerTakeoff(project, result);
+    assert.equal(exported.calculationComplete, true);
+    const rows = exported.rows.filter((row) => row.unit === 'SF');
+    assert.equal(purchases.length, 2);
+    assert.equal(outputs.length, 2);
+    assert.equal(rows.length, 2);
+    for (const [material, area] of [
+      ['board-A', hasDoor ? 79 : 100],
+      ['board-B', 40],
+    ] as const) {
+      const purchase = purchases.find((p) => p.materialId === material);
+      near(purchase?.requiredArea, area * ft ** 2);
+      near(purchase?.purchasedArea, area * ft ** 2);
+      near(
+        outputs.find((row) => row.materialId === material)?.baseAmount,
+        area,
+      );
+      near(
+        rows.find((row) => row.source.materialId === material)?.quantity,
+        area,
+      );
+    }
+    const high = result.model.surfaces.filter(
+      (s) => s.materialId === 'board-B',
+    );
+    assert.equal(high.length, 1);
+    assert.ok(high[0]?.points.every((p) => p.z >= 10 * ft && p.z <= 14 * ft));
+  }
+});
+
 void test('both faces of a second wall application lose the door once, including previously copied openings', () => {
   let project = framedTrace();
   project = command(project, 'assembly.put', starterAssemblies()['steel-wall']);

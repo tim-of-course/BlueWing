@@ -358,6 +358,62 @@ void test('group and local heights drive both framing and finishes, with reset r
   );
 });
 
+void test('finish start heights can be authored on groups, individual traces and wall.put', () => {
+  const { project, assembly } = fixture();
+  const face = assembly.wallTemplate?.finishes?.[0];
+  assert.ok(face && assembly.wallTemplate);
+  project.recipes[assembly.id] = assembly;
+  project.groups.g = { id: 'g', name: 'Walls', geometryIds: [] };
+  const assignment = {
+    id: 'assignment',
+    groupId: 'g',
+    recipeId: assembly.id,
+    inputs: {},
+    allowances: {},
+  };
+  assert.throws(
+    () =>
+      executeCommand(project, {
+        name: 'assignment.put',
+        payload: {
+          ...assignment,
+          wallOverrides: { finishes: [{ ...face, startHeight: 2, height: 1 }] },
+        },
+      }),
+    /below finish top/,
+  );
+  project.groups.g.geometryIds = ['a', 'b'];
+  let next = executeCommand(project, {
+    name: 'assignment.put',
+    payload: {
+      ...assignment,
+      wallOverrides: { finishes: [{ ...face, startHeight: 1 }] },
+      geometryDetails: {
+        b: { wall: { finishes: [{ ...face, startHeight: 2 }] } },
+      },
+    },
+  }).project;
+  const areas = () =>
+    calculateProject(next).model.surfaces.map((s) => [s.geometryId, s.area]);
+  assert.deepEqual(areas(), [
+    ['a', 8],
+    ['b', 4],
+  ]);
+  next = executeCommand(next, {
+    name: 'wall.put',
+    payload: {
+      ...assembly.wallTemplate,
+      id: 'assignment/a',
+      geometryId: 'a',
+      finishes: [{ ...face, startHeight: 0.5 }],
+    },
+  }).project;
+  assert.deepEqual(areas(), [
+    ['a', 10],
+    ['b', 4],
+  ]);
+});
+
 void test('reapplying a wall template preserves floor and authored profile, with an explicit height override', () => {
   const { project, wall, assembly } = fixture();
   let next = executeCommand(project, {

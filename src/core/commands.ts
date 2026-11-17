@@ -34,6 +34,7 @@ import { calibrationFromRatio, type PaperScale } from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
 import { validateCategoryColor } from './categories';
 import { validateWallTemplate, validateCeilingTemplate } from './wall-template';
+import { validateFinishHeights } from './construction';
 import {
   copyApplicationDetails,
   mergeMaterialSettings,
@@ -1132,6 +1133,10 @@ export function validateProject(
       !definition.wallTemplate
     )
       throw new Error('Wall overrides require a wall assembly');
+    // An empty group or a per-trace replacement can hide authored finish ranges.
+    entry.wallOverrides?.finishes?.forEach(validateFinishHeights);
+    for (const detail of Object.values(entry.geometryDetails ?? {}))
+      detail.wall?.finishes?.forEach(validateFinishHeights);
     if (
       (entry.ceilingOverrides ||
         Object.values(entry.geometryDetails ?? {}).some(
