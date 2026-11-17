@@ -118,6 +118,29 @@ void test('24 ft wall: 19 studs, exact endpoints, net face layers and determinis
   assert.deepEqual(generateConstruction(project, data), result);
   assert.equal(JSON.stringify(data), before);
 });
+void test('collinear wall points leave studs, tracks and finishes unchanged and retain authored member conditions', () => {
+  const { project, data, wall } = fixture(10 * ft);
+  const points = present(project.geometries.path).points;
+  const straight = generateConstruction(project, data);
+  assert.equal(straight.complete, true);
+  assert.equal(straight.pieces.filter((p) => p.role === 'stud').length, 9);
+  points.splice(1, 0, { x: 5 * ft, y: 0 });
+  assert.deepEqual(generateConstruction(project, data), straight);
+  wall.conditions = [
+    { id: 'joint', kind: 'junction', distance: 5 * ft, count: 1 },
+  ];
+  const authored = generateConstruction(project, data);
+  assert.equal(authored.complete, true);
+  assert.equal(authored.pieces.filter((p) => p.role === 'junction').length, 1);
+  points.splice(1, 1);
+  assert.deepEqual(generateConstruction(project, data), authored);
+  points.push({ x: 5 * ft, y: 0 });
+  assert.ok(
+    generateConstruction(project, data).diagnostics.some(
+      (d) => d.code === 'unresolved-track-joint',
+    ),
+  );
+});
 void test('metric station offset includes endpoints exactly once', () => {
   const { project, data, wall } = fixture(3, 2.4);
   wall.studSpacing = 1;

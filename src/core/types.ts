@@ -151,7 +151,10 @@ export interface Assignment {
   groupId: string;
   recipeId: string;
   inputs: Record<string, number | boolean>;
-  allowances: Record<string, OutputAllowance>;
+  allowances: Record<
+    string,
+    { wastePercent?: number; packageSize?: number | null }
+  >;
   geometryInputs?: Record<string, Record<string, number | boolean>>;
   wallOverrides?: WallOverrides;
   ceilingOverrides?: CeilingOverrides;

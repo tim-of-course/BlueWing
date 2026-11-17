@@ -165,22 +165,33 @@ export function resolveConstruction(project: Project): ConstructionData {
   return result;
 }
 
+function existingApplication(
+  project: Project,
+  kind: 'wall' | 'ceiling',
+  id: string,
+  geometryId: string,
+) {
+  const resolved = resolveConstruction(project);
+  const previous = kind === 'wall' ? resolved.walls[id] : resolved.ceilings[id];
+  if (previous && previous.geometryId !== geometryId)
+    throw new Error(
+      'An applied material cannot move to another trace; create a new application.',
+    );
+  return previous;
+}
+
 /** The structured editor authors the same assembly applications as group assignment. */
 export function putAppliedMaterial(
   project: Project,
   kind: 'wall' | 'ceiling',
   value: Wall | Ceiling,
 ): void {
-  const resolved = resolveConstruction(project);
-  const previous =
-    kind === 'wall' ? resolved.walls[value.id] : resolved.ceilings[value.id];
-  if (
-    previous?.geometryId !== undefined &&
-    previous.geometryId !== value.geometryId
-  )
-    throw new Error(
-      'An applied material cannot move to another trace; create a new application.',
-    );
+  const previous = existingApplication(
+    project,
+    kind,
+    value.id,
+    value.geometryId,
+  );
   if (previous?.assignmentId) {
     const assignment = present(project.assignments[previous.assignmentId]);
     const details = (assignment.geometryDetails ??= {});
@@ -244,10 +255,10 @@ export function applyMaterialAssembly(
     !(kind === 'wall' ? recipe.wallTemplate : recipe.ceilingTemplate)
   )
     throw new Error(`${kind} assembly not found`);
-  const previous =
-    kind === 'wall'
-      ? resolveConstruction(project).walls[id]
-      : resolveConstruction(project).ceilings[id];
+  const previous = existingApplication(project, kind, id, geometryId);
+  const direction = previous?.assignmentId
+    ? present(project.assignments[previous.assignmentId]).direction
+    : undefined;
   const local: WallOverrides | CeilingOverrides = previous
     ? materialSettings(previous)
     : {};
@@ -272,6 +283,7 @@ export function applyMaterialAssembly(
     id: assignmentId,
     groupId,
     recipeId: assemblyId,
+    ...(direction && { direction }),
     inputs: {},
     allowances: {},
     geometryDetails: { [geometryId]: { id, [kind]: keep } },

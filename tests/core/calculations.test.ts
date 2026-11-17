@@ -11,11 +11,13 @@ import {
   formulaQuantity,
 } from '../../src/core/formula';
 import type { Geometry, Project } from '../../src/core/types';
+import { executeCommand } from '../../src/core/commands';
 
 function fixture(
   kind: Geometry['kind'],
   points: Geometry['points'],
   recipeId: string,
+  inputs: Record<string, number | boolean> = {},
 ): Project {
   return {
     takeoffs: {
@@ -57,7 +59,7 @@ function fixture(
         id: 'assignment',
         groupId: 'group',
         recipeId,
-        inputs: {},
+        inputs,
         allowances: {},
       },
     },
@@ -71,6 +73,7 @@ function wall() {
       { x: 24, y: 0 },
     ],
     'wall-area',
+    { height: 8 },
   );
 }
 function near(actual: number | undefined, expected: number) {
@@ -80,6 +83,23 @@ function near(actual: number | undefined, expected: number) {
   );
 }
 
+void test('starter wall area requires height and defaults to one layer', () => {
+  const project = wall();
+  const assignment = project.assignments.assignment;
+  assert.ok(assignment);
+  assignment.inputs = {};
+  const missing = calculateProject(project);
+  assert.equal(missing.complete, false);
+  assert.equal(missing.outputs[0]?.sources[0]?.value, null);
+  assert.match(
+    missing.outputs[0].sources[0].diagnostic ?? '',
+    /Required input: height/,
+  );
+  assignment.inputs = { height: 12 };
+  const complete = calculateProject(project);
+  assert.equal(complete.complete, true);
+  near(complete.outputs[0]?.baseAmount, 288);
+});
 void test('24ft wall times 8ft height and two layers yields 384 square feet', () => {
   const project = wall();
   const assignment = project.assignments.assignment;
@@ -158,6 +178,41 @@ void test('shared membership in separate groups intentionally contributes twice'
     groupId: 'second',
   };
   near(calculateProject(project).totals[0]?.amount, 384);
+});
+void test('partial allowance overrides inherit recipe fields and null clears package rounding', () => {
+  const project = fixture(
+    'area',
+    [
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+      { x: 3, y: 3 },
+      { x: 0, y: 3 },
+    ],
+    'floor-area',
+  );
+  const output = project.recipes['floor-area']?.outputs[0];
+  assert.ok(output);
+  output.allowance = { wastePercent: 5, packageSize: 32 };
+  const calculate = (override: {
+    wastePercent?: number;
+    packageSize?: number | null;
+  }) => {
+    const next = executeCommand(project, {
+      name: 'assignment.put',
+      payload: {
+        ...project.assignments.assignment,
+        allowances: { 'floor-area': override },
+      },
+    }).project;
+    return calculateProject(next).outputs[0];
+  };
+  const cartoned = calculate({ wastePercent: 10 });
+  near(cartoned?.adjustedAmount, 9.9);
+  assert.equal(cartoned?.packageCount, 1);
+  near(cartoned.purchasedAmount, 32);
+  const loose = calculate({ packageSize: null });
+  assert.equal(loose?.packageCount, null);
+  near(loose.purchasedAmount, 9.45);
 });
 void test('unavailable measurement and invalid dimensions keep totals incomplete', () => {
   const project = wall();

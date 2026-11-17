@@ -16,6 +16,10 @@ test('built named takeoffs isolate quantities, signed export and reopening', asy
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
+  await page.getByLabel('height (ft)', { exact: true }).fill('8');
+  await page
+    .getByRole('button', { name: 'Save assignment', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Takeoffs', exact: true }).click();
   await page.getByLabel('Takeoff name', { exact: true }).fill('CO 1');
   await page.getByLabel('New takeoff kind').selectOption('change-order');
