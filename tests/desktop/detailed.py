@@ -122,6 +122,12 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
                 desktop.kill()
                 desktop.wait(timeout=10)
 
+    def settled(value):
+        # Undo, redo and unrelated edits advance the revision; these comparisons are about content.
+        if isinstance(value, dict):
+            return {key: settled(item) for key, item in value.items() if key != 'revision'}
+        return [settled(item) for item in value] if isinstance(value, list) else value
+
     def call(name, payload=None, mutates=False, succeeds=True, timeout=90):
         global project_id, revision
         request = {'payload': payload or {}, 'takeoffId': 'main'}
@@ -203,7 +209,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         call('history.undo', mutates=True)
         assert not call('construction.inspect')['pieces']
         call('history.redo', mutates=True)
-        assert call('construction.inspect') == plain
+        assert settled(call('construction.inspect')) == settled(plain)
 
         header = {'id': 'header', 'name': 'Project box header', 'reference': 'S5 detail 7', 'components': []}
         for ident, offset in [('front', 0.05), ('back', -0.05)]:
@@ -251,7 +257,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert {item['code'] for item in unresolved['diagnostics']} == {'missing-header'}
         assert not call('quantities.inspect')['complete']
         call('history.undo', mutates=True)
-        assert call('construction.inspect') == detailed
+        assert settled(call('construction.inspect')) == settled(detailed)
 
         # Preview changes neither accepted memory, revision, SQLite nor undo history.
         before = inspect()
@@ -265,9 +271,9 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
             near(sum(row['delta'] for row in preview['quantityChanges'] if row['materialId'] == material), extra_area / 0.09290304)
         assert inspect() == before and database_snapshot(project_path) == saved
         call('history.undo', mutates=True)
-        assert call('construction.inspect') == plain
+        assert settled(call('construction.inspect')) == settled(plain)
         call('history.redo', mutates=True)
-        assert call('construction.inspect') == detailed
+        assert settled(call('construction.inspect')) == settled(detailed)
 
         call('review.mark', {'id': 'checked-wall', 'target': {'kind': 'wall', 'id': 'wall'},
                              'status': 'reviewed', 'note': 'Dimensions checked against S5 detail 7'}, True)
@@ -278,7 +284,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert review_status() == 'changed'
         near(finish_area(call('construction.inspect'), 'front-board'), 34)
         call('history.undo', mutates=True)
-        assert review_status() == 'reviewed' and call('construction.inspect') == detailed
+        assert review_status() == 'reviewed' and settled(call('construction.inspect')) == settled(detailed)
         call('history.redo', mutates=True)
         assert review_status() == 'changed'
         call('history.undo', mutates=True)
