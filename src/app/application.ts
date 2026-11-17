@@ -4,7 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   createProject,
   ProjectSession,
-  ProjectConflictError,
+  BatchChildError,
+  checkObservation,
   validatePayload,
 } from '../core';
 import { copyAssembly } from '../core/assemblies';
@@ -198,16 +199,8 @@ export class Application {
     this.queue = pending.catch(() => undefined);
     return pending;
   }
-  private check(request: ApplicationRequest) {
-    const observation = this.observe();
-    if (
-      request.projectId !== observation.projectId ||
-      request.expectedRevision !== observation.expectedRevision
-    )
-      throw new ProjectConflictError(
-        observation.projectId,
-        observation.expectedRevision,
-      );
+  private check(request: ApplicationRequest, required = true) {
+    checkObservation(this.session?.observation, request, required);
   }
   dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
@@ -239,12 +232,15 @@ export class Application {
       const isApplication = applicationCommands.some(
         (entry) => entry.name === request.name,
       );
+      // Opening or creating a project chooses the project, so a guard left
+      // over from the previous one does not apply.
+      const opensProject =
+        request.name === 'project.open' || request.name === 'project.create';
       if (
-        definition.mutates &&
-        this.session &&
-        !request.name.startsWith('library.')
+        !opensProject &&
+        (!definition.mutates || !request.name.startsWith('library.'))
       )
-        this.check(request);
+        this.check(request, definition.mutates && this.session !== null);
       const scoped =
         !/^(project\.|takeoff\.(list|create|rename|delete|select)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
           request.name,
@@ -254,11 +250,6 @@ export class Application {
           request.payload !== null &&
           'calibration' in request.payload);
       if (scoped && this.session) {
-        if (
-          request.projectId !== undefined &&
-          request.projectId !== this.session.observation.projectId
-        )
-          throw new Error('The requested project is no longer open');
         const root = this.session.project;
         const selected =
           request.origin === 'cli' ? this.cliTakeoffId : this.activeTakeoffId;
@@ -291,22 +282,30 @@ export class Application {
         };
       else if (!isApplication) {
         if (!this.session) throw new Error('Open or create a project first');
-        const result = await this.session.dispatch({
-          ...request,
-          ...this.observe(),
-          ...(request.projectId === undefined
-            ? {}
-            : { projectId: request.projectId }),
-          ...(request.expectedRevision === undefined
-            ? {}
-            : { expectedRevision: request.expectedRevision }),
-        });
+        const result = await this.session
+          .dispatch({
+            ...this.observe(),
+            ...request,
+          })
+          .catch((error: unknown) => {
+            if (
+              error instanceof BatchChildError &&
+              applicationCommands.some((entry) => entry.name === error.command)
+            )
+              throw new BatchChildError(
+                error.index,
+                error.command,
+                `Run ${error.command} on its own before the batch.`,
+              );
+            throw error;
+          });
         data = result.preview
           ? {
               preview: true,
-              project: result.project,
+              ...(payload.includeProject ? { project: result.project } : {}),
               data: result.data,
               quantityChanges: result.quantityChanges,
+              ...result.previewStatus,
             }
           : result.data;
       } else
@@ -316,11 +315,6 @@ export class Application {
           case 'sheet.naming.cancel': {
             const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open or create a project first');
-            if (
-              request.projectId !== undefined &&
-              request.projectId !== project.id
-            )
-              throw new Error('The requested project is no longer open');
             const ids = payload.sheetIds as string[] | undefined;
             if (ids && new Set(ids).size !== ids.length)
               throw new Error('Duplicate sheet IDs');
@@ -385,13 +379,6 @@ export class Application {
             break;
           }
           case 'connect':
-            if (
-              request.projectId !== undefined &&
-              request.projectId !== this.session?.observation.projectId
-            )
-              throw new Error(
-                'Connection project does not match the open project. Copy a new prompt from Wingman.',
-              );
             data = cliIntroduction(
               this.projectFor(request.takeoffId),
               (payload.mode as ConversationMode | undefined) ?? 'chat',
@@ -435,11 +422,6 @@ export class Application {
             break;
           case 'takeoff.select': {
             if (!this.session) throw new Error('Open a project first');
-            if (
-              request.projectId !== undefined &&
-              request.projectId !== this.session.observation.projectId
-            )
-              throw new Error('The requested project is no longer open');
             const selected = requireTakeoff(
               this.session.project,
               payload.id as string,
@@ -455,11 +437,6 @@ export class Application {
           case 'quantities.exportEstiMaker': {
             const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open or create a project first');
-            if (
-              request.projectId !== undefined &&
-              request.projectId !== project.id
-            )
-              throw new Error('The requested project is no longer open');
             const path = payload.path as string | undefined;
             if (
               (request.origin === 'cli' && !path?.trim()) ||
@@ -481,7 +458,10 @@ export class Application {
                 new TextEncoder().encode(text),
                 path,
               ),
-              text,
+              rowCount: takeoff.rows.length,
+              missingQuantityRowCount: takeoff.rows.filter(
+                (row) => row.provenance.originalAmount === null,
+              ).length,
             };
             break;
           }
@@ -895,15 +875,20 @@ export class Application {
             throw new Error('Unknown application command');
         }
       const observation = this.session?.observation;
-      const effectiveTakeoffId =
-        request.name === 'takeoff.select'
-          ? this.cliTakeoffId
-          : scoped
-            ? request.takeoffId
+      const reportSelection = [
+        'connect',
+        'takeoff.list',
+        'takeoff.select',
+      ].includes(request.name);
+      const root =
+        reportSelection || scoped ? this.session?.project : undefined;
+      const contextTakeoff =
+        reportSelection && root
+          ? (root.takeoffs[this.cliTakeoffId ?? ''] ??
+            root.takeoffs[mainId(root)])
+          : request.takeoffId
+            ? root?.takeoffs[request.takeoffId]
             : undefined;
-      const contextTakeoff = effectiveTakeoffId
-        ? this.session?.project.takeoffs[effectiveTakeoffId]
-        : undefined;
       return {
         data,
         ...(contextTakeoff
@@ -929,6 +914,7 @@ export class Application {
     );
     if (!definition) throw new Error(`Unknown command ${request.name}`);
     validatePayload(definition.schema, request.payload ?? {});
+    this.check(request, false);
     const payload = (request.payload ?? {}) as Record<string, unknown>;
     let data: unknown;
     switch (request.name) {

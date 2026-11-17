@@ -18,7 +18,7 @@ For a changed wall, copy the original Main wall as a deduction, then author its 
 
 ## CLI contract
 
-Discover IDs with `takeoff.list`. `takeoff.create` accepts `{id?, name, kind: "phase" | "change-order"}`. `takeoff.rename` accepts `{id, name}`; `takeoff.delete` accepts `{id}`. These and project-wide calls do not depend on UI selection.
+Discover IDs in the `data` list returned by `takeoff.list`. Both `takeoff.list` and `connect` identify the shared CLI selection in the top-level `takeoff` field with its ID, name, and kind. Another caller can change that selection without advancing the revision. Carry your intended `takeoffId` in each request that depends on it. `takeoff.create` accepts `{id?, name, kind: "phase" | "change-order"}`. `takeoff.rename` accepts `{id, name}` and `takeoff.delete` accepts `{id}`.
 
 The CLI starts on Main when a project opens. `takeoff.select` with `{id}` changes its current takeoff for subsequent reads/edits, calculations, renders, `batch`, and `preview` until selected again. This is open-session state, separate from UI selection, so agent navigation does not move the user's workspace. An optional **envelope** `takeoffId` overrides one request without changing the selection. Every takeoff-scoped result echoes effective ID/name/kind. Deleting the selected takeoff resets CLI context to Main. Mutations additionally require `projectId` and the latest `expectedRevision`. A batch/preview has one effective context; child commands cannot specify another ID.
 

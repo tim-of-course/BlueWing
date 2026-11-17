@@ -58,14 +58,65 @@ export interface HistoryItem {
 export class ProjectConflictError extends Error {
   readonly code = 'PROJECT_CONFLICT';
   constructor(
-    readonly projectId: string,
-    readonly revision: number,
+    readonly projectId: string | null,
+    readonly revision: number | null,
+    message: string,
   ) {
-    super(
-      `Project conflict: inspect project ${projectId} at revision ${String(revision)} and retry.`,
-    );
+    super(message);
     this.name = 'ProjectConflictError';
   }
+}
+
+type Observation = Pick<CommandRequest, 'projectId' | 'expectedRevision'>;
+
+export class BatchChildError extends Error {
+  constructor(
+    readonly index: number,
+    readonly command: string,
+    reason: string,
+  ) {
+    super(`commands[${String(index)}] (${command}): ${reason}`);
+  }
+}
+
+export function checkObservation(
+  current: Observation | undefined,
+  request: Partial<Observation>,
+  required = true,
+) {
+  if (!current) {
+    if (
+      request.projectId !== undefined ||
+      request.expectedRevision !== undefined
+    )
+      throw new ProjectConflictError(
+        null,
+        null,
+        'No project is open. Stop and reconnect to the intended project.',
+      );
+    if (required) throw new Error('Open or create a project first');
+    return;
+  }
+  const { projectId, expectedRevision } = current;
+  let message: string;
+  if (request.projectId !== undefined && request.projectId !== projectId)
+    message = `The requested projectId ${request.projectId} differs from the open project ${projectId}. Stop and reconnect to the intended project.`;
+  else if (
+    required &&
+    (request.projectId === undefined || request.expectedRevision === undefined)
+  ) {
+    const missing = [
+      ...(request.projectId === undefined ? ['projectId'] : []),
+      ...(request.expectedRevision === undefined ? ['expectedRevision'] : []),
+    ];
+    message = `Missing ${missing.join(' and ')}. Supply the missing request fields from your observation of the intended project.`;
+  } else if (
+    request.expectedRevision !== undefined &&
+    request.expectedRevision !== expectedRevision
+  )
+    message = `Stale expectedRevision ${String(request.expectedRevision)}. Reread the records you are editing at revision ${String(expectedRevision)}, merge your changes, and submit the updated request.`;
+  else return;
+  throw new ProjectConflictError(projectId, expectedRevision, message);
 }
 
 function difference(
@@ -237,12 +288,7 @@ export class ProjectSession {
   }
 
   async #execute(request: CommandRequest): Promise<CommandResult> {
-    if (
-      request.projectId !== this.#project.id ||
-      request.expectedRevision !== this.#project.revision
-    ) {
-      throw new ProjectConflictError(this.#project.id, this.#project.revision);
-    }
+    checkObservation(this.observation, request);
     const definition = validateCommand(request);
     if (request.name === 'history.undo' || request.name === 'history.redo')
       return this.#travel(request.name === 'history.undo');
@@ -281,26 +327,34 @@ export class ProjectSession {
       next = structuredClone(next);
       const payload = request.payload as { commands: CommandCall[] };
       const results: unknown[] = [];
-      for (const call of payload.commands) {
-        if (
-          ['batch', 'preview', 'history.undo', 'history.redo'].includes(
-            call.name,
+      for (const [index, call] of payload.commands.entries()) {
+        try {
+          if (
+            ['batch', 'preview', 'history.undo', 'history.redo'].includes(
+              call.name,
+            )
           )
-        )
-          throw new Error(
-            'Batches and previews cannot contain session control commands',
+            throw new Error(
+              'Batches and previews cannot contain session control commands',
+            );
+          if (call.takeoffId && call.takeoffId !== request.takeoffId)
+            throw new Error('Batch commands must share the envelope takeoffId');
+          const result = execute(
+            {
+              ...call,
+              ...(request.takeoffId ? { takeoffId: request.takeoffId } : {}),
+            },
+            false,
           );
-        if (call.takeoffId && call.takeoffId !== request.takeoffId)
-          throw new Error('Batch commands must share the envelope takeoffId');
-        const result = execute(
-          {
-            ...call,
-            ...(request.takeoffId ? { takeoffId: request.takeoffId } : {}),
-          },
-          false,
-        );
-        changed ||= result.changed;
-        results.push(result.data);
+          changed ||= result.changed;
+          results.push(result.data);
+        } catch (error) {
+          throw new BatchChildError(
+            index,
+            call.name,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
       validateProject(next);
       data = results;
@@ -316,16 +370,36 @@ export class ProjectSession {
       changed = result.changed;
       data = result.data;
     }
-    if (preview)
+    if (preview) {
+      const after = readCalculation();
       return {
-        project: structuredClone(next),
+        project: next,
         data,
         changed,
         preview,
+        previewStatus: {
+          calculationComplete: after.complete,
+          constructionComplete: after.model.complete,
+          diagnostics: [
+            ...structuredClone(after.model.diagnostics),
+            ...after.outputs
+              .filter(
+                (output) => output.modeling === 'estimate' && !output.complete,
+              )
+              .flatMap((output) =>
+                output.diagnostics.map((message) => ({
+                  assignmentId: output.assignmentId,
+                  outputId: output.outputId,
+                  message,
+                })),
+              ),
+          ],
+        },
         quantityChanges: structuredClone(
-          quantityChanges(beforePreview ?? this.calculation, readCalculation()),
+          quantityChanges(beforePreview ?? this.calculation, after),
         ),
       };
+    }
     if (!changed) {
       if (!scoped) this.#calculation = calculation;
       else if (calculation && request.takeoffId)

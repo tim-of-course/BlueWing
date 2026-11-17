@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
@@ -115,18 +115,20 @@ test('Quantities and CLI share purchased footage and count rows; source/review n
         ),
       ) as TakeoffEnvelope;
       const cliDownload = page.waitForEvent('download');
-      const reply = await cli<{ path: string; text: string }>(
-        page,
-        'quantities.exportEstiMaker',
-        { path: 'estimate.json' },
-      );
+      const reply = await cli(page, 'quantities.exportEstiMaker', {
+        path: 'estimate.json',
+      });
       const downloaded = await cliDownload;
       const path = await downloaded.path();
       if (!path) throw new Error('Missing CLI download');
-      expect(
-        await (await import('node:fs/promises')).readFile(path, 'utf8'),
-      ).toBe(reply.response.data.text);
-      const command = JSON.parse(reply.response.data.text) as TakeoffEnvelope;
+      expect(reply.response.data).toEqual({
+        path: downloaded.suggestedFilename(),
+        rowCount: 3,
+        missingQuantityRowCount: 1,
+      });
+      const command = JSON.parse(
+        await readFile(path, 'utf8'),
+      ) as TakeoffEnvelope;
       expect({ ...command, exportedAt: ui.exportedAt }).toEqual(ui);
       expect(ui.rows[0]?.quantity).toBeCloseTo(150);
       expect(ui.rows[1]?.quantity).toBe(3);

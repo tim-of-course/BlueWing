@@ -97,7 +97,7 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
         call("history.undo", mutates=True)
         assert call("project.inspect")["geometries"]["wall"]["points"][0]["x"] == 72
         saved_revision = revision
-        preview = call("preview", {"commands": [{"name": "project.rename", "payload": {"name": "Preview"}}]})
+        preview = call("preview", {"includeProject": True, "commands": [{"name": "project.rename", "payload": {"name": "Preview"}}]})
         assert preview["project"]["name"] == "Preview" and revision == saved_revision
         assert call("project.inspect")["name"] == "Independent workflow"
         image = call("sheet.render", {"sheetId": sheet_id, "path": str(EVIDENCE / "combined.png"), "maxDimension": 1224})

@@ -25,6 +25,16 @@ void test('CLI selection persists independently of UI, supports one-request over
     origin: 'cli',
   });
   app.selectTakeoff('co');
+  const assertCliSelection = async (id: string, name: string) => {
+    for (const command of ['connect', 'takeoff.list']) {
+      const result = await app.dispatch(
+        parseCli([command, '{"takeoffId":"main"}']),
+      );
+      assert.equal(result.takeoff?.id, id, command);
+      assert.equal(result.takeoff.name, name, command);
+    }
+  };
+  await assertCliSelection('main', 'Main');
   const initial = await app.dispatch(parseCli(['quantities.inspect']));
   assert.equal(initial.takeoff?.id, 'main');
   const selected = await app.dispatch(
@@ -33,6 +43,7 @@ void test('CLI selection persists independently of UI, supports one-request over
   assert.equal(selected.takeoff?.id, 'co');
   const revision = app.observe().expectedRevision;
   app.selectTakeoff('main');
+  await assertCliSelection('co', 'CO');
   assert.equal(
     (await app.dispatch(parseCli(['quantities.inspect']))).takeoff?.id,
     'co',
@@ -90,6 +101,7 @@ void test('CLI selection persists independently of UI, supports one-request over
     payload: { id: 'co' },
     origin: 'cli',
   });
+  await assertCliSelection('main', 'Main');
   assert.equal(
     (await app.dispatch(parseCli(['quantities.inspect']))).takeoff?.id,
     'main',

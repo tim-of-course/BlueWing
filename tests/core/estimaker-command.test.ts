@@ -5,10 +5,10 @@ import { parseCli } from '../../src/app/cli';
 import { registry } from '../../src/app/registry';
 import { ProjectSession } from '../../src/core/session';
 import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
-import { fixture } from '../fixtures/quantity-project';
+import { fixture, importFixture } from '../fixtures/quantity-project';
 
 void test('registry CLI command saves exact shared JSON text with no save/revision/cache mutation; UI dialog can cancel', async () => {
-  const project = fixture();
+  const project = importFixture();
   let saves = 0;
   const app = new Application(true);
   app.session = new ProjectSession(project, {
@@ -43,6 +43,23 @@ void test('registry CLI command saves exact shared JSON text with no save/revisi
     },
   });
   try {
+    for (const [name, guard] of [
+      [
+        'quantities.exportEstiMaker',
+        { expectedRevision: project.revision + 1 },
+      ],
+      ['project.backup', { projectId: 'another-project' }],
+    ] as const)
+      await assert.rejects(
+        app.dispatch(
+          parseCli([
+            name,
+            JSON.stringify({ ...guard, payload: { path: 'guarded' } }),
+          ]),
+        ),
+        { code: 'PROJECT_CONFLICT' },
+      );
+    assert.equal(files.length, 0);
     await assert.rejects(
       app.dispatch(
         parseCli(['quantities.exportEstiMaker', '{"takeoffId":"main"}']),
@@ -58,13 +75,21 @@ void test('registry CLI command saves exact shared JSON text with no save/revisi
         }),
       ]),
     );
-    const data = result.data as { path: string; text: string };
+    assert.deepEqual(result.data, {
+      path: 'C:/exports/estimate.json',
+      rowCount: 3,
+      missingQuantityRowCount: 1,
+    });
+    assert.deepEqual(result.takeoff, {
+      id: 'main',
+      name: 'Main',
+      kind: 'main',
+    });
     assert.equal(files.length, 1);
     assert.equal(files[0]?.path, 'C:/exports/estimate.json');
-    assert.equal(files[0].text, data.text);
-    const parsed = JSON.parse(data.text) as { exportedAt: string };
+    const parsed = JSON.parse(files[0].text) as { exportedAt: string };
     assert.deepEqual(
-      JSON.parse(data.text),
+      parsed,
       estiMakerTakeoff(project, snapshot, parsed.exportedAt),
     );
     assert.equal(result.revision, original?.revision);

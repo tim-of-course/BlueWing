@@ -46,7 +46,9 @@ void test('notes save atomically, retain cache/review, and share history', async
   fail = false;
   const stale = session.observation;
   await call(write);
-  await assert.rejects(session.dispatch({ ...write, ...stale }), /conflict/);
+  await assert.rejects(session.dispatch({ ...write, ...stale }), {
+    code: 'PROJECT_CONFLICT',
+  });
   assert.equal(session.project.notes, '# Notes\n😀 detail.*');
   assert.deepEqual(inspectReview(session.project), review);
   assert.equal(session.calculation, cache);

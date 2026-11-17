@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import { startWingmanProject } from './wingman';
 import type { Project } from '../../src/core/types';
@@ -149,16 +150,22 @@ export async function namedTakeoffs(page: Page) {
     payload: { path: 'co.estimaker.json' },
   });
   expect(purchased.exitCode, JSON.stringify(purchased.response)).toBe(0);
-  expect(
-    JSON.parse((purchased.response.data as { text: string }).text),
-  ).toMatchObject({
+  const file = await quantityDownload;
+  const exportPath = await file.path();
+  if (!exportPath) throw new Error('Missing EstiMaker download');
+  expect(purchased.response.data).toEqual({
+    path: file.suggestedFilename(),
+    rowCount: 1,
+    missingQuantityRowCount: 0,
+  });
+  expect(JSON.parse(await readFile(exportPath, 'utf8'))).toMatchObject({
     version: 2,
     takeoff: { id: co, name: 'CO renamed', kind: 'change-order' },
     rows: [
       { quantity: -8, grossQuantity: 8, direction: 'deduct', pieceCount: 4 },
     ],
   });
-  expect((await quantityDownload).suggestedFilename()).toContain(co);
+  expect(file.suggestedFilename()).toContain(co);
   const download = page.waitForEvent('download');
   const rendered = await cli('sheet.render', {
     takeoffId: co,
