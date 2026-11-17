@@ -96,8 +96,9 @@ void test('quantity diagnostics keep the most specific source scope and preserve
     ],
     complete: false,
   };
-  summarizeMaterials(model);
-  const rows = modeledOutputs(createProject('Diagnostics'), model);
+  const project = createProject('Diagnostics');
+  summarizeMaterials(project, model);
+  const rows = modeledOutputs(project, model);
   const modeled = rows.filter((row) => row.modeling === 'modeled');
   assert.deepEqual(
     Object.fromEntries(

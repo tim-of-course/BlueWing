@@ -18,6 +18,9 @@ export interface QuantitySourceIdentity {
   materialId: string | null;
 }
 export interface QuantitySourceRef {
+  assignmentId?: string | null;
+  groupId?: string | null;
+  recipeId?: string | null;
   geometryId: string | null;
   sheetId: string | null;
   pieceId: string | null;
@@ -38,6 +41,11 @@ export interface TakeoffRow {
   cutSchedule?: { count: number; length: PhysicalLength }[];
   provenance: {
     basis: 'purchased';
+    packedCount?: number;
+    wastePercent?: number;
+    wasteAmount?: number;
+    packageSize?: number;
+    packageCount?: number | null;
     originalAmount: number | null;
     originalUnit: Output['unit'];
     physicalLengthSource?: 'stock' | 'cut';
@@ -119,7 +127,10 @@ export function quantityLabel(project: Project, output: Output) {
         ? `${output.materialId.replaceAll(/[-_]/g, ' ')}${output.role ? ` · ${output.role.replaceAll(/[-_]/g, ' ')}` : ''}`
         : output.name),
     category:
-      definition?.component?.assembly.category ?? recipe?.category ?? '',
+      output.category ??
+      definition?.component?.assembly.category ??
+      recipe?.category ??
+      '',
   };
 }
 
@@ -145,6 +156,13 @@ export function presentQuantities(
         output.modeling === 'unresolved' ? null : output.materialId || null,
     };
     const sourceRefs = output.sources.map((entry): QuantitySourceRef => ({
+      ...(output.packedCount === undefined
+        ? {}
+        : {
+            groupId: entry.groupId || null,
+            recipeId: entry.recipeId || null,
+            assignmentId: entry.assignmentId || null,
+          }),
       geometryId: entry.geometryId || null,
       sheetId: project.geometries[entry.geometryId]?.sheetId ?? null,
       pieceId: entry.pieceId ?? null,
@@ -370,6 +388,17 @@ export function presentQuantities(
       provenance: {
         basis: 'purchased',
         originalAmount: output.purchasedAmount,
+        ...(output.packedCount === undefined
+          ? {}
+          : {
+              packedCount: output.packedCount,
+              ...(output.packageSize === undefined
+                ? {}
+                : { packageSize: output.packageSize }),
+              wastePercent: output.wastePercent,
+              wasteAmount: output.wasteAmount,
+              packageCount: output.packageCount,
+            }),
         originalUnit: output.unit,
         ...(physicalLengthSource ? { physicalLengthSource } : {}),
         sourceRefs,

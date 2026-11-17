@@ -448,12 +448,7 @@ export function calculateProject(project: Project): CalculationResult {
     }
   }
   const model = generateConstruction(project, resolveConstruction(project));
-  for (const collection of [
-    model.pieces,
-    model.surfaces,
-    model.purchases,
-    model.surfacePurchases ?? [],
-  ])
+  for (const collection of [model.surfaces, model.surfacePurchases ?? []])
     for (const item of collection)
       item.direction =
         project.assignments[item.assignmentId ?? '']?.direction ?? 'add';
@@ -487,7 +482,7 @@ export function calculateProject(project: Project): CalculationResult {
   for (const diagnostic of model.diagnostics)
     if (diagnostic.geometryId) accounted.add(diagnostic.geometryId);
   for (const output of outputs) {
-    output.direction =
+    output.direction ??=
       project.assignments[output.assignmentId]?.direction ?? 'add';
     for (const source of output.sources) {
       source.direction = output.direction;
@@ -495,12 +490,14 @@ export function calculateProject(project: Project): CalculationResult {
     }
     const key = JSON.stringify([
       output.materialId,
+      output.category,
       output.unit,
       output.stockLength ? null : output.cutLength?.value.toPrecision(12),
       output.stockLength?.value.toPrecision(12),
     ]);
     const total = totals.get(key) ?? {
       materialId: output.materialId,
+      ...(output.category === undefined ? {} : { category: output.category }),
       unit: output.unit,
       ...(!output.stockLength && output.cutLength
         ? { cutLength: output.cutLength }
@@ -516,6 +513,11 @@ export function calculateProject(project: Project): CalculationResult {
     else total.additions += output.purchasedAmount;
     total.amount +=
       output.purchasedAmount * (output.direction === 'deduct' ? -1 : 1);
+    if (total.stockLength)
+      total.purchasedLength = {
+        value: (total.amount * total.stockLength.value) / 0.3048,
+        unit: 'ft',
+      };
     total.complete &&= output.complete;
     totals.set(key, total);
   }
@@ -620,6 +622,13 @@ export function exportQuantities(
       'role',
       'cutLength_m',
       'stockLength_m',
+      'purchaseScope',
+      'category',
+      'packedCount',
+      'purchasedLength_ft',
+      'packageSize',
+      'quantityKey',
+      'installedByAssignment',
     ],
   ];
   for (const output of result.outputs)
@@ -649,6 +658,15 @@ export function exportQuantities(
       output.role ?? '',
       output.cutLength?.value ?? null,
       output.stockLength?.value ?? null,
+      output.packedCount === undefined ? 'assignment' : 'takeoff',
+      output.category ?? project.recipes[output.recipeId]?.category ?? '',
+      output.packedCount ?? null,
+      output.purchasedLength?.value ?? null,
+      output.packageSize ?? null,
+      output.quantityKey ?? '',
+      output.installedByAssignment
+        ? JSON.stringify(output.installedByAssignment)
+        : '',
     ]);
   return rows
     .map((row) =>
@@ -665,35 +683,74 @@ export function pieceSchedule(
 ) {
   return result.outputs
     .filter((output) => output.role !== undefined)
-    .flatMap((output) =>
-      output.sources.map((source) => {
+    .flatMap((output) => {
+      const common = {
+        projectId: project.id,
+        revision: project.revision,
+        takeoffName: result.context?.name ?? '',
+        takeoffKind: result.context?.kind ?? '',
+        takeoffId: result.context?.takeoffId ?? '',
+        direction: output.direction ?? 'add',
+        outputId: output.outputId,
+        materialId: output.materialId,
+        modeling: output.modeling,
+        category:
+          output.category ?? project.recipes[output.recipeId]?.category ?? '',
+      };
+      const installed = output.sources.map((source) => {
         const geometry = project.geometries[source.geometryId];
+        const groupId = source.groupId ?? output.groupId;
+        const recipeId = source.recipeId ?? output.recipeId;
         return {
-          projectId: project.id,
-          revision: project.revision,
-          takeoffName: result.context?.name ?? '',
-          takeoffKind: result.context?.kind ?? '',
-          takeoffId: result.context?.takeoffId ?? '',
-          direction: output.direction ?? 'add',
+          ...common,
+          recordType: output.modeling === 'estimate' ? 'estimate' : 'installed',
           sheet: project.sheets[geometry?.sheetId ?? '']?.name ?? '',
           geometryId: source.geometryId,
           location: geometry?.name ?? source.geometryId,
-          group: project.groups[output.groupId]?.name ?? output.groupId,
-          assignmentId: output.assignmentId,
-          outputId: output.outputId,
-          assembly: project.recipes[output.recipeId]?.name ?? output.recipeId,
-          materialId: output.materialId,
+          group: project.groups[groupId]?.name ?? groupId,
+          assignmentId: source.assignmentId ?? output.assignmentId,
+          assembly: project.recipes[recipeId]?.name ?? recipeId,
           role: source.pieceRole ?? output.role ?? '',
           pieceId: source.pieceId ?? '',
-          modeling: output.modeling,
           quantity: source.value,
           cutLength_m: source.cutLength?.value ?? null,
           stockLength_m: source.stockLength?.value ?? null,
           complete: source.value !== null && output.complete,
           diagnostic: source.diagnostic ?? output.diagnostics.join('; '),
         };
-      }),
-    );
+      });
+      const rows: ((typeof installed)[number] & {
+        packedCount?: number;
+        wastePercent?: number;
+        adjustedCount?: number;
+        purchasedCount?: number;
+        purchasedLength_m?: number;
+      })[] = installed;
+      if (output.packedCount !== undefined && output.stockLength)
+        rows.push({
+          ...common,
+          recordType: 'stock-purchase',
+          sheet: '',
+          geometryId: '',
+          location: '',
+          group: '',
+          assignmentId: '',
+          assembly: '',
+          role: '',
+          pieceId: '',
+          quantity: null,
+          cutLength_m: null,
+          stockLength_m: output.stockLength.value,
+          packedCount: output.packedCount,
+          wastePercent: output.wastePercent,
+          adjustedCount: output.adjustedAmount,
+          purchasedCount: output.purchasedAmount,
+          purchasedLength_m: output.purchasedAmount * output.stockLength.value,
+          complete: output.complete,
+          diagnostic: output.diagnostics.join('; '),
+        });
+      return rows;
+    });
 }
 export function exportPieces(
   project: Project,
@@ -728,6 +785,13 @@ export function exportPieces(
     'quantity',
     'cutLength_m',
     'stockLength_m',
+    'recordType',
+    'category',
+    'packedCount',
+    'wastePercent',
+    'adjustedCount',
+    'purchasedCount',
+    'purchasedLength_m',
     'complete',
     'diagnostic',
   ] as const;

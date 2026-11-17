@@ -1422,7 +1422,7 @@ export function generateConstruction(
     result.complete &&= generated.complete;
     budget -= generated.pieces.length + generated.surfaces.length;
   }
-  summarizeMaterials(result);
+  summarizeMaterials(project, result);
   return result;
 }
 function present<T>(value: T | undefined): T {

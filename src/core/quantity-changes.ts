@@ -7,6 +7,7 @@ export function quantityChanges(
   const key = (total: CalculationSnapshot['totals'][number]) =>
     JSON.stringify([
       total.materialId,
+      total.category,
       total.unit,
       total.stockLength,
       total.cutLength,
@@ -26,6 +27,7 @@ export function quantityChanges(
       ? [
           {
             materialId: (b ?? a)?.materialId,
+            category: (b ?? a)?.category,
             unit: (b ?? a)?.unit,
             stockLength: (b ?? a)?.stockLength,
             before: a?.amount ?? 0,

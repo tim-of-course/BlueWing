@@ -5,7 +5,7 @@ import type {
   ConstructionSurface,
   ConstructionDiagnostic,
 } from './construction-types';
-import { purchaseAmount } from './purchasing';
+import { packedStickCount, purchaseAmount } from './purchasing';
 
 export function surfaceArea(points: ConstructionSurface['points']): number {
   let x = 0,
@@ -39,18 +39,29 @@ function provenance(source: ConstructionSource): ConstructionSource {
 }
 
 /** The records consumed by the renderer are the sole installed quantity source. */
-export function summarizeMaterials(result: ConstructionResult): void {
+export function summarizeMaterials(
+  project: Project,
+  result: ConstructionResult,
+): void {
   result.purchases = [];
   result.surfacePurchases = [];
   const members = new Map<string, typeof result.pieces>();
   for (const piece of result.pieces) {
+    piece.direction =
+      project.assignments[piece.assignmentId ?? '']?.direction ?? 'add';
     piece.cutLength = Math.hypot(
       piece.end.x - piece.start.x,
       piece.end.y - piece.start.y,
       piece.end.z - piece.start.z,
     );
     const key = JSON.stringify([
-      piece.assignmentId ?? piece.wallId ?? piece.ceilingId,
+      piece.stockLength === undefined
+        ? (piece.assignmentId ?? piece.wallId ?? piece.ceilingId)
+        : [
+            'stock',
+            piece.direction,
+            project.recipes[piece.recipeId ?? '']?.category ?? '',
+          ],
       piece.materialId,
       piece.stockLength ?? piece.cutLength,
       piece.wastePercent ?? 0,
@@ -62,8 +73,16 @@ export function summarizeMaterials(result: ConstructionResult): void {
   }
   for (const [key, pieces] of members) {
     const first = present(pieces[0]);
+    const packedCount =
+      first.stockLength === undefined
+        ? undefined
+        : packedStickCount(
+            pieces.map((piece) => piece.cutLength),
+            first.stockLength,
+          );
+    const stockLength = first.stockLength ?? first.cutLength;
     const amounts = purchaseAmount(
-      pieces.length,
+      packedCount ?? pieces.length,
       {
         wastePercent: first.wastePercent ?? 0,
         ...(first.packageSize === undefined
@@ -72,12 +91,28 @@ export function summarizeMaterials(result: ConstructionResult): void {
       },
       true,
     );
+    // Only identities shared by every contributing piece describe the order.
+    const owner = provenance(first);
+    for (const key of Object.keys(owner) as (keyof ConstructionSource)[])
+      if (pieces.some((piece) => piece[key] !== first[key]))
+        Reflect.deleteProperty(owner, key);
     result.purchases.push({
       quantityKey: JSON.stringify(['members', key]),
-      ...provenance(first),
+      ...owner,
+      direction: first.direction ?? 'add',
       role: pieces.every((p) => p.role === first.role) ? first.role : 'member',
       materialId: first.materialId,
-      stockLength: first.stockLength ?? first.cutLength,
+      stockLength,
+      ...(packedCount === undefined
+        ? {}
+        : {
+            packedCount,
+            category: project.recipes[first.recipeId ?? '']?.category ?? '',
+          }),
+      purchasedLength: amounts.purchasedAmount * stockLength,
+      ...(first.packageSize === undefined
+        ? {}
+        : { packageSize: first.packageSize }),
       requiredCount: pieces.length,
       wastePercent: amounts.wastePercent,
       adjustedCount: amounts.adjustedAmount,
@@ -159,6 +194,23 @@ export function modeledOutputs(
     const members = purchase.pieceIds.map((id) => present(pieces.get(id)));
     const diagnostics = messages(members);
     const first = present(members[0]);
+    const installed = new Map<
+      string,
+      NonNullable<CalculationOutput['installedByAssignment']>[number]
+    >();
+    if (purchase.packedCount !== undefined) {
+      for (const piece of members) {
+        const ids = identity(piece);
+        const group = installed.get(ids.assignmentId) ?? {
+          ...ids,
+          pieceCount: 0,
+          cutLength: { value: 0, unit: 'm' as const },
+        };
+        group.pieceCount++;
+        group.cutLength.value += piece.cutLength;
+        installed.set(ids.assignmentId, group);
+      }
+    }
     const commonCut = members.every(
       (p) => Math.abs(p.cutLength - first.cutLength) < 1e-8,
     );
@@ -166,6 +218,18 @@ export function modeledOutputs(
       ...identity(purchase),
       modeling: 'modeled',
       outputId: `members/${String(index)}`,
+      direction: purchase.direction ?? 'add',
+      ...(purchase.packedCount === undefined
+        ? {}
+        : {
+            packedCount: purchase.packedCount,
+            category: purchase.category ?? '',
+            ...(purchase.packageSize === undefined
+              ? {}
+              : { packageSize: purchase.packageSize }),
+            installedByAssignment: [...installed.values()],
+          }),
+      purchasedLength: { value: purchase.purchasedLength / 0.3048, unit: 'ft' },
       ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
       name:
@@ -173,6 +237,7 @@ export function modeledOutputs(
       unit: 'ea',
       role: purchase.role,
       sources: members.map((piece) => ({
+        ...identity(piece),
         geometryId: piece.geometryId ?? '',
         pieceId: piece.id,
         pieceRole: piece.role,
@@ -191,7 +256,9 @@ export function modeledOutputs(
         : {}),
       baseAmount: purchase.requiredCount,
       wastePercent: purchase.wastePercent,
-      wasteAmount: purchase.adjustedCount - purchase.requiredCount,
+      wasteAmount:
+        purchase.adjustedCount -
+        (purchase.packedCount ?? purchase.requiredCount),
       adjustedAmount: purchase.adjustedCount,
       packageCount: purchase.packageCount,
       purchasedAmount: purchase.purchasedCount,

@@ -206,8 +206,13 @@ export interface ConstructionPurchase extends ConstructionSource {
   materialId: string;
   stockLength: number;
   requiredCount: number;
+  /** Stock sticks before waste. Absent for pieces ordered by cut length. */
+  packedCount?: number;
+  category?: string;
+  purchasedLength: number;
+  packageSize?: number;
   wastePercent: number;
-  /** Required count plus waste, before package or whole-piece rounding. */
+  /** Purchasing base plus waste, before package or whole-piece rounding. */
   adjustedCount: number;
   pieceIds: string[];
   purchasedCount: number;

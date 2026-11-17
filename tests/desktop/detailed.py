@@ -328,8 +328,13 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         # No CLI hit-test metadata exists yet; verify the source records feeding the scene.
         piece_csv = call('construction.export', {'format': 'csv', 'schedule': 'pieces'})
         rows = list(csv.DictReader(io.StringIO(piece_csv)))
-        assert len(rows) == len(detailed['pieces'])
-        for row in rows:
+        installed = [row for row in rows if row['recordType'] == 'installed']
+        orders = [row for row in rows if row['recordType'] == 'stock-purchase']
+        assert len(installed) == len(detailed['pieces'])
+        assert len(orders) == sum('packedCount' in p for p in detailed['purchases'])
+        for row in orders:
+            near(float(row['purchasedLength_m']), int(row['purchasedCount']) * float(row['stockLength_m']))
+        for row in installed:
             piece = next(p for p in detailed['pieces'] if p['id'] == row['pieceId'])
             near(float(row['cutLength_m']), piece['cutLength'])
             assert row['geometryId'] == 'wall-path'

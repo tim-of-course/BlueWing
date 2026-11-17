@@ -1,5 +1,40 @@
 import type { OutputAllowance } from './types';
 
+/** First fit in stick-opening order, longest cuts first. */
+export function packedStickCount(cuts: number[], stockLength: number): number {
+  const lengths = [...cuts].sort((a, b) => b - a);
+  // Each subtree records the largest offcut in that range of sticks. Finding
+  // the first fit stays logarithmic even at the 50,000-piece generation limit.
+  const leaves = 2 ** Math.ceil(Math.log2(Math.max(1, lengths.length)));
+  const remaining = new Float64Array(2 * leaves);
+  const tolerance = Math.min(1e-8, stockLength * 1e-9);
+  let count = 0;
+  for (const length of lengths) {
+    // Endpoints are in world coordinates. Allow roundoff at a tight joint,
+    // while still requiring positive space for every positive cut.
+    const needed = Math.max(length / 2, length - tolerance);
+    let node = 1;
+    if (needed > (remaining[node] ?? 0) || !count) {
+      node = leaves + count++;
+      remaining[node] = stockLength;
+    } else {
+      while (node < leaves) {
+        node *= 2;
+        if (needed > (remaining[node] ?? 0)) node++;
+      }
+    }
+    remaining[node] = Math.max(0, (remaining[node] ?? 0) - length);
+    while (node > 1) {
+      node = Math.floor(node / 2);
+      remaining[node] = Math.max(
+        remaining[node * 2] ?? 0,
+        remaining[node * 2 + 1] ?? 0,
+      );
+    }
+  }
+  return count;
+}
+
 export const wholeQuantity = (value: number): number =>
   Math.max(
     value > 0 ? 1 : 0,

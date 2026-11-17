@@ -274,7 +274,7 @@ function modeledFixture() {
     complete: true,
   };
   const calculate = (): CalculationResult => {
-    summarizeMaterials(model);
+    summarizeMaterials(project, model);
     return {
       outputs: modeledOutputs(project, model),
       sourceCoverage: calculateProject(project).sourceCoverage,
@@ -293,6 +293,10 @@ void test('mixed modeled cuts/common stock preserve one purchase bucket and requ
   assert.equal(rows.length, 2);
   near(present(rows[0]).quantity, 40);
   assert.equal(present(rows[0]).pieceCount, 4);
+  // 2 ft + 4 ft share one stick. With 10% waste, 1.1 sticks require a single four-stick package.
+  assert.equal(present(rows[0]).provenance.packedCount, 1);
+  near(present(rows[0]).provenance.wasteAmount, 0.1);
+  assert.equal(present(rows[0]).provenance.packageSize, 4);
   assert.equal(present(present(rows[0]).cutSchedule).length, 2);
   assert.equal(
     present(present(rows[0]).cutSchedule).reduce((n, cut) => n + cut.count, 0),

@@ -74,7 +74,7 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   const frpTotal = totals
     .getByRole('row')
     .filter({ hasText: 'frp-unspecified' });
-  await expect(frpTotal).toContainText('192 ft2');
+  await expect(frpTotal).toContainText('224 ft2');
 
   const scope = page.getByRole('combobox', {
     name: 'Input scope',
@@ -89,7 +89,7 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
-  await expect(frpTotal).toContainText('288 ft2');
+  await expect(frpTotal).toContainText('320 ft2');
   await page
     .getByRole('combobox', { name: 'Workspace view', exact: true })
     .selectOption('split');
@@ -141,13 +141,13 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   // A reusable opening detail contributes no extra material until an opening uses it.
   await expect(totals).not.toContainText('steel-stud-6in-unspecified');
-  await expect(frpTotal).toContainText('288 ft2');
+  await expect(frpTotal).toContainText('320 ft2');
 
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
-  await expect(frpTotal).toContainText('288 ft2');
+  await expect(frpTotal).toContainText('320 ft2');
   await page.getByRole('button', { name: 'Construction', exact: true }).click();
   await construction
     .getByRole('combobox', { name: 'Construction type', exact: true })

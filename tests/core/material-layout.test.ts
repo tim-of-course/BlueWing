@@ -112,7 +112,7 @@ void test('standalone finish subtracts the union of located openings before laye
     assert.equal('template' in surface, false);
     for (const point of surface.points) close(point.y, 0.21);
   }
-  summarizeMaterials(result);
+  summarizeMaterials(project, result);
   assert.equal(result.surfacePurchases?.length, 1);
   close(present(result.surfacePurchases[0]).requiredArea, 42);
   close(present(result.surfacePurchases[0]).purchasedArea, 50);
@@ -159,7 +159,7 @@ void test('sloped members use true-axis extensions and rotated sections in the m
   const sceneMember = present(constructionSceneInput(result).members[0]);
   close(memberFrame(sceneMember).length, 6);
   close(Math.hypot(axis.x, axis.y, axis.z), 1);
-  summarizeMaterials(result);
+  summarizeMaterials(project, result);
   assert.equal(result.purchases[0]?.requiredCount, 1);
   close(piece.cutLength, 6);
 });
