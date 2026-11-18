@@ -263,7 +263,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         before = inspect()
         saved = database_snapshot(project_path)
         taller = dict(wall, height=3.5)
-        preview = call('preview', {'commands': [{'name': 'wall.put', 'payload': taller}]}, True)
+        preview = call('preview', {'includeProject': True, 'commands': [{'name': 'wall.put', 'payload': taller}]}, True)
         assert preview['preview']
         assignment = preview['project']['assignments'][application['assignmentId']]
         assert assignment['geometryDetails']['wall-path']['wall'] == {'height': 3.5}

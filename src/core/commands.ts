@@ -235,14 +235,12 @@ const assignment = object(
   ['id', 'groupId', 'recipeId', 'inputs', 'allowances'],
 );
 const id = object({ id: string });
-const commands = object({
-  commands: array(
-    object(
-      { name: string, payload: { type: 'object', additionalProperties: true } },
-      ['name'],
-    ),
+const commands = array(
+  object(
+    { name: string, payload: { type: 'object', additionalProperties: true } },
+    ['name'],
   ),
-});
+);
 const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   [
     'commands.list',
@@ -546,14 +544,14 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   [
     'batch',
     'Apply commands atomically as one saved revision and undo step.',
-    commands,
+    object({ commands }),
     true,
     { commands: [{ name: 'project.rename', payload: { name: 'Estimate' } }] },
   ],
   [
     'preview',
     'Evaluate commands without saving or publishing.',
-    commands,
+    object({ commands, includeProject: { type: 'boolean' } }, ['commands']),
     false,
     { commands: [{ name: 'quantities.inspect' }] },
   ],
@@ -614,7 +612,11 @@ export function validatePayload(
     const child = schema.items;
     if (child)
       item.forEach((entry: unknown, index) => {
-        validatePayload(child, entry, `${path}[${String(index)}]`);
+        const label =
+          schema === commands && record(entry) && typeof entry.name === 'string'
+            ? ` (${entry.name})`
+            : '';
+        validatePayload(child, entry, `${path}[${String(index)}]${label}`);
       });
     return;
   }

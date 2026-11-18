@@ -4,6 +4,7 @@ import type { Application, ApplicationRequest } from './application';
 import { wireMessage, type Message, type MessageWait } from './messaging';
 import { messageGuidance, type CliConnection } from './cli-guide';
 import { registry } from './registry';
+import { ProjectConflictError } from '../core/session';
 import type { FinishPerformanceSpan } from '../performance/recorder';
 
 interface CliRequest {
@@ -181,8 +182,14 @@ export async function dispatchCli(
       response: {
         ok: false,
         error: { code, message },
-        projectId: application.project?.id ?? null,
-        revision: application.project?.revision ?? null,
+        projectId:
+          error instanceof ProjectConflictError
+            ? error.projectId
+            : (application.project?.id ?? null),
+        revision:
+          error instanceof ProjectConflictError
+            ? error.revision
+            : (application.project?.revision ?? null),
         ...(request ? delivery() : {}),
       },
     };

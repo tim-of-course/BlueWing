@@ -1,6 +1,6 @@
 # Desktop CLI
 
-Named takeoffs: call `takeoff.list`, then `takeoff.select` with `{id}` to set persistent CLI context (Main initially). An envelope `takeoffId` overrides one request for reads, edits, batch/preview, exports and renders. CLI context is independent of the active UI selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-6 reset and per-takeoff handoff filenames.
+`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-6 reset and per-takeoff handoff filenames.
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
@@ -26,7 +26,7 @@ For an unexpected exit during `bun run desktop`, inspect its terminal output. Th
 
 ## Requests
 
-Each request is a JSON object with a `payload`. Mutations of the active project also require the project identity and revision returned by `project.inspect`:
+Each request is a JSON object with a `payload`. Project reads, exports, renders, and `project.backup` accept optional `projectId` and `expectedRevision` guards. Each supplied guard must match before the operation runs. Use both to bind a file to the same project and revision as its supporting reads. Mutations of the active project require both fields.
 
 ```sh
 bluewing project.create '{"payload":{"name":"Estimate","path":"/absolute/path/estimate.bluewing"}}'
@@ -35,9 +35,11 @@ bluewing project.rename '{"projectId":"PROJECT_ID","expectedRevision":0,"payload
 bluewing project.import '{"projectId":"PROJECT_ID","expectedRevision":1,"payload":{"path":"/absolute/path/plans.pdf"}}'
 ```
 
-For longer requests, use `bluewing <command> --stdin` and send the same JSON through standard input. A success response includes `ok`, `data`, `projectId`, and `revision`. Errors include a message and code. A stale mutation exits with status 3 and `PROJECT_CONFLICT`; inspect the project before preparing a new request. Other command errors exit with status 1.
+For longer requests, use `bluewing <command> --stdin` and send the same JSON through standard input. A success response includes `ok`, `data`, `projectId`, and `revision`. A `PROJECT_CONFLICT` exits with status 3 and reports the current project ID and revision. Supply any missing mutation fields from your observation. For a stale revision, reread the records you are editing, merge your changes, and submit with the new revision. If the project ID differs, stop and reconnect to the intended project. Other command errors exit with status 1.
 
-`batch` takes `payload.commands`, an array of `{name,payload}` commands, and saves them as one revision and one undo step. `preview` evaluates the same array without saving and returns the temporary project, results, and `quantityChanges` with before/after material amounts, deltas, and completeness. Neither accepts nested batches or history operations. `history.undo` and `history.redo` use the shared UI history and advance the revision.
+`batch` takes `payload.commands`, an array of `{name,payload}` commands, and saves them as one revision and one undo step. `preview` evaluates the same array without saving. Its response data contains the ordered operation results in `data`, material deltas in `quantityChanges`, and the resulting `calculationComplete`, `constructionComplete`, and `diagnostics`. Set `payload.includeProject` to `true` for the temporary project. Neither command accepts nested batches or history operations. `history.undo` and `history.redo` use the shared UI history and advance the revision.
+
+A failed child is identified by its zero-based `commands` index and command name. Run application commands such as `assembly.import` on their own before a batch that uses their results. Final validation checks the combined draft before saving.
 
 Geometry points use unzoomed, rotated PDF viewport coordinates: origin at the top left, positive x rightward, positive y downward. Import stores the original PDF-to-page transform. Calibration changes physical measurements, never the authored points. `sheet.calibrate` accepts two page points and a known distance in `ft`, `in`, `m`, or `mm`.
 
@@ -49,7 +51,7 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 For the selected takeoff, inspection also returns `data.sourceCoverage` with five lists, each with a `count` and `items`. The four drawing lists are `ungroupedGeometry`, `geometryInUnassignedGroups`, `geometryWithIncompatibleRecipes`, and `geometryWithoutOutputOrDiagnostic`. Each item includes its geometry ID, current name, sheet ID, and kind. The separate `assignmentsWithEmptyGroups` list identifies each assignment, group, and recipe. These advisories are for inspection only and leave totals, completeness, and exports unchanged.
 
-`quantities.exportEstiMaker` saves purchased LF/SF/count lines as versioned `bluewing.takeoff` JSON using the same projection as Quantities. CLI calls require `payload.path`; UI calls can choose a destination. The result is `{path,text}`, with text identical to the saved file. Counts are normal import rows; missing physical dimensions produce descriptions marked `(missing quantity)` and actual numeric zero. Coverage is informational; unresolved sources and invalid import identity are producer errors that prevent saving. It does not change the project or revision. See [the contract and checked fixtures](estimaker-export.md).
+`quantities.exportEstiMaker` saves purchased LF/SF/count lines as versioned `bluewing.takeoff` JSON using the same projection as Quantities. CLI calls require `payload.path`. UI calls can choose a destination. The response identifies the takeoff and revision. Its `data` contains the saved `path`, total `rowCount`, and `missingQuantityRowCount`. Counts are normal import rows. Missing physical dimensions produce descriptions marked `(missing quantity)` and actual numeric zero. Coverage is informational. Unresolved sources and invalid import identity prevent saving. See [the contract and checked fixtures](estimaker-export.md).
 
 ```sh
 bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate.estimaker.json"}}'

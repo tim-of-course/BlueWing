@@ -54,7 +54,9 @@ export async function notesWorkflow(page: Page, harness = false) {
     await mutate('Concurrent CLI text');
     await expect(editor).toHaveValue('Unsaved draft');
     await page.getByRole('button', { name: 'Save notes', exact: true }).click();
-    await expect(page.getByRole('alert')).toContainText('conflict');
+    await expect(page.getByRole('alert')).toContainText(
+      'Stale expectedRevision',
+    );
     await expect(editor).toHaveValue('Unsaved draft');
     expect(
       (await cli<{ markdown: string }>(page, 'notes.read')).response.data

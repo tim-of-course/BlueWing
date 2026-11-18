@@ -77,6 +77,33 @@ void test('construction commands save, preview, undo and redo without changing a
     },
   });
   assert.equal(preview.preview, true);
+  assert.equal(preview.previewStatus?.constructionComplete, true);
+  const incomplete = await call({
+    name: 'preview',
+    payload: {
+      commands: [
+        {
+          name: 'opening.put',
+          payload: {
+            id: 'door',
+            wallId: 'w',
+            distance: 1,
+            width: 1,
+            height: 2,
+            sill: 0,
+            jambCount: 2,
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(incomplete.previewStatus?.calculationComplete, false);
+  assert.equal(incomplete.previewStatus.constructionComplete, false);
+  assert.ok(
+    incomplete.previewStatus.diagnostics.some((d) =>
+      d.message.includes('explicit header'),
+    ),
+  );
   assert.equal(resolveConstruction(session.project).walls.w?.height, 3);
   assert.equal(saves.length, 1);
   await call({ name: 'history.undo' });

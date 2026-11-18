@@ -315,5 +315,13 @@ export interface CommandResult {
   data: unknown;
   changed: boolean;
   preview: boolean;
+  previewStatus?: {
+    calculationComplete: boolean;
+    constructionComplete: boolean;
+    diagnostics: (
+      | ConstructionResult['diagnostics'][number]
+      | { assignmentId: string; outputId: string; message: string }
+    )[];
+  };
   quantityChanges?: ReturnType<typeof quantityChanges>;
 }
