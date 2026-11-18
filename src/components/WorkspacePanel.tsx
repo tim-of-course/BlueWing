@@ -17,6 +17,7 @@ export interface WorkspacePanelProps {
   children: JSX.Element;
   peekRequest?: number;
   bottomControl?: boolean;
+  bottomControlHost?: () => HTMLElement | undefined;
   unread?: number;
   peekState?: ReturnType<typeof createSignal<boolean>>;
 }
@@ -169,6 +170,30 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
     { name: 'workspace.panelPeekRequest' },
   );
 
+  // Keep one keyboard control when moving between the composer and the strip.
+  const composerHost = untrack(() => props.bottomControlHost);
+  if (composerHost) {
+    createEffect(
+      visible,
+      (show) => {
+        // Moving a focused control dispatches focus events that read the current panel state.
+        queueMicrotask(() => {
+          const host = show ? composerHost() : undefined;
+          const target = host ?? root;
+          if (!root.isConnected || control.parentElement === target) return;
+          const focused = document.activeElement === control;
+          if (host) host.prepend(control);
+          else root.append(control);
+          if (focused) {
+            control.focus();
+            clearTimers();
+          }
+        });
+      },
+      { name: 'workspace.panelControlPosition' },
+    );
+  }
+
   onSettled(() => {
     const pointerEnter = () => {
       pointerInside = true;
@@ -194,7 +219,14 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
         leave();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || pinned() || !peeking()) return;
+      if (
+        event.key !== 'Escape' ||
+        pinned() ||
+        !peeking() ||
+        (event.target instanceof Element &&
+          event.target.closest('[role="menu"]'))
+      )
+        return;
       event.preventDefault();
       event.stopPropagation();
       clearTimers();
@@ -289,7 +321,7 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
           if (opening) setPeeking(true);
         }}
       >
-        {props.bottomControl ? (
+        {props.bottomControl && !visible() ? (
           <svg
             width="18"
             height="18"

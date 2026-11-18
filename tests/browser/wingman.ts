@@ -171,21 +171,39 @@ export async function sendText(page: Page, text: string) {
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(text);
 }
+async function endConversation(page: Page) {
+  const trigger = page.getByRole('button', { name: 'Wingman options' });
+  await trigger.press('ArrowDown');
+  const copy = page.getByRole('menuitem', { name: 'Copy AI prompt' });
+  await expect(copy).toBeFocused();
+  await copy.press('ArrowDown');
+  const end = page.getByRole('menuitem', { name: 'End conversation' });
+  await expect(end).toBeFocused();
+  await end.press('Enter');
+  await expect(trigger).toBeFocused();
+}
+
 export async function activityWorkflow(page: Page) {
-  const noContact = page.getByText('No AI connected yet', { exact: true });
-  const working = page.getByText('AI is working', { exact: true });
+  const noContact = page.getByText('Not connected', { exact: true });
+  const working = page.getByText('Working', { exact: true });
+  const idle = page.getByText(/^Idle · last active/);
   await expect(noContact).toBeVisible();
   const start = Date.now() + 60_000;
   await page.clock.setFixedTime(start);
   expect((await cli(page, 'unknown.command')).exitCode).not.toBe(0);
-  const justActive = page.getByText('AI last active 0 s ago', { exact: true });
-  await expect(justActive).toBeVisible();
+  await expect(working).toBeVisible();
+  expect(
+    (
+      await cli(page, 'messages.send', {
+        text: 'Ready for your next question.',
+      })
+    ).exitCode,
+  ).toBe(0);
+  await expect(idle).toContainText('0s ago');
   await page.clock.setFixedTime(start + 65_000);
-  await expect(page.getByText('AI last active 1 min ago')).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(idle).toContainText('1m ago', { timeout: 10_000 });
   expect((await cli(page, 'messages.read')).exitCode).toBe(0);
-  await expect(justActive).toBeVisible();
+  await expect(working).toBeVisible();
 
   const release = await page.evaluateHandle(() => {
     const bridge = window as unknown as {
@@ -205,22 +223,22 @@ export async function activityWorkflow(page: Page) {
     await release.dispose();
   }
   expect((await pending).exitCode).toBe(0);
-  await expect(justActive).toBeVisible();
-  const wait = cli(page, 'messages.wait', { timeoutMs: 25000 });
-  await expect(page.getByText('Waiting for your message')).toBeVisible();
-  await expect(justActive).toBeHidden();
-  await page.getByRole('button', { name: 'End conversation' }).click();
+  await expect(working).toBeVisible();
+  const wait = cli(page, 'messages.wait', { timeoutMs: 25000 }, 1);
+  await expect(page.getByText('Waiting for you')).toBeVisible();
+  await expect(working).toBeHidden();
+  await endConversation(page);
   expect((await wait).exitCode).toBe(0);
-  await expect(justActive).toBeVisible();
+  await expect(working).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
-  await expect(noContact).toBeVisible();
+  await expect(working).toBeVisible();
 }
 
 export async function keyboardWorkflow(page: Page) {
   const input = page.getByLabel('Message', { exact: true });
   const log = page.getByRole('log', { name: 'Messages' });
-  await expect(log).toHaveText(
+  await expect(log).toContainText(
     'Messages are saved here. Your AI sees them on its next Bluewing command.',
   );
   await input.fill('First line');
@@ -751,9 +769,7 @@ export async function warmSwapWorkflow(page: Page) {
 }
 
 export async function messagingWorkflow(page: Page) {
-  await expect(
-    page.getByText('Waiting for your message', { exact: true }),
-  ).toBeHidden();
+  await expect(page.getByText('Waiting for you', { exact: true })).toBeHidden();
   await sendText(page, 'Please check this wall');
   const originalRow = await page
     .getByRole('log', { name: 'Messages' })
@@ -810,7 +826,7 @@ export async function messagingWorkflow(page: Page) {
     cursor,
   );
   await expect(
-    page.getByText('Waiting for your message', { exact: true }),
+    page.getByText('Waiting for you', { exact: true }),
   ).toBeVisible();
   expect(
     await originalRow.evaluate(
@@ -830,9 +846,7 @@ export async function messagingWorkflow(page: Page) {
       expect.objectContaining({ text: 'The read must not block editing' }),
     ]),
   });
-  await expect(
-    page.getByText('Waiting for your message', { exact: true }),
-  ).toBeHidden();
+  await expect(page.getByText('Waiting for you', { exact: true })).toBeHidden();
   expect(
     await originalRow.evaluate(
       (row) => row === document.querySelector('.wingman-message'),
@@ -846,18 +860,17 @@ export async function messagingWorkflow(page: Page) {
     { timeoutMs: 25000 },
     latest,
   );
-  await page
-    .getByRole('button', { name: 'End conversation', exact: true })
-    .click();
+  await expect(
+    page.getByText('Waiting for you', { exact: true }),
+  ).toBeVisible();
+  await endConversation(page);
   expect((await stopped).response).toMatchObject({
     data: { status: 'ended' },
     messages: [],
   });
+  await expect(page.getByText('Waiting for you', { exact: true })).toBeHidden();
   await expect(
-    page.getByText('Waiting for your message', { exact: true }),
-  ).toBeHidden();
-  await expect(
-    page.getByRole('button', { name: 'End conversation', exact: true }),
+    page.getByRole('menuitem', { name: 'End conversation', exact: true }),
   ).toBeHidden();
   await page.getByRole('button', { name: 'Pause CLI', exact: true }).click();
   for (const name of [
@@ -886,9 +899,12 @@ export async function messagingWorkflow(page: Page) {
     'I can still reply while paused',
   );
   const resumeWait = cli<MessageWait>(page, 'messages.wait', {}, latest);
+  await expect(page.getByText('Paused', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Wingman options' }).press('Enter');
   await expect(
-    page.getByText('Waiting for your message', { exact: true }),
-  ).toBeVisible();
+    page.getByRole('menuitem', { name: 'End conversation' }),
+  ).toBeEnabled();
+  await page.getByRole('menuitem', { name: 'Copy AI prompt' }).press('Escape');
   await page.getByRole('button', { name: 'Resume CLI', exact: true }).click();
   expect((await resumeWait).response.data.status).toBe('resumed');
   expect((await cli(page, 'project.inspect')).exitCode).toBe(0);

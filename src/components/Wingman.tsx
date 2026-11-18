@@ -1,3 +1,4 @@
+import WingmanMenu from './WingmanMenu';
 import {
   createEffect,
   createMemo,
@@ -68,8 +69,23 @@ export default function Wingman(props: Props) {
         a.length === b.length && a.every((id, i) => id === b[i]),
     },
   );
-  const turns = createMemo(() => groupActivity(entries(), replyIds()));
+  const turns = createMemo(
+    (previous: Map<number, WingmanActivity[]> | undefined) => {
+      const grouped = groupActivity(entries(), replyIds());
+      for (const [id, items] of grouped) {
+        const prior = previous?.get(id);
+        if (
+          prior &&
+          items.length === prior.length &&
+          items.every((item, index) => item === prior[index])
+        )
+          grouped.set(id, prior);
+      }
+      return grouped;
+    },
+  );
   let transcript: HTMLDivElement | undefined;
+  let composerActions: HTMLDivElement | undefined;
   let followMessages = true;
   let messageCursor = initialConversation.messages.at(-1)?.id ?? 0;
   const [lastRead, setLastRead] = createSignal(messageCursor, {
@@ -156,10 +172,25 @@ export default function Wingman(props: Props) {
   const [copyStatus, setCopyStatus] = createSignal('');
   const [fallbackPrompt, setFallbackPrompt] = createSignal('');
   const [now, setNow] = createSignal(Date.now(), { name: 'wingman.clock' });
+  const contact = createMemo(() => {
+    const current = controller.lastCliContact();
+    if (current !== null) return current;
+    const reply = messages()
+      .filter((message) => message.sender === 'agent')
+      .at(-1);
+    return (
+      Math.max(
+        entries().at(-1)?.startedAt ?? 0,
+        reply ? Date.parse(reply.createdAt) : 0,
+      ) || null
+    );
+  });
+  const firstConnection = () =>
+    contact() == null && !messages().length && !entries().length;
   createEffect(
-    controller.lastCliContact,
+    contact,
     (contact) => {
-      if (contact === null) return;
+      if (contact == null) return;
       const timer = setInterval(() => setNow(Date.now()), 5000);
       return () => {
         clearInterval(timer);
@@ -169,15 +200,17 @@ export default function Wingman(props: Props) {
   );
   const activity = createMemo(
     () => {
-      if (controller.cliExecuting()) return 'AI is working';
-      const contact = controller.lastCliContact();
-      if (contact === null) return 'No AI connected yet';
-      const seconds = Math.max(0, Math.floor((now() - contact) / 1000));
+      if (conversation().paused) return 'Paused';
+      if (conversation().waiting) return 'Waiting for you';
+      if (controller.cliExecuting() || turns().has(0)) return 'Working';
+      const last = contact();
+      if (last == null) return 'Not connected';
+      const seconds = Math.max(0, Math.floor((now() - last) / 1000));
       const age =
         seconds < 60
-          ? `${String(seconds)} s`
-          : `${String(Math.floor(seconds / 60))} min`;
-      return `AI last active ${age} ago`;
+          ? `${String(seconds)}s`
+          : `${String(Math.floor(seconds / 60))}m`;
+      return `Idle · last active ${age} ago`;
     },
     { name: 'wingman.activity' },
   );
@@ -414,6 +447,7 @@ export default function Wingman(props: Props) {
             props.onPinnedChange(value);
           }}
           bottomControl
+          bottomControlHost={() => composerActions}
           unread={unread()}
           peekState={[peeking, setPeeking]}
           peekRequest={peek()}
@@ -426,31 +460,52 @@ export default function Wingman(props: Props) {
             ]}
           >
             <div class="wingman-header">
-              <div>
-                <strong>Wingman</strong>
-                <span>
-                  {conversation().waiting ? 'With your AI' : activity()}
-                </span>
-              </div>
+              <strong>Wingman</strong>
+              <span
+                class="wingman-status"
+                role="status"
+                data-status={activity().split(' ')[0]}
+              >
+                {activity()}
+              </span>
               <button
                 type="button"
-                class={conversation().paused ? 'wingman-resume' : ''}
+                class="wingman-icon"
+                aria-label={conversation().paused ? 'Resume CLI' : 'Pause CLI'}
+                title={conversation().paused ? 'Resume CLI' : 'Pause CLI'}
                 onClick={() => {
                   messaging.setPaused(!conversation().paused);
                 }}
               >
-                {conversation().paused ? 'Resume CLI' : 'Pause CLI'}
+                <svg
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d={
+                      conversation().paused
+                        ? 'M4 2v12l9-6z'
+                        : 'M4 3h3v10H4zM9 3h3v10H9z'
+                    }
+                  />
+                </svg>
               </button>
+              <WingmanMenu
+                waiting={conversation().waiting}
+                onCopyPrompt={() => setPromptOpen((v) => !v)}
+                onEnd={() => {
+                  messaging.stopWaiting();
+                }}
+              />
             </div>
-            <div class="wingman-connect">
-              <button
-                type="button"
-                aria-expanded={promptOpen() ? 'true' : 'false'}
-                onClick={() => setPromptOpen((open) => !open)}
-              >
-                Copy AI prompt
-              </button>
-            </div>
+            <Show when={conversation().paused}>
+              <p class="wingman-pause-note">
+                CLI paused. A running action may finish.
+              </p>
+            </Show>
             <Show when={promptOpen()}>
               <section class="wingman-prompts" aria-label="Connect your AI">
                 <Show
@@ -498,24 +553,6 @@ export default function Wingman(props: Props) {
                 </Show>
               </section>
             </Show>
-            <Show when={conversation().waiting}>
-              <div class="wingman-waiting">
-                <span role="status">Waiting for your message</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    messaging.stopWaiting();
-                  }}
-                >
-                  End conversation
-                </button>
-              </div>
-            </Show>
-            <Show when={conversation().paused}>
-              <p class="wingman-pause-note" role="status">
-                AI actions paused. An action already running may finish.
-              </p>
-            </Show>
             <Show when={swapped()}>
               <button
                 type="button"
@@ -557,10 +594,22 @@ export default function Wingman(props: Props) {
                 aria-live="polite"
               >
                 <Show when={!messages().length && !entries().length}>
-                  <p class="wingman-empty">
-                    Messages are saved here. Your AI sees them on its next
-                    Bluewing command.
-                  </p>
+                  <div class="wingman-empty">
+                    <p>
+                      Messages are saved here. Your AI sees them on its next
+                      Bluewing command.
+                    </p>
+                    <Show when={firstConnection()}>
+                      <button
+                        type="button"
+                        class="primary"
+                        aria-expanded={promptOpen() ? 'true' : 'false'}
+                        onClick={() => setPromptOpen((open) => !open)}
+                      >
+                        Copy AI prompt
+                      </button>
+                    </Show>
+                  </div>
                 </Show>
                 <For each={messages()}>
                   {(message) => (
@@ -574,9 +623,9 @@ export default function Wingman(props: Props) {
                           `wingman-message-${message.sender}`,
                         ]}
                       >
-                        <strong>
+                        <span class="wingman-speaker">
                           {message.sender === 'user' ? 'You' : 'AI'}
-                        </strong>
+                        </span>
                         <p>{message.text}</p>
                         <div class="wingman-message-images">
                           <For each={message.attachments}>
@@ -616,14 +665,12 @@ export default function Wingman(props: Props) {
                   action(send);
                 }}
               >
-                <label for="wingman-message">Message</label>
                 <textarea
-                  id="wingman-message"
+                  aria-label="Message"
                   value={text()}
                   readonly={sending()}
                   placeholder="Ask a question or give a correction…"
                   onInput={(event) => setText(event.currentTarget.value)}
-                  aria-describedby="wingman-keyboard-hint"
                   onCompositionStart={() => {
                     composing = true;
                   }}
@@ -645,9 +692,6 @@ export default function Wingman(props: Props) {
                     }
                   }}
                 />
-                <p id="wingman-keyboard-hint" class="wingman-keyboard-hint">
-                  Enter to send · Shift+Enter for a new line
-                </p>
                 <div class="wingman-attachments">
                   <For each={attachments()}>
                     {(attachment) => (
@@ -669,22 +713,50 @@ export default function Wingman(props: Props) {
                     )}
                   </For>
                 </div>
-                <div class="wingman-compose-actions">
+                <div class="wingman-compose-actions" ref={composerActions}>
                   <button
                     type="button"
-                    title="Attach screenshot (Cmd/Ctrl+Shift+X)"
+                    class="wingman-icon"
+                    title="Attach screenshot"
+                    aria-label="Attach screenshot"
                     disabled={sending()}
                     onClick={() => setCapturing(true)}
                   >
-                    Attach screenshot
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 6.5h3l1.5-2h6l1.5 2h3v10h-15z" />
+                      <circle cx="10" cy="11" r="3" />
+                    </svg>
                   </button>
                   <button
                     type="submit"
+                    class="wingman-icon wingman-send"
+                    aria-label="Send"
+                    title="Enter to send · Shift+Enter for a new line"
                     disabled={
                       sending() || (!text().trim() && !attachments().length)
                     }
                   >
-                    {sending() ? 'Sending…' : 'Send'}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M10 16V4m-5 5 5-5 5 5" />
+                    </svg>
                   </button>
                 </div>
               </form>

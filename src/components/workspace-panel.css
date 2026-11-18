@@ -98,10 +98,10 @@
   z-index: 25;
 }
 .workspace-panel[data-bottom-control] .workspace-panel-content {
-  padding: 0 0 40px;
+  padding: 0;
   overflow: hidden;
 }
-.workspace-panel[data-bottom-control] .workspace-panel-control {
+.workspace-panel[data-bottom-control] > .workspace-panel-control {
   top: auto;
   bottom: 6px;
 }

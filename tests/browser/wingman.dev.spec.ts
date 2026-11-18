@@ -70,12 +70,17 @@ test('turn log, editor continuity and visible saved views', async ({
   const errors = await captureErrors(page);
   const panel = page.getByRole('complementary', { name: 'Wingman' });
   const log = panel.getByRole('log');
+  await expect(
+    panel.locator('form').getByRole('button', { name: 'Collapse Wingman' }),
+  ).toBeVisible();
   const button = (name: string) =>
     page.getByRole('button', { name, exact: true });
-  const screenshot = async (name: string) => {
+  const screenshot = async (name: string, sidebarOnly = false) => {
     if (browserName === 'chromium') {
       await mkdir('tmp/wingman-sidebar', { recursive: true });
-      await page.screenshot({ path: `tmp/wingman-sidebar/${name}.png` });
+      await (sidebarOnly ? panel : page).screenshot({
+        path: `tmp/wingman-sidebar/${name}.png`,
+      });
     }
   };
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -105,7 +110,28 @@ test('turn log, editor continuity and visible saved views', async ({
   await resizer.press('ArrowLeft');
   await expect(resizer).toHaveAttribute('aria-valuenow', '396');
   await resizer.press('ArrowRight');
+  const composer = panel.locator('form');
+  await expect(
+    composer.getByRole('button', { name: 'Collapse Wingman' }),
+  ).toBeVisible();
+  await expect(
+    composer.getByRole('button', { name: 'Attach screenshot' }),
+  ).toHaveAttribute('title', 'Attach screenshot');
+  await expect(composer.getByRole('button', { name: 'Send' })).toHaveAttribute(
+    'title',
+    /Shift\+Enter/,
+  );
+  await resizer.evaluate((element) => {
+    (element as HTMLElement).blur();
+  });
+  await expect(panel.getByRole('status')).toHaveText('Not connected');
   await screenshot('expanded-idle');
+  await expect(
+    composer
+      .getByRole('button', { name: 'Collapse Wingman' })
+      .locator('svg rect'),
+  ).toHaveCount(1);
+  await screenshot('header-not-connected', true);
   await sendText(page, 'Check the partition along the east wall.');
   const sheetId = await page
     .getByLabel('Drawing canvas')
@@ -142,7 +168,10 @@ test('turn log, editor continuity and visible saved views', async ({
     log.getByRole('img', { name: 'Live workspace preview' }),
   ).toBeVisible();
   await expect(log.getByText('Loading plan…')).toBeHidden();
+  await expect(panel.locator('.wingman-status')).toHaveText('Working');
+  await expect(button('Copy AI prompt')).toBeHidden();
   await screenshot('mid-turn');
+  await screenshot('header-working', true);
   await sendText(page, 'Include the return at the doorway.');
   await page.clock.setFixedTime(new Date(turnStart + 161_000));
   await cli(page, 'messages.send', {
@@ -150,6 +179,19 @@ test('turn log, editor continuity and visible saved views', async ({
   });
   const rollup = button('Worked for 2m 41s');
   await expect(rollup).toBeVisible();
+  const waiting = cli(page, 'messages.wait', { timeoutMs: 25000 }, 3);
+  await expect(panel.locator('.wingman-status')).toHaveText('Waiting for you');
+  await screenshot('header-idle', true);
+  await button('Wingman options').click();
+  await panel.getByRole('menuitem', { name: 'End conversation' }).click();
+  expect((await waiting).exitCode).toBe(0);
+  await button('Wingman options').press('Enter');
+  await panel.getByRole('menuitem', { name: 'Copy AI prompt' }).press('Enter');
+  await expect(
+    panel.getByRole('region', { name: 'Connect your AI' }),
+  ).toBeVisible();
+  await button('Wingman options').press('Enter');
+  await panel.getByRole('menuitem', { name: 'Copy AI prompt' }).press('Enter');
   await expect(log.locator('.wingman-preview')).toHaveCount(0);
   await rollup.click();
   await screenshot('finished-turn');
@@ -205,10 +247,14 @@ test('turn log, editor continuity and visible saved views', async ({
     el.scrollTop = 0;
   });
   await screenshot('quantities');
-  await button('Collapse Wingman').click();
+  await button('Drawing').click();
+  await composer.getByRole('button', { name: 'Collapse Wingman' }).click();
   await page.mouse.move(0, 0);
   await cli(page, 'messages.send', { text: 'The field dimension is in.' });
   await expect(button('Pin Wingman (1 unread)')).toBeVisible();
+  await expect(
+    button('Pin Wingman (1 unread)').locator('svg rect'),
+  ).toHaveCount(0);
   await screenshot('collapsed-unread');
   await button('Pin Wingman (1 unread)').click();
   await expect(log).toContainText('The field dimension is in.');
