@@ -7,14 +7,137 @@ import {
 } from '../../src/core/commands';
 import { createProject } from '../../src/core/geometry';
 import { calculateProject } from '../../src/core/calculations';
+import { starterAssemblies } from '../../src/core/assemblies';
 import { ProjectSession } from '../../src/core/session';
 
-void test('registry examples all match their discoverable schemas', () => {
+void test('registry examples validate and mutating examples execute in an open project', async () => {
+  const project = createProject('Command help');
+  // An imported sheet, an area trace, and three already-imported library templates.
+  project.sheets['sheet-2'] = {
+    id: 'sheet-2',
+    name: 'Ceiling plan',
+    assetId: 'asset-1',
+    pageIndex: 1,
+    width: 800,
+    height: 600,
+    calibration: { metresPerUnit: 0.02 },
+  };
+  project.geometries['room-1'] = {
+    id: 'room-1',
+    sheetId: 'sheet-2',
+    name: 'Office',
+    kind: 'area',
+    points: [
+      { x: 10, y: 10 },
+      { x: 210, y: 10 },
+      { x: 210, y: 160 },
+      { x: 10, y: 160 },
+    ],
+  };
+  const starters = starterAssemblies();
+  for (const id of ['steel-box-header', 'steel-wall', 'ceiling-grid-2x4']) {
+    const assembly = starters[id];
+    assert.ok(assembly, id);
+    project.recipes[id] = assembly;
+  }
+  const session = new ProjectSession(project, {
+    save: () => Promise.resolve(),
+  });
+  const pending = new Set<string>();
   for (const definition of commandRegistry) {
     assert.ok(definition.description);
+    assert.ok(definition.examples.length, definition.name);
     for (const example of definition.examples)
       assert.equal(validateCommand(example).name, definition.name);
+    if (definition.mutates) pending.add(definition.name);
   }
+
+  const run = async (...names: string[]) => {
+    for (const name of names) {
+      const definition = commandRegistry.find((entry) => entry.name === name);
+      assert.ok(definition, name);
+      for (const example of definition.examples) {
+        const request = {
+          ...session.observation,
+          ...example,
+          ...(name === 'takeoff.copyItems' ? { takeoffId: 'co-id' } : {}),
+        };
+        await assert.doesNotReject(session.dispatch(request), name);
+      }
+      pending.delete(name);
+    }
+  };
+  await run(
+    'project.rename',
+    'notes.write',
+    'project.category.put',
+    'sheet.put',
+    'sheet.naming.apply',
+    'sheet.scale',
+    'sheet.calibrate',
+  );
+  await run(
+    'construction.alignment.put',
+    'construction.alignment.match',
+    'construction.alignment.delete',
+  );
+  await run(
+    'geometry.put',
+    'geometry.move',
+    'geometry.copy',
+    'group.put',
+    'group.members',
+    'assignment.put',
+    'group.copy',
+  );
+  await run('recipe.put', 'recipe.delete', 'assembly.put', 'assembly.delete');
+  await run(
+    'level.put',
+    'placement.put',
+    'wall.put',
+    'header.put',
+    'opening.put',
+    'ceiling.put',
+  );
+  assert.deepEqual(session.calculation.model.diagnostics, []);
+  await run(
+    'header.fromAssembly',
+    'wall.fromAssembly',
+    'ceiling.fromAssembly',
+    'wall.reset',
+    'ceiling.reset',
+    'snippet.put',
+    'review.mark',
+  );
+  await run(
+    'takeoff.create',
+    'takeoff.rename',
+    'takeoff.copyItems',
+    'takeoff.delete',
+  );
+  await run(
+    'snippet.delete',
+    'opening.delete',
+    'header.delete',
+    'wall.delete',
+    'ceiling.delete',
+    'placement.delete',
+    'level.delete',
+  );
+  await run(
+    'assignment.delete',
+    'group.delete',
+    'geometry.delete',
+    'sheet.delete',
+    'batch',
+    'history.undo',
+    'history.redo',
+  );
+  assert.deepEqual(
+    [...pending],
+    [],
+    'Each mutating command must exercise its published examples',
+  );
 });
 
 function drawing() {

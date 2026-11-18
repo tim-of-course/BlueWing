@@ -48,18 +48,73 @@ const array = (items: PayloadSchema): PayloadSchema => ({
   items,
 });
 const point = object({ x: number, y: number });
+export const pagePoint = {
+  ...point,
+  description: 'Rotated page points from top left, x right and y down.',
+};
+const pathId = {
+  ...text,
+  description: 'ID of a path geometry in this takeoff.',
+};
+const areaId = {
+  ...text,
+  description: 'ID of an area geometry in this takeoff.',
+};
+const station = {
+  ...nonnegative,
+  description: 'Metres along the path from its first point.',
+};
+const wallHeight = {
+  ...positive,
+  description: 'Metres above wall base (3.048 = 10 ft).',
+};
+const layers = { ...positive, description: 'Number of material layers.' };
+const thickness = { ...positive, description: 'Metres per layer.' };
+const wastePercent = {
+  ...nonnegative,
+  description: 'Waste added before package rounding (10 means 10%).',
+};
+const surfacePackage = {
+  ...positive,
+  description: 'Square metres covered per package.',
+};
+const rotation = {
+  ...number,
+  description: 'Section rotation about the member axis in radians.',
+};
 const vector = object({ x: number, y: number, z: number });
 const offsets = array(
-  object({ along: number, face: number, rotation: number }, ['along', 'face']),
+  object(
+    {
+      along: { ...number, description: 'Longitudinal offset in metres.' },
+      face: { ...number, description: 'Offset along wall normal in metres.' },
+      rotation,
+    },
+    ['along', 'face'],
+  ),
 );
 const member = object(
   {
     materialId: text,
-    width: positive,
-    depth: positive,
-    stockLength: positive,
-    wastePercent: nonnegative,
-    packageSize: positive,
+    width: {
+      ...positive,
+      description:
+        'Section width in metres, along wall for verticals, across wall for horizontals.',
+    },
+    depth: {
+      ...positive,
+      description:
+        'Section depth in metres, across wall for verticals (0.092075 = 3-5/8 in), vertical for horizontals.',
+    },
+    stockLength: {
+      ...positive,
+      description: 'Length of one purchased stock piece in metres.',
+    },
+    wastePercent,
+    packageSize: {
+      ...positive,
+      description: 'Whole stock pieces per package.',
+    },
   },
   ['materialId', 'width', 'depth'],
 );
@@ -67,13 +122,24 @@ const finish = object(
   {
     id: text,
     materialId: text,
-    face: { type: 'string', enum: ['front', 'back'] },
-    layers: positive,
-    offset: number,
-    thickness: positive,
-    height: positive,
-    wastePercent: nonnegative,
-    packageSize: positive,
+    face: {
+      type: 'string',
+      enum: ['front', 'back'],
+      description: 'Front is left of the trace direction in world XY.',
+    },
+    layers,
+    offset: {
+      ...number,
+      description: 'Gap from stud face to finish in metres, positive outward.',
+    },
+    thickness,
+    height: {
+      ...positive,
+      description:
+        'Metres above wall base, clipped to wall top. Omit for full height.',
+    },
+    wastePercent,
+    packageSize: surfacePackage,
   },
   ['id', 'materialId', 'face', 'layers'],
 );
@@ -81,51 +147,126 @@ export const constructionSchemas = {
   walls: object(
     {
       id: text,
-      geometryId: text,
+      geometryId: pathId,
       levelId: text,
-      baseElevation: number,
-      height: positive,
+      baseElevation: {
+        ...number,
+        description:
+          'Wall base in metres above placement Z plus level elevation.',
+      },
+      height: wallHeight,
       topProfile: object({
         mode: { type: 'string', enum: ['linear', 'step'] },
-        points: array(object({ distance: nonnegative, height: positive })),
+        points: {
+          ...array(object({ distance: station, height: wallHeight })),
+          description:
+            'Profile stations in increasing order, starting at zero.',
+        },
       }),
-      studSpacing: positive,
-      studOffset: nonnegative,
+      studSpacing: {
+        ...positive,
+        description: 'On-centre stud spacing in metres (0.4064 = 16 in).',
+      },
+      studOffset: {
+        ...nonnegative,
+        description: 'Metres along the path to the first regular stud station.',
+      },
       stud: member,
       track: member,
-      bottomAllowance: nonnegative,
-      topAllowance: nonnegative,
+      bottomAllowance: {
+        ...nonnegative,
+        description:
+          'Raise stud and jamb bottoms above wall base by this many metres.',
+      },
+      topAllowance: {
+        ...nonnegative,
+        description: 'Deduct from local stud and jamb top height in metres.',
+      },
       conditions: array(
         object(
           {
             id: text,
-            distance: nonnegative,
+            distance: station,
             kind: { type: 'string', enum: ['end', 'corner', 'junction'] },
-            count: nonnegative,
-            ownerWallId: text,
-            memberOffsets: offsets,
+            count: {
+              ...nonnegative,
+              description:
+                'Number of members replacing the regular stud at this station.',
+            },
+            ownerWallId: {
+              ...text,
+              description:
+                'Wall that generates members for this shared condition.',
+            },
+            memberOffsets: {
+              ...offsets,
+              description:
+                'Centre positions relative to the station, one per member.',
+            },
           },
           ['id', 'distance', 'kind', 'count'],
         ),
       ),
       finishes: array(finish),
-      backing: array(object({ id: text, height: nonnegative, member })),
+      backing: array(
+        object({
+          id: text,
+          height: {
+            ...nonnegative,
+            description: 'Backing centreline above wall base in metres.',
+          },
+          member,
+        }),
+      ),
     },
     ['id', 'geometryId', 'baseElevation', 'studSpacing', 'stud', 'track'],
   ),
   openings: object(
     {
       id: text,
-      wallId: text,
-      distance: nonnegative,
-      width: positive,
-      sill: nonnegative,
-      height: positive,
-      jambCount: nonnegative,
-      jambOffsets: offsets,
-      jamb: member,
-      sillMember: member,
-      headerId: text,
+      wallId: {
+        ...text,
+        description: 'Applied wall ID from construction.inspect.',
+      },
+      distance: {
+        ...nonnegative,
+        description:
+          'Metres along the wall path from its first point to the leading rough opening edge.',
+      },
+      width: {
+        ...positive,
+        description: 'Rough opening width along the wall in metres.',
+      },
+      sill: {
+        ...nonnegative,
+        description:
+          'Rough sill above wall base in metres. Zero for a door at the base.',
+      },
+      height: {
+        ...positive,
+        description: 'Metres from rough sill to rough head.',
+      },
+      jambCount: {
+        ...nonnegative,
+        description: 'Number of jamb members on each side.',
+      },
+      jambOffsets: {
+        ...offsets,
+        description:
+          'One entry per jamb on one side, reused on both sides. From nominal centres just outside each rough edge, positive along moves away from the opening.',
+      },
+      jamb: {
+        ...member,
+        description: 'Jamb section. Defaults to the wall stud.',
+      },
+      sillMember: {
+        ...member,
+        description: 'Sill section for a raised opening.',
+      },
+      headerId: {
+        ...text,
+        description: 'ID of a header detail in this takeoff.',
+      },
     },
     ['id', 'wallId', 'distance', 'width', 'sill', 'height', 'jambCount'],
   ),
@@ -134,63 +275,114 @@ export const constructionSchemas = {
       id: text,
       name: text,
       reference: text,
-      components: array(
-        object(
-          {
-            id: text,
-            role: text,
-            member,
-            startExtension: nonnegative,
-            endExtension: nonnegative,
-            verticalOffset: number,
-            faceOffset: number,
-            sectionRotation: number,
-          },
-          [
-            'id',
-            'role',
-            'member',
-            'startExtension',
-            'endExtension',
-            'verticalOffset',
-            'faceOffset',
-          ],
+      components: {
+        description: 'One or more positioned members spanning the rough head.',
+        ...array(
+          object(
+            {
+              id: text,
+              role: text,
+              member,
+              startExtension: {
+                ...nonnegative,
+                description: 'Metres past the leading rough edge.',
+              },
+              endExtension: {
+                ...nonnegative,
+                description: 'Metres past the trailing rough edge.',
+              },
+              verticalOffset: {
+                ...number,
+                description:
+                  'Member centreline in metres above the rough head.',
+              },
+              faceOffset: {
+                ...number,
+                description: 'Centreline offset along wall normal in metres.',
+              },
+              sectionRotation: rotation,
+            },
+            [
+              'id',
+              'role',
+              'member',
+              'startExtension',
+              'endExtension',
+              'verticalOffset',
+              'faceOffset',
+            ],
+          ),
         ),
-      ),
+      },
     },
     ['id', 'name', 'components'],
   ),
-  levels: object({ id: text, name: text, elevation: number }),
+  levels: object({
+    id: text,
+    name: text,
+    elevation: {
+      ...number,
+      description: 'Vertical datum in metres above sheet placement Z.',
+    },
+  }),
   placements: object({
     id: text,
     sheetId: text,
-    pageOrigin: point,
-    worldOffset: vector,
-    rotation: number,
+    pageOrigin: {
+      ...point,
+      description:
+        'Page coordinates of the point placed at worldOffset, from top left (x right, y down).',
+    },
+    worldOffset: {
+      ...vector,
+      description: 'World position of pageOrigin in metres. Z points up.',
+    },
+    rotation: {
+      ...number,
+      description:
+        'Rotation of the calibrated sheet about world +Z in radians.',
+    },
   }),
   ceilings: object(
     {
       id: text,
-      geometryId: text,
+      geometryId: areaId,
       levelId: text,
-      elevation: number,
-      thickness: positive,
-      wastePercent: nonnegative,
-      packageSize: positive,
+      elevation: {
+        ...number,
+        description:
+          'Finished underside in metres above placement Z plus level elevation.',
+      },
+      thickness,
+      wastePercent,
+      packageSize: surfacePackage,
       grid: object(
         {
           system: { type: 'string', enum: ['2x2', '2x4'] },
-          origin: point,
-          rotation: number,
-          main: member,
-          crossTee4: member,
-          crossTee2: member,
-          wallAngle: member,
+          origin: {
+            ...point,
+            description:
+              'World XY metres at the intersection of a main and a 4 ft cross-tee row.',
+          },
+          rotation: {
+            ...number,
+            description: 'Main runner direction in radians from world +X.',
+          },
+          main: { ...member, description: 'Main runner. Supply stockLength.' },
+          crossTee4: { ...member, description: '4 ft cross tee.' },
+          crossTee2: {
+            ...member,
+            description: '2 ft cross tee required for 2x2.',
+          },
+          wallAngle: {
+            ...member,
+            description: 'Perimeter angle. Supply stockLength.',
+          },
         },
         ['system', 'origin', 'rotation', 'main', 'crossTee4', 'wallAngle'],
       ),
       materialId: text,
-      layers: positive,
+      layers,
     },
     ['id', 'geometryId', 'elevation', 'materialId', 'layers'],
   ),
@@ -252,16 +444,30 @@ const snippet = object({
   id: text,
   name: text,
   sheetId: text,
-  bounds: object({
-    x: nonnegative,
-    y: nonnegative,
-    width: positive,
-    height: positive,
-  }),
-  sources: array(sourceSchema),
-  geometryIds: array(text),
+  bounds: {
+    description:
+      'Crop in page points. x and y locate its top-left corner on the sheet.',
+    ...object({
+      x: nonnegative,
+      y: nonnegative,
+      width: positive,
+      height: positive,
+    }),
+  },
+  sources: {
+    ...array(sourceSchema),
+    description: 'Existing records linked as review evidence.',
+  },
+  geometryIds: {
+    ...array(text),
+    description: 'Geometry to highlight on this sheet.',
+  },
   annotations: array(
-    object({ points: array(point), label: text, color: text }),
+    object({
+      points: array(pagePoint),
+      label: text,
+      color: { ...text, description: 'Six-digit hex color, e.g. #f59e0b.' },
+    }),
   ),
   note: text,
 });
@@ -289,32 +495,86 @@ export const reviewSchema = object({
   ),
 });
 
-function examplePayload(schema: PayloadSchema, key = ''): unknown {
-  if (schema.enum) return schema.enum[0];
-  if (schema.type === 'object')
-    return Object.fromEntries(
-      (schema.required ?? []).map((name) => [
-        name,
-        examplePayload(schema.properties?.[name] ?? {}, name),
-      ]),
-    );
-  if (schema.type === 'array') return [];
-  if (schema.type === 'number') return Math.max(1, schema.minimum ?? 0);
-  if (schema.type === 'boolean') return false;
-  return key === 'color' ? '#f59e0b' : key || 'example';
-}
+const trackExample = {
+  materialId: 'track-3-5-8',
+  width: 0.092075,
+  depth: 0.03175,
+  stockLength: 3.048,
+};
+const putExamples = {
+  walls: {
+    id: 'wall-1',
+    geometryId: 'original-wall-id',
+    baseElevation: 0,
+    height: 3.048,
+    studSpacing: 0.4064,
+    stud: {
+      materialId: 'stud-3-5-8',
+      width: 0.041275,
+      depth: 0.092075,
+      stockLength: 3.048,
+    },
+    track: trackExample,
+  },
+  headers: {
+    id: 'header-1',
+    name: 'Door head track',
+    components: [
+      {
+        id: 'head-track',
+        role: 'head track',
+        member: trackExample,
+        startExtension: 0.0762,
+        endExtension: 0.0762,
+        verticalOffset: 0.015875,
+        faceOffset: 0,
+      },
+    ],
+  },
+  openings: {
+    id: 'opening-1',
+    wallId: 'wall-1',
+    distance: 0.6096,
+    width: 0.9144,
+    sill: 0,
+    height: 2.1336,
+    jambCount: 1,
+    headerId: 'header-1',
+  },
+  levels: { id: 'level-1', name: 'Ground floor', elevation: 0 },
+  placements: {
+    id: 'placement-1',
+    sheetId: 'sheet-1',
+    pageOrigin: { x: 72, y: 144 },
+    worldOffset: { x: 0, y: 0, z: 0 },
+    rotation: 0,
+  },
+  ceilings: {
+    id: 'ceiling-1',
+    geometryId: 'room-1',
+    elevation: 2.7432,
+    materialId: 'gypsum-5-8',
+    layers: 1,
+    thickness: 0.015875,
+  },
+} satisfies {
+  [
+    K in Exclude<keyof ConstructionData, 'materials'>
+  ]: ConstructionData[K][string];
+};
+
 const definition = (
   name: string,
   description: string,
   schema: PayloadSchema,
   mutates: boolean,
-  payload?: unknown,
+  payload: object,
 ): CommandDefinition => ({
   name,
   description,
   schema,
   mutates,
-  examples: [{ name, payload: payload ?? examplePayload(schema) }],
+  examples: [{ name, payload }],
 });
 const kinds: Record<string, Exclude<keyof ConstructionData, 'materials'>> = {
   wall: 'walls',
@@ -330,22 +590,44 @@ export const detailedCommands: CommandDefinition[] = [
     'Copy a project member-run assembly into an independent header detail, then assign its id to an opening. Component offsets are relative to the rough opening head; the assembly path elevation is not copied. This does not add a separate material application.',
     object({ assemblyId: text, id: text, name: text }, ['assemblyId', 'id']),
     true,
+    { assemblyId: 'steel-box-header', id: 'header-1' },
   ),
   definition(
     'wall.fromAssembly',
-    'Apply a live project wall assembly to a trace. Later definition edits update this wall; optional height is a local override. Lengths use metres.',
-    object({ assemblyId: text, geometryId: text, id: text, height: positive }, [
-      'assemblyId',
-      'geometryId',
-      'id',
-    ]),
+    'Apply a project wall template to one path in a new group and assignment. It inherits later template edits.',
+    object(
+      {
+        assemblyId: {
+          ...text,
+          description: 'Project assembly with a wallTemplate.',
+        },
+        geometryId: pathId,
+        id: { ...text, description: 'Applied wall ID used by openings.' },
+        height: wallHeight,
+      },
+      ['assemblyId', 'geometryId', 'id'],
+    ),
     true,
+    {
+      assemblyId: 'steel-wall',
+      geometryId: 'original-wall-id',
+      id: 'wall-1',
+      height: 3.048,
+    },
   ),
   definition(
     'ceiling.fromAssembly',
-    'Apply a live project ceiling assembly to an area trace.',
-    object({ assemblyId: text, geometryId: text, id: text }),
+    'Apply a project ceiling template to one area in a new group and assignment. It inherits grid origin in world XY metres and main direction in radians from world +X.',
+    object({
+      assemblyId: {
+        ...text,
+        description: 'Project assembly with a ceilingTemplate.',
+      },
+      geometryId: areaId,
+      id: { ...text, description: 'Applied ceiling ID.' },
+    }),
     true,
+    { assemblyId: 'ceiling-grid-2x4', geometryId: 'room-1', id: 'ceiling-1' },
   ),
   ...(['wall', 'ceiling'] as const).map((kind) =>
     definition(
@@ -353,18 +635,24 @@ export const detailedCommands: CommandDefinition[] = [
       'Clear local material overrides and inherit the applied assembly settings.',
       object({ id: text }),
       true,
+      { id: `${kind}-1` },
     ),
   ),
   ...Object.entries(kinds).flatMap(([kind, collection]) => [
     definition(
       `${kind}.put`,
-      `Add or replace a ${kind}. Physical lengths use metres; rotations use radians.`,
+      kind === 'wall' || kind === 'ceiling'
+        ? `Supply a complete resolved ${kind}. Creates an assembly and assignment for a new item, or saves local differences for an existing item.`
+        : `Replace the ${kind} record. Omitted optional fields are cleared.`,
       constructionSchemas[collection],
       true,
+      putExamples[collection],
     ),
     definition(
       `${kind}.delete`,
-      `Delete a ${kind} and its dependent references in one Undo step.`,
+      kind === 'header' || kind === 'level'
+        ? `Delete an unused ${kind}. Refuses while referenced.`
+        : `Delete a ${kind} in one undo step.`,
       object({ id: text }),
       true,
       { id: `${kind}-1` },
@@ -383,14 +671,19 @@ export const detailedCommands: CommandDefinition[] = [
       [],
     ),
     false,
+    {},
   ),
   definition(
     'construction.export',
-    'Export individual positioned pieces or material/length summaries as CSV or JSON.',
+    'Return a CSV schedule or the complete construction model as JSON.',
     object(
       {
         format: { type: 'string', enum: ['csv', 'json'] },
-        schedule: { type: 'string', enum: ['pieces', 'lengths', 'materials'] },
+        schedule: {
+          type: 'string',
+          enum: ['pieces', 'lengths', 'materials'],
+          description: 'Only affects CSV. Defaults to individual pieces.',
+        },
       },
       ['format'],
     ),
@@ -399,27 +692,45 @@ export const detailedCommands: CommandDefinition[] = [
   ),
   definition(
     'snippet.put',
-    'Save a highlighted, annotated plan region with source references.',
+    'Replace a saved plan region, its highlights, annotations and source references.',
     snippet,
     true,
+    {
+      id: 'snippet-1',
+      name: 'Wall detail',
+      sheetId: 'sheet-1',
+      bounds: { x: 0, y: 0, width: 144, height: 72 },
+      sources: [{ kind: 'geometry', id: 'original-wall-id' }],
+      geometryIds: ['original-wall-id'],
+      annotations: [],
+      note: 'Check partition detail.',
+    },
   ),
   definition(
     'snippet.delete',
     'Delete a saved plan snippet.',
     object({ id: text }),
     true,
+    { id: 'snippet-1' },
   ),
   definition(
     'review.mark',
     'Set source review status. Reviewing records its current dependencies.',
     mark,
     true,
+    {
+      id: 'review-1',
+      target: { kind: 'geometry', id: 'original-wall-id' },
+      status: 'question',
+      note: 'Confirm partition detail.',
+    },
   ),
   definition(
     'review.inspect',
     'List reviewed, changed, unresolved and unreviewed sources.',
     object({}),
     false,
+    {},
   ),
 ];
 

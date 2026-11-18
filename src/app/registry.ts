@@ -1,5 +1,6 @@
 import {
   commandRegistry,
+  commandIndex,
   assemblySchema,
   type CommandDefinition,
   type PayloadSchema,
@@ -246,28 +247,62 @@ export const applicationCommands = [
   ),
   entry(
     'construction.render',
-    'Render calculated construction as a depth-tested 3D PNG, up to 8192 pixels per side. Use a named view or explicit azimuth/elevation in radians. Returns the resolved camera, page scope, alignment and display mode for Wingman or another export.',
+    'Render a filtered 3D PNG and return its camera and page scope. A named view and explicit azimuth/elevation are mutually exclusive.',
     {
       path: string,
       caption: string,
-      width: { type: 'number', minimum: 64 },
-      height: { type: 'number', minimum: 64 },
-      sheetIds: { type: 'array', items: string },
-      alignment: { type: 'string', enum: ['saved', 'none'] },
+      width: {
+        type: 'number',
+        minimum: 64,
+        description: 'PNG width in pixels, up to 8192.',
+      },
+      height: {
+        type: 'number',
+        minimum: 64,
+        description: 'PNG height in pixels, up to 8192.',
+      },
+      sheetIds: {
+        type: 'array',
+        items: string,
+        description:
+          'Omit for all sheets. An empty array gives an empty scene.',
+      },
+      alignment: {
+        type: 'string',
+        enum: ['saved', 'none'],
+        description:
+          'Use or ignore saved combined transforms for multi-sheet views.',
+      },
       geometryIds: { type: 'array', items: string },
       categories: { type: 'array', items: { type: 'string', nullable: true } },
       levelId: string,
       materialId: string,
       role: string,
-      azimuth: { type: 'number' },
-      elevation: { type: 'number', minimum: -Math.PI / 2 },
+      azimuth: {
+        type: 'number',
+        description:
+          'Camera angle in radians from world +X in the XY plane. Omit view.',
+      },
+      elevation: {
+        type: 'number',
+        minimum: -Math.PI / 2,
+        description:
+          'Camera angle above the XY plane in radians, from -π/2 to π/2. Omit view.',
+      },
       view: {
         type: 'string',
         enum: ['isometric', 'top', 'front', 'back', 'left', 'right'],
+        description: 'Camera preset. Omit azimuth and elevation.',
       },
-      zoom: { type: 'number', minimum: 0.01 },
+      zoom: {
+        type: 'number',
+        minimum: 0.01,
+        description: 'Unitless magnification, default 1.',
+      },
       target: {
         type: 'object',
+        description:
+          'Camera focus in world metres (Z up). Defaults to the filtered model centre.',
         properties: {
           x: { type: 'number' },
           y: { type: 'number' },
@@ -276,7 +311,11 @@ export const applicationCommands = [
         required: ['x', 'y', 'z'],
         additionalProperties: false,
       },
-      span: { type: 'number', minimum: Number.MIN_VALUE },
+      span: {
+        type: 'number',
+        minimum: Number.MIN_VALUE,
+        description: 'World metres across the shorter image axis at zoom 1.',
+      },
       displayMode: { type: 'string', enum: ['solid', 'framing', 'xray'] },
     },
     ['path'],
@@ -299,7 +338,7 @@ export const applicationCommands = [
   ),
   entry(
     'library.put',
-    'Save a global assembly. Existing project copies are unchanged; global edits have no project undo.',
+    'Replace a global assembly, clearing omitted optional fields. Project copies are independent. Global edits have no project undo.',
     {
       assembly: assemblySchema,
       expectedLibraryRevision: { type: 'number', minimum: 0 },
@@ -370,17 +409,32 @@ export const applicationCommands = [
   ),
   entry(
     'sheet.render',
-    'Render a bounded PNG with page/pixel mappings using the workspace renderer.',
+    'Render a sheet region as a PNG. Use this result’s pixelToPage matrix to convert its image pixels to page points.',
     {
       sheetId: string,
       caption: string,
       path: string,
       categories: { type: 'array', items: { type: 'string', nullable: true } },
-      maxDimension: { type: 'number', minimum: 64 },
-      mode: { type: 'string', enum: ['plan', 'takeoff', 'combined'] },
-      highlightIds: { type: 'array', items: string },
+      maxDimension: {
+        type: 'number',
+        minimum: 64,
+        description:
+          'Longest PNG side in pixels, default 2048, capped at 4096.',
+      },
+      mode: {
+        type: 'string',
+        enum: ['plan', 'takeoff', 'combined'],
+        description: 'PDF, takeoff overlay or both (default).',
+      },
+      highlightIds: {
+        type: 'array',
+        items: string,
+        description: 'Geometry IDs to emphasize on this sheet.',
+      },
       bounds: {
         type: 'object',
+        description:
+          'Crop in rotated page points. x and y locate its top-left corner (x right, y down). Omit for the whole sheet.',
         properties: {
           x: { type: 'number' },
           y: { type: 'number' },
@@ -428,3 +482,4 @@ export const applicationCommands = [
 
 /** UI and terminal discovery share the core registry and these native-session entries. */
 export const registry = [...commandRegistry, ...applicationCommands];
+export const cliCommandIndex = commandIndex(registry);

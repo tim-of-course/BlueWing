@@ -112,11 +112,34 @@ export function mergeTakeoff(
   }
 }
 const str = { type: 'string' as const };
-export const takeoffCommands: CommandDefinition[] = [
-  ['takeoff.list', {}, [], false],
-  ['takeoff.inspect', {}, [], false],
+type TakeoffExample = [
+  name: string,
+  description: string,
+  properties: NonNullable<CommandDefinition['schema']['properties']>,
+  required: string[],
+  mutates: boolean,
+  payload: object,
+];
+const definitions: TakeoffExample[] = [
+  [
+    'takeoff.list',
+    'List takeoff IDs, names and kinds in this project.',
+    {},
+    [],
+    false,
+    {},
+  ],
+  [
+    'takeoff.inspect',
+    'Read the selected takeoff’s records. Set envelope takeoffId to inspect a different takeoff.',
+    {},
+    [],
+    false,
+    {},
+  ],
   [
     'takeoff.create',
+    'Create an empty phase or change order. New change orders reference Main.',
     {
       id: str,
       name: str,
@@ -124,27 +147,68 @@ export const takeoffCommands: CommandDefinition[] = [
     },
     ['name', 'kind'],
     true,
+    { id: 'co-id', name: 'Wall replacement', kind: 'change-order' },
   ],
-  ['takeoff.rename', { id: str, name: str }, ['id', 'name'], true],
-  ['takeoff.delete', { id: str }, ['id'], true],
+  [
+    'takeoff.rename',
+    'Rename a takeoff, including Main.',
+    { id: str, name: str },
+    ['id', 'name'],
+    true,
+    { id: 'co-id', name: 'CO 01 - Wall replacement' },
+  ],
+  [
+    'takeoff.delete',
+    'Delete a phase or change order and all its owned work. Main and shared sheets are retained.',
+    { id: str },
+    ['id'],
+    true,
+    { id: 'co-id' },
+  ],
   [
     'takeoff.copyItems',
+    'Copy independent drawing items and their related groups, assignments and construction into the destination takeoff. For this deduction example set envelope takeoffId to "co-id".',
     {
-      sourceTakeoffId: str,
-      geometryIds: { type: 'array', items: str, minItems: 1 },
-      direction: { type: 'string', enum: ['add', 'deduct'] },
+      sourceTakeoffId: {
+        ...str,
+        description: 'Takeoff to copy from. Must differ from the destination.',
+      },
+      geometryIds: {
+        type: 'array',
+        items: str,
+        minItems: 1,
+        description: 'IDs of source traces or markers to copy.',
+      },
+      direction: {
+        type: 'string',
+        enum: ['add', 'deduct'],
+        description:
+          'Contribution of copied assignments. Default add. Deduct requires a change-order destination.',
+      },
     },
     ['sourceTakeoffId', 'geometryIds'],
     true,
+    {
+      sourceTakeoffId: 'main',
+      geometryIds: ['original-wall-id'],
+      direction: 'deduct',
+    },
   ],
-].map(([name, properties, required, mutates]) => ({
-  name,
-  description:
-    'Manage independent named takeoffs. copyItems targets the envelope takeoffId.',
-  schema: { type: 'object', properties, required, additionalProperties: false },
-  mutates,
-  examples: [],
-})) as CommandDefinition[];
+];
+export const takeoffCommands: CommandDefinition[] = definitions.map(
+  ([name, description, properties, required, mutates, payload]) => ({
+    name,
+    description,
+    schema: {
+      type: 'object',
+      properties,
+      required,
+      additionalProperties: false,
+    },
+    mutates,
+    examples: [{ name, payload }],
+  }),
+);
 
 export function manageTakeoff(project: Project, call: CommandCall): unknown {
   const p = (call.payload ?? {}) as Record<string, unknown>;
