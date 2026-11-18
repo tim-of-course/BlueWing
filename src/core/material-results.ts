@@ -147,6 +147,7 @@ export function summarizeMaterials(
       face.materialId,
       face.wastePercent,
       face.packageSize ?? null,
+      face.orderDetail ?? null,
     ]);
     const bucket = buckets.get(key) ?? [];
     bucket.push(face);
@@ -160,7 +161,11 @@ export function summarizeMaterials(
       0,
     );
     const grossArea = faces.reduce((sum, f) => sum + f.grossArea, 0);
-    const amounts = purchaseAmount(grossArea, {
+    const orderArea = faces.reduce(
+      (sum, f) => sum + (f.orderArea ?? f.grossArea),
+      0,
+    );
+    const amounts = purchaseAmount(orderArea, {
       wastePercent: first.wastePercent,
       ...(first.packageSize === undefined
         ? {}
@@ -175,6 +180,13 @@ export function summarizeMaterials(
         ? { grossArea, openingArea: Math.max(0, grossArea - requiredArea) }
         : {}),
       requiredArea,
+      ...(first.packageKind
+        ? {
+            orderArea,
+            packageKind: first.packageKind,
+            orderDetail: present(first.orderDetail),
+          }
+        : {}),
       wastePercent: amounts.wastePercent,
       ...(first.packageSize === undefined
         ? {}
@@ -300,7 +312,13 @@ export function modeledOutputs(
       outputId: `surface/${String(index)}`,
       ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
-      name: `${purchase.finishId ?? 'Ceiling'} installed area`,
+      name: purchase.orderDetail
+        ? purchase.packageKind === 'bags'
+          ? purchase.orderDetail
+          : purchase.materialId.replaceAll(/[-_]/g, ' ') +
+            ', ' +
+            purchase.orderDetail
+        : `${purchase.finishId ?? 'Ceiling'} installed area`,
       unit: 'ft2',
       sources: patches.map((surface) => ({
         geometryId: surface.geometryId ?? '',
@@ -309,6 +327,14 @@ export function modeledOutputs(
         value: surface.area,
       })),
       baseAmount: base,
+      ...(purchase.orderArea === undefined
+        ? {}
+        : { orderArea: purchase.orderArea }),
+      ...(purchase.orderDetail ? { orderDetail: purchase.orderDetail } : {}),
+      ...(purchase.packageKind ? { packageKind: purchase.packageKind } : {}),
+      ...(purchase.packageSize === undefined
+        ? {}
+        : { packageSize: purchase.packageSize }),
       ...(purchase.grossArea === undefined
         ? {}
         : {
@@ -316,9 +342,13 @@ export function modeledOutputs(
             openingArea: purchase.openingArea ?? 0,
           }),
       wastePercent: purchase.wastePercent,
-      wasteAmount: ((purchase.grossArea ?? base) * purchase.wastePercent) / 100,
+      wasteAmount:
+        ((purchase.orderArea ?? purchase.grossArea ?? base) *
+          purchase.wastePercent) /
+        100,
       adjustedAmount:
-        (purchase.grossArea ?? base) * (1 + purchase.wastePercent / 100),
+        (purchase.orderArea ?? purchase.grossArea ?? base) *
+        (1 + purchase.wastePercent / 100),
       packageCount: purchase.packageCount,
       purchasedAmount: purchase.purchasedArea,
       complete: !diagnostics.length,

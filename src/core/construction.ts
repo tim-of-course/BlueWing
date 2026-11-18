@@ -1,5 +1,6 @@
 import type { Geometry, Point, Project } from './types';
 import { kickerStockLength, wholeQuantity } from './purchasing';
+import { sizeFace, type OrderCoverage } from './face-ordering';
 import { polygonArea } from './geometry';
 import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
 import { summarizeMaterials } from './material-results';
@@ -1327,8 +1328,13 @@ export function generateConstruction(
             .flatMap((o) => [o.distance, o.distance + o.width])
             .filter((s) => s > 0 && s < line.length),
         ]);
-        let grossArea = 0;
-        const firstSurface = result.surfaces.length;
+        const sheetHeights =
+          finish.board && finish.board.hangDirection !== 'horizontal'
+            ? project.standardSizes.sheets
+                .filter((s) => s.width === (finish.board?.width ?? 4))
+                .map((s) => s.length + startHeight)
+            : [];
+        let sizeDiagnostic = false;
         let wallAboveStart = false;
         for (let i = 1; i < faceBreaks.length; i++) {
           const a = present(faceBreaks[i - 1]);
@@ -1344,6 +1350,7 @@ export function generateConstruction(
           const boundaries = [
             startHeight,
             topHeight,
+            ...sheetHeights,
             ...active.flatMap((o) => [o.sill, o.sill + o.height]),
           ];
           for (const z of boundaries)
@@ -1355,7 +1362,8 @@ export function generateConstruction(
             const y = present(xs[j]);
             const hx = ha + ((hb - ha) * (x - a)) / (b - a);
             const hy = ha + ((hb - ha) * (y - a)) / (b - a);
-            grossArea +=
+            const firstSurface = result.surfaces.length;
+            const grossArea =
               (((y - x) *
                 (Math.max(0, Math.min(hx, topHeight) - startHeight) +
                   Math.max(0, Math.min(hy, topHeight) - startHeight))) /
@@ -1406,20 +1414,43 @@ export function generateConstruction(
                 ],
               });
             }
+            if (grossArea > 0) {
+              let coverage: OrderCoverage = {};
+              try {
+                coverage = sizeFace(
+                  project.standardSizes,
+                  finish,
+                  y - x,
+                  Math.max(0, Math.min(hx, topHeight) - startHeight),
+                  Math.max(0, Math.min(hy, topHeight) - startHeight),
+                  finish.layers,
+                );
+              } catch (error) {
+                if (!sizeDiagnostic)
+                  diagnostic(
+                    { ...source, finishId: finish.id },
+                    'surface-order-size',
+                    error instanceof Error ? error.message : String(error),
+                  );
+                sizeDiagnostic = true;
+              }
+              (result.faceRequirements ??= []).push({
+                ...source,
+                finishId: finish.id,
+                materialId: finish.materialId,
+                grossArea,
+                wastePercent: finish.wastePercent ?? 0,
+                ...(finish.packageSize === undefined
+                  ? {}
+                  : { packageSize: finish.packageSize }),
+                ...coverage,
+                surfaceIds: result.surfaces
+                  .slice(firstSurface)
+                  .map((s) => s.id),
+              });
+            }
           }
         }
-        if (grossArea > 0)
-          (result.faceRequirements ??= []).push({
-            ...source,
-            finishId: finish.id,
-            materialId: finish.materialId,
-            grossArea,
-            wastePercent: finish.wastePercent ?? 0,
-            ...(finish.packageSize === undefined
-              ? {}
-              : { packageSize: finish.packageSize }),
-            surfaceIds: result.surfaces.slice(firstSurface).map((s) => s.id),
-          });
         if (!wallAboveStart)
           diagnostic(
             { ...source, finishId: finish.id },
@@ -1498,9 +1529,36 @@ export function generateConstruction(
       }
       if (--budget < 0) throw new Error('generation-budget');
       const area = polygonArea(geometry.points) * scale ** 2;
+      const surfaceId = ceiling.id + '/ceiling';
+      if (ceiling.board) {
+        try {
+          (result.faceRequirements ??= []).push({
+            ...source,
+            materialId: ceiling.materialId,
+            grossArea: area * ceiling.layers,
+            wastePercent: ceiling.wastePercent ?? 0,
+            ...sizeFace(
+              project.standardSizes,
+              ceiling,
+              area,
+              1,
+              1,
+              ceiling.layers,
+              true,
+            ),
+            surfaceIds: [surfaceId],
+          });
+        } catch (error) {
+          diagnostic(
+            source,
+            'surface-order-size',
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      }
       result.surfaces.push({
         ...source,
-        id: `${ceiling.id}/ceiling`,
+        id: surfaceId,
         materialId: ceiling.materialId,
         face: 'ceiling',
         layers: ceiling.layers,

@@ -529,9 +529,15 @@ export default function Quantities(props: {
                             )}
                           </dd>
                         </div>
+                        <Show when={output().orderArea !== undefined}>
+                          <div>
+                            <dt>Order area before waste</dt>
+                            <dd>{number(output().orderArea ?? 0)} SF</dd>
+                          </div>
+                        </Show>
                         <Show when={output().packageCount !== null}>
                           <div>
-                            <dt>Packages</dt>
+                            <dt>{output().packageKind ?? 'Packages'}</dt>
                             <dd>{output().packageCount}</dd>
                           </div>
                         </Show>

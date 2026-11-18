@@ -102,6 +102,88 @@ function applied(project: Project) {
   return assignment;
 }
 
+void test('100 LF of two board faces select the ordered heights, sheets and descriptions', () => {
+  for (const [height, hangDirection, area, count, size] of [
+    [9.5, 'vertical', 2000, 50, '4x10'],
+    [9.5, 'horizontal', 2000, 42, '4x12'],
+    [11, 'vertical', 2400, 50, '4x12'],
+    [11, 'horizontal', 2200, 46, '4x12'],
+  ] as const) {
+    const project = fixture('steel-wall', 'path', 100);
+    const finishes = project.recipes['steel-wall']?.wallTemplate?.finishes;
+    assert.ok(finishes);
+    applied(project).wallOverrides = {
+      height,
+      finishes: finishes.map((f) => ({ ...f, board: { hangDirection } })),
+    };
+    const result = calculateProject(project);
+    const orders = result.outputs.filter((o) => o.unit === 'ft2');
+    near(
+      orders.reduce((n, o) => n + (o.orderArea ?? 0), 0),
+      area,
+    );
+    near(
+      orders.reduce((n, o) => n + (o.packageCount ?? 0), 0),
+      count,
+    );
+    for (const row of estiMakerTakeoff(project, result).rows.filter(
+      (r) => r.unit === 'SF',
+    ))
+      assert.ok(row.description.endsWith(size + ' ' + hangDirection));
+  }
+});
+
+void test('batts round to whole feet and bags using the named product or custom coverage', () => {
+  const project = fixture('wall-batt-insulation', 'path', 100);
+  const a = applied(project);
+  a.materialOverrides = { height: 9.5, battProduct: 'R-19 unfaced 16 x 96' };
+  const order = () => calculateProject(project).outputs[0];
+  near(order()?.baseAmount, 950);
+  near(order()?.orderArea, 1000);
+  near(order()?.packageCount ?? undefined, 11);
+  near(order()?.purchasedAmount, 1056);
+  a.materialOverrides.battProduct = 'Custom batt';
+  assert.match(order()?.diagnostics.join(' ') ?? '', /bag coverage/);
+  a.materialOverrides.packageSize = 50;
+  near(order()?.packageCount ?? undefined, 20);
+});
+
+void test('sloped finishes order by sheet bands and overheight vertical finishes report a diagnostic', () => {
+  const project = fixture('steel-wall', 'path', 100);
+  const a = applied(project);
+  a.geometryDetails = {
+    trace: {
+      wall: {
+        topProfile: {
+          mode: 'linear',
+          points: [
+            { distance: 0, height: 9 },
+            { distance: 100, height: 11 },
+          ],
+        },
+      },
+    },
+  };
+  const result = calculateProject(project);
+  const orders = result.outputs.filter((o) => o.unit === 'ft2');
+  near(
+    orders.reduce((n, o) => n + (o.orderArea ?? 0), 0),
+    2200,
+  );
+  assert.deepEqual([...new Set(orders.map((o) => o.orderDetail))].sort(), [
+    '4x10 vertical',
+    '4x12 vertical',
+  ]);
+  a.geometryDetails = {};
+  a.wallOverrides = { height: 17 };
+  assert.match(
+    calculateProject(project)
+      .model.diagnostics.map((d) => d.message)
+      .join(' '),
+    /Hang horizontal or split/,
+  );
+});
+
 function twoWallTypes() {
   const project = fixture('steel-framing', 'path', 6);
   const first = project.recipes['steel-framing'];

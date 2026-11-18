@@ -1,3 +1,8 @@
+import type {
+  FacePackaging,
+  OrderCoverage,
+  SheetChoice,
+} from './face-ordering';
 import type { Point } from './types';
 import type { CeilingGridSpec } from './ceiling-grid';
 import type { MaterialApplication } from './material-layout';
@@ -48,7 +53,7 @@ export interface WallCondition {
   ownerWallId?: string;
   memberOffsets?: MemberOffset[];
 }
-export interface WallFinish {
+export interface WallFinish extends FacePackaging {
   id: string;
   materialId: string;
   face: 'front' | 'back';
@@ -138,6 +143,7 @@ export interface SheetPlacement {
   rotation: number;
 }
 export interface Ceiling extends ConstructionSource {
+  board?: SheetChoice;
   id: string;
   geometryId: string;
   levelId?: string;
@@ -228,14 +234,15 @@ export interface ConstructionPurchase extends ConstructionSource {
   purchasedCount: number;
   packageCount: number | null;
 }
-export interface FaceRequirement extends ConstructionSource {
+export interface FaceRequirement extends ConstructionSource, OrderCoverage {
   materialId: string;
   grossArea: number;
   wastePercent: number;
   packageSize?: number;
   surfaceIds: string[];
 }
-export interface ConstructionSurfacePurchase extends ConstructionSource {
+export interface ConstructionSurfacePurchase
+  extends ConstructionSource, OrderCoverage {
   grossArea?: number;
   openingArea?: number;
   quantityKey?: string;

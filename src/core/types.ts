@@ -140,6 +140,7 @@ export interface AssemblyComponent {
 }
 /** Assemblies extend the existing project recipe records without duplicating calculations. */
 export type Assembly = Recipe;
+import type { OrderCoverage } from './face-ordering';
 import type { StandardSizes } from './standard-sizes';
 export interface AssemblyLibrary {
   version: 5;
@@ -227,7 +228,7 @@ export interface CalculationSource {
   cutLength?: Quantity;
   stockLength?: Quantity;
 }
-export interface CalculationOutput {
+export interface CalculationOutput extends OrderCoverage {
   /** Semantic formula/purchase bucket identity; independent of public output indexes. */
   quantityKey?: string;
   direction?: 'add' | 'deduct';

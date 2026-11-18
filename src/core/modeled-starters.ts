@@ -6,8 +6,6 @@ import type {
 } from './construction-types';
 import type { MaterialTemplate } from './material-layout';
 
-const drywallSheet = 4 * 12;
-
 const member = (
   materialId: string,
   width: number,
@@ -79,11 +77,13 @@ function surface(
       layers: 1,
       thickness: thickness / 12,
       ...(height === undefined ? {} : { height: height / 12 }),
-      ...(category === 'Acoustical ceilings/acoustical work'
-        ? {}
-        : {
-            packageSize: category === 'Drywall hang/finish' ? drywallSheet : 32,
-          }),
+      ...(category === 'Drywall hang/finish' ||
+      id === 'cement-board-wall' ||
+      id === 'gypsum-sheathing-wall'
+        ? { board: { hangDirection: 'vertical' as const } }
+        : category === 'Acoustical ceilings/acoustical work'
+          ? {}
+          : { packageSize: 32 }),
       openings: [],
     },
   );
@@ -104,7 +104,9 @@ function horizontal(
     wastePercent: 5,
     layers: 1,
     thickness: thickness / 12,
-    packageSize: category === 'Drywall hang/finish' ? drywallSheet : 32,
+    ...(category === 'Drywall hang/finish'
+      ? { board: { width: 4, length: 12 } }
+      : { packageSize: 32 }),
   };
   return {
     id,
@@ -269,13 +271,27 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       1,
       'Starts with 1 in thick panels. Trace each panel for visible gaps, or trace continuous treatment for coverage. Installed quantities are area; enter the selected panel coverage for package purchasing. Mounting hardware is separate scope.',
     ),
+    layout(
+      'wall-batt-insulation',
+      'Wall batt insulation',
+      'Insulation',
+      'Enter the insulated height and select the specified batt product. Order through openings up to the next whole foot and round to whole bags.',
+      {
+        kind: 'path-surface',
+        elevation: 0,
+        materialId: 'wall-batt-insulation',
+        battProduct: 'R-11 unfaced 16 x 96',
+        layers: 1,
+        wastePercent: 0,
+      },
+    ),
     surface(
       'drywall-wall-surface',
       'Drywall wall finish',
       'Drywall hang/finish',
       'drywall-5-8-unspecified',
       0.625,
-      'Starts with 5/8 in board and editable 4x12 sheet coverage. Use separate assignments for different board products.',
+      'Starts with 5/8 in board and vertical sheets selected by finish height. Use separate assignments for different board products.',
     ),
     horizontal(
       'drywall-ceiling',
@@ -300,7 +316,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Sheathing/FRP',
       'gypsum-sheathing-5-8-unspecified',
       0.625,
-      'Starts with 5/8 in gypsum sheathing and editable 4x8 sheet coverage. Enter the specified sheathing product and thickness.',
+      'Starts with 5/8 in gypsum sheathing hung vertically. Enter the specified sheathing product and thickness.',
     ),
     surface(
       'cement-board-wall',
@@ -308,7 +324,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Sheathing/FRP',
       'cement-board-1-2-unspecified',
       0.5,
-      'Starts with 1/2 in cement board. Change package coverage to the selected board size; the editable starter is 4x8.',
+      'Starts with 1/2 in cement board. Sheet length follows the finish height for vertical hanging.',
     ),
     horizontal(
       'plywood-deck',

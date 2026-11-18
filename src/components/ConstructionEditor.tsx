@@ -91,6 +91,7 @@ export function ConstructionFields(props: {
     else next[key] = value;
     props.onChange(next);
   };
+  const battList = 'batts-' + crypto.randomUUID();
   const choices = (key: string) => {
     if (
       key !== 'geometryId' &&
@@ -214,17 +215,38 @@ export function ConstructionFields(props: {
                             }}
                           />
                         ) : (
-                          <input
-                            value={scalarText(value())}
-                            onInput={(e) => {
-                              set(
-                                key,
-                                e.currentTarget.value === '' && !required()
-                                  ? undefined
-                                  : e.currentTarget.value,
-                              );
-                            }}
-                          />
+                          <>
+                            <input
+                              list={
+                                key === 'battProduct' ? battList : undefined
+                              }
+                              value={scalarText(value())}
+                              onInput={(e) => {
+                                set(
+                                  key,
+                                  e.currentTarget.value === '' && !required()
+                                    ? undefined
+                                    : e.currentTarget.value,
+                                );
+                              }}
+                            />
+                            <Show when={key === 'battProduct'}>
+                              <datalist id={battList}>
+                                <For
+                                  each={
+                                    props.controller.project()?.standardSizes
+                                      .batts
+                                  }
+                                >
+                                  {(b) => (
+                                    <option value={b.name}>
+                                      {b.coverage} SF per bag
+                                    </option>
+                                  )}
+                                </For>
+                              </datalist>
+                            </Show>
+                          </>
                         )
                       }
                     >
