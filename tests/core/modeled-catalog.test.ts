@@ -314,11 +314,19 @@ void test('change order packs additions and deductions before applying their sig
   );
 });
 
-function linked(result: CalculationResult) {
+function linked(result: CalculationResult, wires = 0) {
   assert.equal(result.complete, true, JSON.stringify(result.model.diagnostics));
-  assert.equal(result.coverage.complete, true);
-  assert.equal(result.coverage.estimateOutputs, 0);
-  const sources = result.outputs.flatMap((output) => output.sources);
+  assert.equal(result.coverage.complete, !wires);
+  assert.equal(result.coverage.estimateOutputs, wires ? 1 : 0);
+  if (wires)
+    assert.equal(
+      result.outputs.find((output) => output.outputId === 'hanger-wire')
+        ?.purchasedAmount,
+      wires,
+    );
+  const sources = result.outputs
+    .filter((output) => output.modeling === 'modeled')
+    .flatMap((output) => output.sources);
   assert.equal(
     sources.length,
     result.model.pieces.length + result.model.surfaces.length,
@@ -920,11 +928,10 @@ void test('horizontal finishes report their measured surfaces and furring report
     linked(result);
     assert.equal(result.model.pieces.length, 0);
     // 64 SF × 1.05 = 67.2 SF, rounded to three 32 SF packages.
-    near(result.outputs[0]?.purchasedAmount, 96);
-    near(
-      result.outputs.reduce((sum, output) => sum + output.baseAmount, 0),
-      64,
-    );
+    const surfaces = result.outputs.filter((output) => output.unit === 'ft2');
+    assert.equal(surfaces.length, 1);
+    near(surfaces[0]?.purchasedAmount, 96);
+    near(surfaces[0]?.baseAmount, 64);
   }
   const furring = calculateProject(fixture('steel-furring', 'area'));
   linked(furring);

@@ -873,8 +873,8 @@ export function validateAssembly(input: unknown): asserts input is Recipe {
   if (entry.wallTemplate || entry.ceilingTemplate || entry.materialTemplate) {
     if (
       entry.components ||
-      entry.inputs.length ||
-      entry.outputs.length ||
+      (!entry.ceilingTemplate &&
+        (entry.inputs.length || entry.outputs.length)) ||
       entry.geometryKinds.length !== 1 ||
       entry.geometryKinds[0] !==
         (entry.wallTemplate
@@ -890,13 +890,13 @@ export function validateAssembly(input: unknown): asserts input is Recipe {
       ].filter(Boolean).length !== 1
     )
       throw new Error(
-        'Modeled assemblies need one material definition, matching geometry, empty inputs and outputs, and no formula system components',
+        'Modeled assemblies need one material definition, matching geometry and no system components. Only ceilings support additional formula estimates.',
       );
     if (entry.wallTemplate) validateWallTemplate(entry.wallTemplate);
     if (entry.ceilingTemplate) validateCeilingTemplate(entry.ceilingTemplate);
     if (entry.materialTemplate)
       validateMaterialTemplate(entry.materialTemplate);
-    return;
+    if (!entry.inputs.length && !entry.outputs.length) return;
   }
   const names = new Set<string>();
   for (const field of entry.inputs) {

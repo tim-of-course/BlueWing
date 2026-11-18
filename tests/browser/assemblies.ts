@@ -269,6 +269,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   for (const [material, amount] of [
     ['ceiling-tile-2x2-unspecified', '360 ft²'],
     ['ceiling-tee-2ft-unspecified', '45 ea'],
+    ['hanger-wire-12ga', '23 ea'],
     ['ceiling-tee-4ft-unspecified', '45 ea'],
     ['ceiling-main-12ft-unspecified', '8 ea'],
     ['ceiling-wall-angle-12ft-unspecified', '7 ea'],
@@ -359,6 +360,7 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
   for (const [material, amount] of [
     ['ceiling-tile-2x2-unspecified', '100.8 ft²'],
     ['ceiling-main-12ft-unspecified', "24'"],
+    ['hanger-wire-12ga', '6 ea'],
     ['ceiling-tee-4ft-unspecified', "44'"],
     ['ceiling-tee-2ft-unspecified', "26'"],
     ['ceiling-wall-angle-12ft-unspecified', "60'"],

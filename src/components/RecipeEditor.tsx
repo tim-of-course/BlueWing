@@ -762,7 +762,7 @@ export default function RecipeEditor(props: {
             <Show
               when={
                 !recipe().wallTemplate &&
-                !recipe().ceilingTemplate &&
+                (!recipe().ceilingTemplate || recipe().outputs.length > 0) &&
                 !recipe().materialTemplate
               }
             >
@@ -770,7 +770,7 @@ export default function RecipeEditor(props: {
                 Formula estimates calculate quantities without placing materials
                 in 3D.
               </p>
-              <fieldset disabled={saving()}>
+              <fieldset disabled={saving() || !!recipe().ceilingTemplate}>
                 <legend>Compatible geometry</legend>
                 <div class="button-row">
                   <For each={kinds}>

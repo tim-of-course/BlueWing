@@ -315,7 +315,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'ceiling-tile-unspecified',
       0.625,
       9,
-      'For tile-only work. Starts with 5/8 in tile thickness and a 9 ft underside. Package coverage defaults to 32 sq ft; set the chosen carton coverage. Use the 2x2 or 2x4 ceiling layout when the grid is also in scope.',
+      'For tile-only work, with no hanger wire. Starts with 5/8 in tile thickness and a 9 ft underside. Package coverage defaults to 32 sq ft; set the chosen carton coverage. Use the 2x2 or 2x4 ceiling layout when the grid is also in scope.',
     ),
   ];
 }
