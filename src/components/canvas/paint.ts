@@ -1,5 +1,5 @@
 import type { Geometry } from '../../core/types';
-import { offsetStroke } from '../../core/category-strokes';
+import { offsetStroke, stripeScale } from '../../core/category-strokes';
 
 export interface PaintTakeoffOptions {
   selectedIds?: string[];
@@ -168,14 +168,15 @@ function paintCategoryTrace(
     }
     context.setLineDash(dash);
   } else {
+    const stripe = pixel * stripeScale(pixel);
     colors.forEach((color, index) => {
-      const offset = (index - (colors.length - 1) / 2) * 5 * pixel;
+      const offset = (index - (colors.length - 1) / 2) * 5 * stripe;
       path(offsetStroke(geometry.points, offset, closed));
       context.strokeStyle = '#ffffff';
-      context.lineWidth = 5 * pixel;
+      context.lineWidth = 5 * stripe;
       context.stroke();
       context.strokeStyle = color;
-      context.lineWidth = 3 * pixel;
+      context.lineWidth = 3 * stripe;
       context.stroke();
     });
   }
