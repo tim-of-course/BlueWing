@@ -395,6 +395,7 @@ export default function GroupInspector(props: Props) {
                             'baseElevation',
                             'levelId',
                             'studSpacing',
+                            'kickers',
                             'topAllowance',
                             'bottomAllowance',
                           ])}
@@ -405,10 +406,10 @@ export default function GroupInspector(props: Props) {
                               : assignment()?.wallOverrides),
                           }}
                           inherited={{
-                            ...recipe()?.wallTemplate,
-                            ...(inputTarget()
-                              ? assignment()?.wallOverrides
-                              : {}),
+                            ...mergeMaterialSettings(
+                              recipe()?.wallTemplate,
+                              inputTarget() ? assignment()?.wallOverrides : {},
+                            ),
                           }}
 
                           parent="walls"

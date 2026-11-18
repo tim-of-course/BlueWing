@@ -35,7 +35,7 @@ function baseProject(): Project {
         owned: {},
       },
     },
-    formatVersion: 7,
+    formatVersion: 8,
     id: 'reuse-project',
     name: 'Calculation reuse',
     revision: 0,

@@ -160,6 +160,79 @@ function linked(result: CalculationResult, wires = 0) {
     );
 }
 
+void test('optional steel wall kickers rise at 45 degrees and share packed stock', () => {
+  for (const id of ['steel-framing', 'steel-wall']) {
+    const recipe = starter(id);
+    const wall = recipe.wallTemplate;
+    assert.ok(wall?.kickers);
+    wall.height = 10;
+    const project = fixture(recipe);
+    const order = () => calculateProject(project);
+    assert.equal(
+      order().model.pieces.some((piece) => piece.role === 'kicker'),
+      false,
+    );
+    const assignment = project.assignments.applied;
+    assert.ok(assignment);
+    assignment.wallOverrides = { kickers: { enabled: true } };
+    assert.equal(order().model.diagnostics[0]?.code, 'missing-kicker-length');
+    assignment.wallOverrides.kickers = { enabled: true, cutLength: 4 };
+    const result = order();
+    linked(result);
+    const pieces = result.model.pieces.filter(
+      (piece) => piece.role === 'kicker',
+    );
+    assert.deepEqual(
+      pieces.map((piece) => piece.start.x),
+      [0, 6, 12, 18],
+    );
+    for (const piece of pieces) {
+      near(piece.start.z, 10);
+      near(piece.end.z - piece.start.z, 4 / Math.SQRT2);
+      near(
+        Math.hypot(piece.end.x - piece.start.x, piece.end.y - piece.start.y),
+        4 / Math.SQRT2,
+      );
+      near(piece.cutLength, 4);
+      assert.equal(piece.materialId, 'steel-kicker-3-5-8-20eq');
+    }
+    const purchase = result.model.purchases.find(
+      (row) => row.role === 'kicker',
+    );
+    assert.equal(purchase?.packedCount, 2);
+    assert.equal(purchase.purchasedCount, 3);
+    assert.equal(purchase.wastePercent, 5);
+    for (const [cutLength, stock] of [
+      [6, 12],
+      [9, 9],
+      [3, 9],
+      [7.5, 8],
+    ] as const) {
+      assignment.wallOverrides.kickers.cutLength = cutLength;
+      const row = order().model.purchases.find(
+        (item) => item.role === 'kicker',
+      );
+      assert.equal(row?.stockLength, stock);
+      if (cutLength === 3) near(row.purchasedLength, 27);
+    }
+    assignment.wallOverrides.kickers.member = { stockLength: 16 };
+    assert.equal(
+      order().model.purchases.find((row) => row.role === 'kicker')?.stockLength,
+      16,
+    );
+    assignment.wallOverrides.kickers = { enabled: true, cutLength: 21 };
+    assert.ok(
+      order().model.diagnostics.some((d) => d.code === 'stock-shortfall'),
+    );
+    assignment.wallOverrides.kickers.cutLength = 4;
+    assignment.wallOverrides.kickers.spacing = 10;
+    assert.equal(
+      order().model.pieces.filter((piece) => piece.role === 'kicker').length,
+      3,
+    );
+  }
+});
+
 void test('modeled wall reports exactly the positioned studs, tracks and finish surfaces', () => {
   const project = fixture(wall());
   const result = calculateProject(project);

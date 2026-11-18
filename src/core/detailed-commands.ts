@@ -178,6 +178,22 @@ export const constructionSchemas = {
       },
       stud: member,
       track: member,
+      kickers: object(
+        {
+          enabled: { type: 'boolean' },
+          spacing: {
+            ...positive,
+            description: 'On-centre kicker spacing along the wall in feet.',
+          },
+          cutLength: {
+            ...positive,
+            description:
+              'Length of one diagonal kicker in feet. Required when enabled.',
+          },
+          member,
+        },
+        ['enabled', 'spacing', 'member'],
+      ),
       bottomAllowance: {
         ...nonnegative,
         description:

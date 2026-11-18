@@ -107,6 +107,17 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByRole('group', { name: 'Track', exact: true })
     .getByLabel('Material Id', { exact: true })
     .fill('362T125-33');
+  await editor
+    .getByRole('button', { name: 'Add kickers', exact: true })
+    .click();
+  const kickers = editor.getByRole('group', { name: 'Kickers', exact: true });
+  await kickers.getByRole('checkbox', { name: 'Enabled' }).check();
+  await expect(kickers.getByLabel('Spacing', { exact: true })).toHaveValue(
+    "6'",
+  );
+  await kickers
+    .getByLabel('Cut Length (optional)', { exact: true })
+    .fill('4\' 6"');
   const finishes = editor.getByRole('group', { name: 'Finishes', exact: true });
   await finishes
     .getByRole('button', { name: 'Add finishes item', exact: true })
@@ -171,6 +182,9 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByRole('button', { name: 'Piece schedule', exact: true })
     .click();
   await expect(editor).toContainText('positioned pieces');
+  await expect(editor.getByRole('table')).toContainText(
+    'steel-kicker-3-5-8-20eq',
+  );
   await expect(editor.getByRole('table')).toContainText('362S162-33');
   await editor.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();

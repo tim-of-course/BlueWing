@@ -92,7 +92,7 @@ void test('notes save atomically, retain cache/review, and share history', async
   assert.throws(() => {
     validateProject({ ...project, formatVersion: 3 });
   }, /Unsupported/);
-  for (const formatVersion of [5, 6])
+  for (const formatVersion of [5, 6, 7])
     assert.throws(() => {
       validateProject({ ...project, formatVersion });
     }, /Unsupported/);

@@ -91,7 +91,7 @@ void test('wall definitions stay independent from the library while applied wall
   wall.stud.width = 0.1;
   assert.equal(assembly.wallTemplate.stud.width, 0.04);
   validateLibrary({
-    version: 3,
+    version: 4,
     revision: 0,
     assemblies: { template: assembly },
   });
@@ -100,7 +100,7 @@ void test('wall definitions stay independent from the library while applied wall
     name: 'assembly.put',
     payload: imported,
   }).project;
-  assert.equal(next.formatVersion, 7);
+  assert.equal(next.formatVersion, 8);
   next = executeCommand(next, {
     name: 'wall.fromAssembly',
     payload: { assemblyId: 'imported', id: 'first', geometryId: 'a' },
@@ -258,7 +258,7 @@ void test('template validation applies to commands, library and persisted projec
     });
     assert.throws(() => {
       validateLibrary({
-        version: 3,
+        version: 4,
         revision: 0,
         assemblies: { template: invalid },
       });

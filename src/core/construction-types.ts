@@ -19,6 +19,13 @@ export interface MemberSpec {
   wastePercent?: number;
   packageSize?: number;
 }
+export interface WallKickers {
+  enabled: boolean;
+  spacing: number;
+  cutLength?: number;
+  member: MemberSpec;
+}
+
 export interface HeightPoint {
   distance: number;
   height: number;
@@ -73,6 +80,7 @@ export interface Wall extends ConstructionSource {
   studOffset?: number;
   stud: MemberSpec;
   track: MemberSpec;
+  kickers?: WallKickers;
   /** Exact vertical offset above wall base for stud/jamb bottoms; defaults to zero. */
   bottomAllowance?: number;
   /** Exact vertical deduction from local top height, also on slopes; defaults to zero. */
