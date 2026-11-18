@@ -8,6 +8,9 @@ export function quantityChanges(
     JSON.stringify([
       total.materialId,
       total.category,
+      total.orderDetail,
+      total.packageSize,
+      total.wastePercent,
       total.unit,
       total.stockLength,
       total.cutLength,
@@ -28,6 +31,7 @@ export function quantityChanges(
           {
             materialId: (b ?? a)?.materialId,
             category: (b ?? a)?.category,
+            orderDetail: (b ?? a)?.orderDetail,
             unit: (b ?? a)?.unit,
             stockLength: (b ?? a)?.stockLength,
             before: a?.amount ?? 0,

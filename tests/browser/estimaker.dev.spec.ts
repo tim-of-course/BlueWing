@@ -123,19 +123,21 @@ test('Quantities and CLI share purchased footage and count rows; source/review n
       if (!path) throw new Error('Missing CLI download');
       expect(reply.response.data).toEqual({
         path: downloaded.suggestedFilename(),
-        rowCount: 3,
+        rowCount: 4,
         missingQuantityRowCount: 1,
       });
       const command = JSON.parse(
         await readFile(path, 'utf8'),
       ) as TakeoffEnvelope;
       expect({ ...command, exportedAt: ui.exportedAt }).toEqual(ui);
+      expect(ui.rows[1]?.subItem.label).toBe('Rounding');
+      expect(ui.rows[1]?.quantity).toBe(0);
       expect(ui.rows[0]?.quantity).toBeCloseTo(150);
-      expect(ui.rows[1]?.quantity).toBe(3);
-      expect(ui.rows[1]?.unit).toBe('count');
-      expect(ui.rows[2]?.description).toBe('5/8 Gyp (missing quantity)');
-      expect(ui.rows[2]?.quantity).toBe(0);
-      expect(ui.rows[2]?.unit).toBe('SF');
+      expect(ui.rows[2]?.quantity).toBe(3);
+      expect(ui.rows[2]?.unit).toBe('count');
+      expect(ui.rows[3]?.description).toBe('5/8 Gyp (missing quantity)');
+      expect(ui.rows[3]?.quantity).toBe(0);
+      expect(ui.rows[3]?.unit).toBe('SF');
       expect((await cli(page, 'quantities.exportEstiMaker')).exitCode).toBe(1);
       expect(
         (await cli<Project>(page, 'project.inspect')).response.data,

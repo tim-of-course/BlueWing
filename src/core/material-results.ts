@@ -39,6 +39,15 @@ function provenance(source: ConstructionSource): ConstructionSource {
   );
 }
 
+function sharedSource(items: ConstructionSource[]) {
+  const first = present(items[0]);
+  const owner = provenance(first);
+  for (const key of Object.keys(owner) as (keyof ConstructionSource)[])
+    if (items.some((item) => item[key] !== first[key]))
+      Reflect.deleteProperty(owner, key);
+  return owner;
+}
+
 /** The records consumed by the renderer are the sole installed quantity source. */
 export function summarizeMaterials(
   project: Project,
@@ -56,13 +65,9 @@ export function summarizeMaterials(
       piece.end.z - piece.start.z,
     );
     const key = JSON.stringify([
-      piece.stockLength === undefined
-        ? (piece.assignmentId ?? piece.wallId ?? piece.ceilingId)
-        : [
-            'stock',
-            piece.direction,
-            project.recipes[piece.recipeId ?? '']?.category ?? '',
-          ],
+      piece.stockLength === undefined ? 'cut' : 'stock',
+      piece.direction,
+      project.recipes[piece.recipeId ?? '']?.category ?? '',
       piece.materialId,
       piece.stockLength ?? piece.cutLength,
       piece.wastePercent ?? 0,
@@ -92,11 +97,7 @@ export function summarizeMaterials(
       },
       true,
     );
-    // Only identities shared by every contributing piece describe the order.
-    const owner = provenance(first);
-    for (const key of Object.keys(owner) as (keyof ConstructionSource)[])
-      if (pieces.some((piece) => piece[key] !== first[key]))
-        Reflect.deleteProperty(owner, key);
+    const owner = sharedSource(pieces);
     result.purchases.push({
       quantityKey: JSON.stringify(['members', key]),
       ...owner,
@@ -142,8 +143,8 @@ export function summarizeMaterials(
   const buckets = new Map<string, FaceRequirement[]>();
   for (const face of requirements) {
     const key = JSON.stringify([
-      face.assignmentId ?? face.wallId ?? face.ceilingId,
-      face.finishId ?? 'ceiling',
+      project.assignments[face.assignmentId ?? '']?.direction ?? 'add',
+      project.recipes[face.recipeId ?? '']?.category ?? '',
       face.materialId,
       face.wastePercent,
       face.packageSize ?? null,
@@ -171,12 +172,28 @@ export function summarizeMaterials(
         ? {}
         : { packageSize: first.packageSize }),
     });
+    const groups = new Map<string, number>();
+    for (const face of faces) {
+      const group = face.groupId ?? '';
+      groups.set(
+        group,
+        (groups.get(group) ?? 0) +
+          (face.orderArea ?? face.grossArea) * (1 + face.wastePercent / 100),
+      );
+    }
     result.surfacePurchases.push({
       quantityKey: JSON.stringify(['surface', key]),
-      ...provenance(first),
+      ...sharedSource(faces),
+      category: project.recipes[first.recipeId ?? '']?.category ?? '',
+      direction:
+        project.assignments[first.assignmentId ?? '']?.direction ?? 'add',
+      groupRequirements: [...groups].map(([groupId, amount]) => ({
+        groupId,
+        amount,
+      })),
       materialId: first.materialId,
       surfaceIds,
-      ...(first.finishId
+      ...(faces.some((f) => f.finishId)
         ? { grossArea, openingArea: Math.max(0, grossArea - requiredArea) }
         : {}),
       requiredArea,
@@ -255,6 +272,10 @@ export function modeledOutputs(
       modeling: 'modeled',
       outputId: `members/${String(index)}`,
       direction: purchase.direction ?? 'add',
+      category: project.recipes[first.recipeId ?? '']?.category ?? '',
+      ...(purchase.packageSize === undefined
+        ? {}
+        : { packageSize: purchase.packageSize }),
       ...(purchase.packedCount === undefined
         ? {}
         : {
@@ -309,6 +330,11 @@ export function modeledOutputs(
     outputs.push({
       ...identity(purchase),
       modeling: 'modeled',
+      direction: purchase.direction ?? 'add',
+      category: purchase.category ?? '',
+      ...(purchase.groupRequirements
+        ? { groupRequirements: purchase.groupRequirements }
+        : {}),
       outputId: `surface/${String(index)}`,
       ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
@@ -321,6 +347,7 @@ export function modeledOutputs(
         : `${purchase.finishId ?? 'Ceiling'} installed area`,
       unit: 'ft2',
       sources: patches.map((surface) => ({
+        ...identity(surface),
         geometryId: surface.geometryId ?? '',
         surfaceId: surface.id,
         inputs: { layers: surface.layers },

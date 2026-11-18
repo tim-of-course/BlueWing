@@ -1,3 +1,4 @@
+import { orderGroups } from './material-orders';
 import { convertQuantity } from './geometry';
 import type { CalculationSnapshot } from './calculation-state';
 import type { LengthUnit, Project, Quantity } from './types';
@@ -19,6 +20,7 @@ export interface QuantitySourceIdentity {
   materialId: string | null;
 }
 export interface QuantitySourceRef {
+  outputId?: string;
   assignmentId?: string | null;
   groupId?: string | null;
   recipeId?: string | null;
@@ -27,7 +29,7 @@ export interface QuantitySourceRef {
   pieceId: string | null;
   surfaceId: string | null;
 }
-export interface TakeoffRow {
+export interface OrderRow {
   direction: 'add' | 'deduct';
   grossQuantity: number;
   lineId: string;
@@ -57,6 +59,12 @@ export interface TakeoffRow {
     modelingStatus: Output['modeling'];
   };
 }
+export interface TakeoffRow extends OrderRow {
+  orderId: string;
+  orderQuantity: number;
+  subItem: { kind: 'group' | 'rounding'; label: string };
+  packageQuantity?: number;
+}
 /** Producer issues for Bluewing's UI; these never become imported placeholder items. */
 export interface QuantityIssue {
   direction: 'add' | 'deduct';
@@ -85,7 +93,7 @@ export interface QuantityIssue {
 }
 export interface TakeoffEnvelope {
   kind: 'bluewing.takeoff';
-  version: 2;
+  version: 3;
   takeoff: Pick<Takeoff, 'id' | 'name' | 'kind'>;
   project: { id: string; name: string; revision: string };
   exportedAt: string;
@@ -157,25 +165,23 @@ export function presentQuantities(
         output.modeling === 'unresolved' ? null : output.materialId || null,
     };
     const sourceRefs = output.sources.map((entry): QuantitySourceRef => ({
-      ...(output.packedCount === undefined
-        ? {}
-        : {
-            groupId: entry.groupId || null,
-            recipeId: entry.recipeId || null,
-            assignmentId: entry.assignmentId || null,
-          }),
+      ...(entry.outputId ? { outputId: entry.outputId } : {}),
+      groupId: entry.groupId ?? (output.groupId || null),
+      assignmentId: entry.assignmentId ?? (output.assignmentId || null),
+      recipeId: entry.recipeId ?? (output.recipeId || null),
       geometryId: entry.geometryId || null,
       sheetId: project.geometries[entry.geometryId]?.sheetId ?? null,
       pieceId: entry.pieceId ?? null,
       surfaceId: entry.surfaceId ?? null,
     }));
     const lineId = output.quantityKey
-      ? `bwq2:${encodeURIComponent(takeoff.id)}:${encodeURIComponent(output.quantityKey)}`
+      ? `bwq3:${encodeURIComponent(takeoff.id)}:${encodeURIComponent(output.quantityKey)}`
       : null;
     const skip = (code: QuantityIssue['code'], reason: string) => ({
       output,
       ...label,
       row: null,
+      subItems: [] as TakeoffRow[],
       issue: {
         direction,
         lineId,
@@ -267,7 +273,7 @@ export function presentQuantities(
           : output.unit === 'ea' && !dimensionedPiece
             ? 'count'
             : 'LF';
-      const row: TakeoffRow = {
+      const row: OrderRow = {
         direction,
         grossQuantity: 0,
         lineId,
@@ -285,7 +291,13 @@ export function presentQuantities(
           modelingStatus: output.modeling,
         },
       };
-      return { output, ...label, row, issue: null };
+      return {
+        output,
+        ...label,
+        row,
+        subItems: orderLines(project, output, row),
+        issue: null,
+      };
     }
     if (
       !output.complete ||
@@ -370,7 +382,10 @@ export function presentQuantities(
         'invalid-quantity',
         'Converted purchased quantity is not finite.',
       );
-    const row: TakeoffRow = {
+    const row: OrderRow = {
+      ...(output.packageCount !== null && !dimensionedPiece
+        ? { pieceCount: output.packageCount }
+        : {}),
       direction,
       grossQuantity: quantity,
       lineId,
@@ -405,14 +420,114 @@ export function presentQuantities(
               wasteAmount: output.wasteAmount,
               packageCount: output.packageCount,
             }),
+        ...(output.packageSize === undefined
+          ? {}
+          : {
+              packageSize: output.packageSize,
+              packageCount: output.packageCount,
+            }),
         originalUnit: output.unit,
         ...(physicalLengthSource ? { physicalLengthSource } : {}),
         sourceRefs,
         modelingStatus: output.modeling,
       },
     };
-    return { output, ...label, row, issue: null };
+    return {
+      output,
+      ...label,
+      row,
+      subItems: orderLines(project, output, row),
+      issue: null,
+    };
   });
+}
+
+function orderLines(
+  project: Project,
+  output: Output,
+  row: OrderRow,
+): TakeoffRow[] {
+  const factor = row.pieceLength
+    ? (lengthInFeet(row.pieceLength) ?? 0)
+    : output.unit === 'in'
+      ? 1 / 12
+      : 1;
+  const refsByGroup = new Map<string, QuantitySourceRef[]>();
+  for (const ref of row.provenance.sourceRefs) {
+    const group = ref.groupId ?? output.groupId;
+    const refs = refsByGroup.get(group) ?? [];
+    refs.push(ref);
+    refsByGroup.set(group, refs);
+  }
+  const line = (
+    kind: 'group' | 'rounding',
+    groupId: string | null,
+    label: string,
+    grossQuantity: number,
+  ): TakeoffRow => {
+    const refs = groupId === null ? [] : (refsByGroup.get(groupId) ?? []);
+    const common = (key: 'assignmentId' | 'recipeId') =>
+      refs.length
+        ? refs.every((r) => r[key] === refs[0]?.[key])
+          ? (refs[0]?.[key] ?? null)
+          : null
+        : kind === 'group'
+          ? row.source[key]
+          : null;
+    return {
+      ...row,
+      orderId: row.lineId,
+      orderQuantity: row.grossQuantity,
+      lineId:
+        row.lineId + ':' + encodeURIComponent(JSON.stringify([kind, groupId])),
+      subItem: { kind, label },
+      grossQuantity,
+      quantity:
+        row.direction === 'deduct' && grossQuantity !== 0
+          ? -grossQuantity
+          : grossQuantity,
+      ...(output.packageSize && !output.role
+        ? { packageQuantity: grossQuantity / (output.packageSize * factor) }
+        : {}),
+      source: {
+        ...row.source,
+        groupId,
+        groupLabel: kind === 'group' ? label : null,
+        assignmentId: common('assignmentId'),
+        recipeId: common('recipeId'),
+      },
+      provenance: { ...row.provenance, sourceRefs: refs },
+    };
+  };
+  const groups = orderGroups(output);
+  const rows = groups.map((g) =>
+    line(
+      'group',
+      g.groupId || null,
+      project.groups[g.groupId]?.name ?? g.groupId,
+      row.provenance.originalAmount === null ? 0 : g.amount * factor,
+    ),
+  );
+  if (
+    row.provenance.originalAmount !== null &&
+    (output.packageSize !== undefined || !!output.role)
+  ) {
+    const delta =
+      row.grossQuantity - rows.reduce((n, r) => n + r.grossQuantity, 0);
+    const rounding =
+      Math.abs(delta) <= Number.EPSILON * Math.max(1, row.grossQuantity) * 32
+        ? 0
+        : delta;
+    rows.push(
+      line(
+        'rounding',
+        null,
+        output.stockLength ? 'Offcuts, waste and rounding' : 'Rounding',
+        rounding,
+      ),
+    );
+  }
+  return rows;
 }
 
 export function estiMakerTakeoff(
@@ -429,12 +544,12 @@ export function estiMakerTakeoff(
     throw new Error(
       `Cannot export to EstiMaker: ${issues.map((issue) => `${issue.description}: ${issue.reason}`).join('; ')}`,
     );
-  const rows = entries.flatMap((entry) => (entry.row ? [entry.row] : []));
+  const rows = entries.flatMap((entry) => entry.subItems);
   if (new Set(rows.map((row) => row.lineId)).size !== rows.length)
     throw new Error('EstiMaker export contains duplicate line identities.');
   return {
     kind: 'bluewing.takeoff',
-    version: 2,
+    version: 3,
     takeoff: { id: takeoff.id, name: takeoff.name, kind: takeoff.kind },
     project: {
       id: project.id,
