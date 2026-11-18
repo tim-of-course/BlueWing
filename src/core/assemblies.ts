@@ -35,6 +35,24 @@ const output = (
   allowance: { wastePercent: 0 },
 });
 
+function addHangerWire(assembly: Assembly): void {
+  assembly.inputs.push(
+    number('wireDrop', 'ft', 6, Number.MIN_VALUE),
+    number('tieAllowance', 'ft', 1.5),
+    number('areaPerDrop', 'ft2', 16, Number.MIN_VALUE),
+    number('wireStockLength', 'ft', 12, Number.MIN_VALUE),
+  );
+  assembly.outputs.push(
+    output(
+      'hanger-wire',
+      '12 gauge hanger wire',
+      'hanger-wire-12ga',
+      'ea',
+      'ceil(ceil(area / areaPerDrop) / max(1, floor(wireStockLength / (wireDrop + tieAllowance))))',
+    ),
+  );
+}
+
 function ceilingGrid(square: boolean): Assembly {
   const size = square ? '2x2' : '2x4';
   const section = {
@@ -47,7 +65,7 @@ function ceilingGrid(square: boolean): Assembly {
     name: `Acoustical ceiling ${size} layout`,
     category: 'Acoustical ceilings/acoustical work',
     description:
-      'Modeled grid and tile area clipped to the traced room. Starter elevation is 9 ft at the finished underside, with mains parallel to world X and the grid origin at world 0,0. Edit these settings to match the plan. Nominal starter sections are 15/16 in wide by 1-1/2 in deep; wall angle is 7/8 by 7/8 in. Set the specified products and dimensions. Members use rectangular envelopes with their lower edges at the ceiling elevation; entered tile thickness extends upward from the same datum. Counts and cuts come from the displayed members; tile purchasing uses net area. Hangers, connector tabs and tegular offsets require separate details.',
+      'Modeled grid and tile area clipped to the traced room. Starter elevation is 9 ft at the finished underside, with mains parallel to world X and the grid origin at world 0,0. Edit these settings to match the plan. Nominal starter sections are 15/16 in wide by 1-1/2 in deep; wall angle is 7/8 by 7/8 in. Set the specified products and dimensions. Members use rectangular envelopes with their lower edges at the ceiling elevation; entered tile thickness extends upward from the same datum. Counts and cuts come from the displayed members; tile purchasing uses net area. Hanger wire is estimated per room. Connector tabs and tegular offsets require separate details.',
     geometryKinds: ['area'],
     inputs: [],
     outputs: [],
@@ -415,6 +433,14 @@ export function starterAssemblies(): Record<string, Assembly> {
     (assembly) => assembly.id === 'steel-wall',
   )?.wallTemplate;
   if (wall) assemblies.push(...modeledStarters(wall));
+  for (const assembly of assemblies)
+    // Tile alone often goes into a grid that is already hung.
+    if (
+      assembly.category === 'Acoustical ceilings/acoustical work' &&
+      assembly.geometryKinds.includes('area') &&
+      assembly.id !== 'acoustical-ceiling-tile'
+    )
+      addHangerWire(assembly);
   return Object.fromEntries(
     assemblies.map((assembly) => [assembly.id, assembly]),
   );

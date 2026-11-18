@@ -105,7 +105,9 @@ For an 8 × 8 ft square, with the origin at a corner and mains parallel to a sid
 
 Ceiling elevation is its finished underside, added to any level and sheet placement elevation. Member envelopes extend upward from that datum. A specified tile thickness also extends upward; without thickness, its measured surface stays a plane. These are nominal flush lay-in envelopes, not inferred tegular details.
 
-Starter elevation is 9 ft; starter grid origin is world 0,0 with mains along world X. Set them to match the plan. Section envelopes show entered dimensions rather than fabricated tee profiles or connector tabs. Hangers, seismic accessories, perimeter clips and fixture supports require project details.
+Starter elevation is 9 ft; starter grid origin is world 0,0 with mains along world X. Set them to match the plan. Section envelopes show entered dimensions rather than fabricated tee profiles or connector tabs. Seismic accessories, perimeter clips and fixture supports require project details.
+
+Every acoustical ceiling starter that includes grid also includes a 12 gauge hanger wire count; the tile-only starter does not. Each room rounds up to one drop per 16 SF of traced area. A 6 ft drop plus 1 ft 6 in for ties yields one cut per 12 ft wire. Entering a 3 ft drop yields two cuts per wire. Round each room up to whole wires before totaling, with zero waste. The model positions grid members and tiles. Its wire count is an area estimate.
 
 The `ceiling-grid-2x2-estimate` and `ceiling-grid-2x4-estimate` starters retain area/perimeter estimating for early work. With default 4 ft main spacing, 2 ft cross-tee spacing, and 12 ft main/angle stock, a 24 × 15 ft room produces 360 ft² of tile, 45 four-foot tees, eight main stock lengths, and seven angle stock lengths. The 2x2 estimate adds 45 two-foot tees. Tile and grid deductions are separate inputs. These are estimates, not the piece counts of a positioned layout.
 

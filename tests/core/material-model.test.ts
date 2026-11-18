@@ -93,7 +93,7 @@ function wall(height = 10) {
 }
 
 /** Verify the report and renderer consume the same individual generated records. */
-function linked(result: CalculationResult) {
+function linked(result: CalculationResult, wires = 0) {
   assert.equal(result.complete, true, JSON.stringify(result.model.diagnostics));
   const scene = constructionSceneInput(result.model);
   assert.deepEqual(
@@ -141,13 +141,23 @@ function linked(result: CalculationResult) {
     );
   }
   for (const output of result.outputs) {
-    assert.equal(output.modeling, 'modeled');
+    assert.equal(
+      output.modeling,
+      output.outputId === 'hanger-wire' && wires ? 'estimate' : 'modeled',
+    );
     near(
       output.baseAmount,
       output.sources.reduce((sum, source) => sum + (source.value ?? 0), 0),
     );
   }
-  assert.equal(result.coverage.complete, true);
+  assert.equal(result.coverage.complete, !wires);
+  assert.equal(result.coverage.estimateOutputs, wires ? 1 : 0);
+  if (wires)
+    assert.equal(
+      result.outputs.find((output) => output.outputId === 'hanger-wire')
+        ?.purchasedAmount,
+      wires,
+    );
 }
 
 void test('modeled wall reports exactly the positioned studs, tracks and finish surfaces', () => {
@@ -337,7 +347,7 @@ void test('both ACT layout assemblies report their actual main, tee, angle and t
     const result = calculateProject(
       fixture(starter(`ceiling-grid-${system}`), 'area'),
     );
-    linked(result);
+    linked(result, 4);
     const count = (role: string) =>
       result.model.pieces.filter((piece) => piece.role === role).length;
     assert.equal(count('ceiling-main'), 1);
@@ -365,7 +375,7 @@ void test('ACT purchase rounding groups tile patches instead of ordering a packa
   recipe.ceilingTemplate.grid.main.wastePercent = 10;
   recipe.ceilingTemplate.grid.crossTee4.packageSize = 10;
   const result = calculateProject(fixture(recipe, 'area'));
-  linked(result);
+  linked(result, 4);
   assert.equal(result.model.surfaces.length, 16);
   const tile = result.outputs.find((output) => output.unit === 'ft2');
   assert.equal(tile?.packageCount, 2);

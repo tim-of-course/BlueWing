@@ -122,8 +122,14 @@ void test('starters distinguish modeled material layouts from unmodeled quick es
   for (const id of ['ceiling-grid-2x2', 'ceiling-grid-2x4']) {
     const ceiling = starters[id];
     assert.ok(ceiling?.ceilingTemplate?.grid);
-    assert.equal(ceiling.outputs.length, 0);
-    assert.equal(ceiling.inputs.length, 0);
+    assert.deepEqual(
+      ceiling.outputs.map((row) => row.id),
+      ['hanger-wire'],
+    );
+    assert.deepEqual(
+      ceiling.inputs.map((input) => input.default),
+      [6, 1.5, 16, 12],
+    );
     near(ceiling.ceilingTemplate.elevation, 9);
     assert.match(ceiling.description ?? '', /Starter elevation is 9 ft/);
   }
@@ -351,6 +357,46 @@ void test('Danback orders whole stud-bay pieces and exports their purchased foot
   near(calculateProject(project).outputs[0]?.purchasedAmount, 8);
 });
 
+void test('the tile-only ceiling starter adds no hanger wire', () => {
+  const result = calculateProject(fixture('acoustical-ceiling-tile', 'area'));
+  assert.equal(
+    result.outputs.some((output) => output.outputId === 'hanger-wire'),
+    false,
+  );
+});
+
+void test('every acoustical ceiling with grid buys whole hanger wires per traced room', () => {
+  for (const id of [
+    'ceiling-finish',
+    'ceiling-grid-2x2',
+    'ceiling-grid-2x4',
+    'ceiling-grid-2x2-estimate',
+    'ceiling-grid-2x4-estimate',
+  ]) {
+    const project = fixture(id, 'area');
+    const room = project.geometries.a;
+    const group = project.groups.g;
+    assert.ok(room && group);
+    const rectangle = (width: number) => [
+      { x: 0, y: 0 },
+      { x: width, y: 0 },
+      { x: width, y: 20 },
+      { x: 0, y: 20 },
+    ];
+    room.points = rectangle(32);
+    near(ceilingAmounts(project)['hanger-wire'], 40);
+    assignment(project).inputs.wireDrop = 3;
+    near(ceilingAmounts(project)['hanger-wire'], 20);
+    // 41 drops per room require 21 wires apiece.
+    room.points = rectangle(32.5);
+    project.geometries.b = { ...room, id: 'b' };
+    group.geometryIds.push('b');
+    near(ceilingAmounts(project)['hanger-wire'], 42);
+    assignment(project).inputs.wireDrop = 14;
+    near(ceilingAmounts(project)['hanger-wire'], 82);
+  }
+});
+
 function ceilingAmounts(project: Project, purchased = true) {
   const result = calculateProject(project);
   assert.equal(result.complete, true, JSON.stringify(result.outputs));
@@ -367,6 +413,7 @@ void test('2x2 and 2x4 formula estimates separate tees, main stock and wall angl
   const square = fixture('ceiling-grid-2x2-estimate', 'area');
   assert.deepEqual(ceilingAmounts(square), {
     'ceiling-area': 360,
+    'hanger-wire': 23,
     'tee-2ft': 45,
     'tee-4ft': 45,
     mains: 8,
@@ -377,6 +424,7 @@ void test('2x2 and 2x4 formula estimates separate tees, main stock and wall angl
   const rectangular = fixture('ceiling-grid-2x4-estimate', 'area');
   assert.deepEqual(ceilingAmounts(rectangular), {
     'ceiling-area': 360,
+    'hanger-wire': 23,
     'tee-2ft': 0,
     'tee-4ft': 45,
     mains: 8,
@@ -400,6 +448,7 @@ void test('ceiling tile deductions leave grid intact; grid and perimeter adjustm
   assignment(project).inputs = { tileDeduction: 40 };
   assert.deepEqual(ceilingAmounts(project), {
     'ceiling-area': 320,
+    'hanger-wire': 23,
     'tee-2ft': 45,
     'tee-4ft': 45,
     mains: 8,
@@ -414,6 +463,7 @@ void test('ceiling tile deductions leave grid intact; grid and perimeter adjustm
   };
   assert.deepEqual(ceilingAmounts(project), {
     'ceiling-area': 320,
+    'hanger-wire': 23,
     'tee-2ft': 40,
     'tee-4ft': 40,
     mains: 7,
@@ -453,6 +503,7 @@ void test('ceiling stock and carton rounding follows aggregate quantities and in
   };
   assert.deepEqual(ceilingAmounts(project), {
     'ceiling-area': 680,
+    'hanger-wire': 46,
     'tee-2ft': 120,
     'tee-4ft': 120,
     mains: 16,
@@ -487,6 +538,7 @@ void test('ceiling estimates handle inch calibration, irregular perimeters, zero
   ];
   assert.deepEqual(ceilingAmounts(project), {
     'ceiling-area': 300,
+    'hanger-wire': 19,
     'tee-2ft': 38,
     'tee-4ft': 38,
     mains: 7,
@@ -497,9 +549,14 @@ void test('ceiling estimates handle inch calibration, irregular perimeters, zero
     gridDeduction: 300,
     wallAngleDeduction: 78,
   };
-  assert.ok(
-    Object.values(ceilingAmounts(project)).every((amount) => amount === 0),
-  );
+  assert.deepEqual(ceilingAmounts(project), {
+    'ceiling-area': 0,
+    'tee-2ft': 0,
+    'tee-4ft': 0,
+    mains: 0,
+    'wall-angle': 0,
+    'hanger-wire': 19,
+  });
   for (const inputs of [
     { tileDeduction: 301 },
     { gridDeduction: 301 },
