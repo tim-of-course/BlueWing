@@ -430,29 +430,30 @@ void test('copied junctions count members only when their owner is on the copied
     const dependent = copies.find(
       (w) => w.assignmentId === before.walls.dependent?.assignmentId,
     );
-    const condition = dependent?.conditions?.[0];
-    assert.ok(condition);
-    assert.notEqual(condition.id, 'shared');
+    assert.ok(dependent);
+    const condition = dependent.conditions?.[0];
+    const studs = (geometry: string) =>
+      model.pieces.filter(
+        (p) =>
+          p.geometryId === geometry && p.materialId === wall.stud.materialId,
+      ).length;
     if (sameTrace) {
       const owner = copies.find(
         (w) => w.assignmentId === before.walls.w?.assignmentId,
       );
       assert.ok(owner);
+      assert.ok(condition);
+      assert.notEqual(condition.id, 'shared');
       assert.equal(condition.ownerWallId, owner.id);
       assert.equal(condition.id, owner.conditions?.[0]?.id);
       assert.equal(condition.count, 2);
+      assert.equal(studs('copy'), studs(geometryId));
     } else {
-      assert.deepEqual(condition, {
-        id: condition.id,
-        kind: 'junction',
-        distance: 0,
-        count: 0,
-      });
+      // Away from the wall that supplied its end members, the copy stands
+      // free and frames that end with its own stud.
+      assert.equal(condition, undefined);
+      assert.equal(studs('copy'), studs(geometryId) + 1);
     }
-    assert.equal(
-      model.pieces.filter((p) => p.geometryId === 'copy').length,
-      beforeModel.pieces.filter((p) => p.geometryId === geometryId).length,
-    );
   }
 });
 
