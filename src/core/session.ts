@@ -259,6 +259,9 @@ export class ProjectSession {
     }
     return result;
   }
+  takeoffName(id: string): string | undefined {
+    return this.#project.takeoffs[id]?.name;
+  }
   /** Command metadata does not need a copy of the project's drawing and recipes. */
   get observation(): Pick<CommandRequest, 'projectId' | 'expectedRevision'> {
     return {

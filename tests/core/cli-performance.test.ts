@@ -17,6 +17,8 @@ function fixture() {
   const messaging = new Messaging({
     read: () => Promise.resolve([]),
     write: () => Promise.resolve(),
+    readActivity: () => Promise.resolve([]),
+    writeActivity: () => Promise.resolve(),
     exportAttachment: (attachment) => Promise.resolve(attachment),
   });
   const application: Parameters<typeof dispatchCli>[0] = {

@@ -5,6 +5,12 @@ import {
   type Message,
   type MessagingStorage,
 } from '../../src/app/messaging';
+import type { WingmanActivity } from '../../src/app/wingman-types';
+import {
+  boundActivity,
+  groupActivity,
+  workDuration,
+} from '../../src/app/wingman-activity';
 import { dispatchCli, parseCli } from '../../src/app/cli';
 import { Application } from '../../src/app/application';
 import { createProject } from '../../src/core/geometry';
@@ -18,6 +24,8 @@ function fixture() {
       saved.set(id, structuredClone(messages));
       return Promise.resolve();
     },
+    readActivity: () => Promise.resolve([]),
+    writeActivity: () => Promise.resolve(),
     exportAttachment: (attachment) =>
       Promise.resolve({ ...attachment, path: `/local/${attachment.id}.png` }),
   };
@@ -49,8 +57,11 @@ void test('project open tolerates missing images and protects unreadable transcr
     configurable: true,
     value: {
       __TAURI_INTERNALS__: {
-        invoke(command: string, args: { path?: string }) {
-          if (command === 'app_data_read') return Promise.resolve(source);
+        invoke(command: string, args: { path?: string; key?: string }) {
+          if (command === 'app_data_read')
+            return Promise.resolve(
+              args.key?.startsWith('wingman-activity-') ? null : source,
+            );
           if (command === 'read_file' && args.path === 'readable.png')
             return Promise.resolve({ data: 'eA==' });
           if (command === 'app_data_write') writes++;
@@ -693,4 +704,97 @@ void test('connect separates prior requests and answers from live Wingman input'
     [4],
   );
   assert.match(later.messageGuidance ?? '', /messages.send/);
+});
+
+void test('concurrent activity belongs to its starting turn, only saved replies close work', async () => {
+  const { messaging, storage } = fixture();
+  const app = new Application(false);
+  Object.assign(app, { messaging });
+  const project = createProject('Estimator');
+  app.session = new ProjectSession(project, { save: () => Promise.resolve() });
+  await messaging.bind(project.id);
+  const saved = new Map<string, WingmanActivity[]>();
+  storage.writeActivity = (id, entries) => {
+    saved.set(id, structuredClone(entries));
+    return Promise.resolve();
+  };
+  storage.readActivity = (id) => Promise.resolve(saved.get(id) ?? []);
+  const cli = (name: string, payload = {}) =>
+    app.dispatch({ name, payload, origin: 'cli' });
+  await cli('messages.wait', { timeoutMs: 0 });
+  await cli('messages.wait', { timeoutMs: 0 });
+  assert.equal(messaging.activity.length, 0);
+  const pending = cli('messages.read', { waitMs: 2000 });
+  await cli('performance.status');
+  const initial = messaging.activity[0];
+  assert.equal(initial?.outcome, 'working');
+  await assert.rejects(cli('missing.command'), /Unknown command/);
+  const writeMessages = storage.write.bind(storage);
+  storage.write = () => Promise.reject(new Error('Disk unavailable'));
+  await assert.rejects(
+    cli('messages.send', { text: 'Unsaved reply' }),
+    /Disk unavailable/,
+  );
+  storage.write = writeMessages;
+  assert.deepEqual([...groupActivity(messaging.activity, []).keys()], [0]);
+  await messaging.send('Use the latest drawing', [], 'user');
+  await pending;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  app.libraryStore.read = async () => {
+    await gate;
+    throw new Error('Library unavailable');
+  };
+  const late = assert.rejects(cli('library.inspect'), /Library unavailable/);
+  await cli('messages.send', { text: 'Checked' });
+  await cli('messages.read');
+  release();
+  await late;
+  const turns = groupActivity(messaging.activity, [2]);
+  assert.deepEqual(
+    turns.get(2)?.map((e) => [e.command, e.outcome]),
+    [
+      ['messages.read', 'succeeded'],
+      ['performance.status', 'succeeded'],
+      ['missing.command', 'failed'],
+      ['library.inspect', 'failed'],
+    ],
+  );
+  assert.equal(turns.get(0)?.[0]?.afterMessageId, 2);
+  assert.equal(turns.get(2)?.[0]?.id, initial.id);
+  const before = structuredClone(messaging.activity);
+  await messaging.bind(null);
+  await messaging.bind(project.id);
+  assert.deepEqual(messaging.activity, before);
+  assert.deepEqual(
+    messaging.delivery(1).messages.map((m) => m.id),
+    [2],
+  );
+  assert.equal(workDuration(2000, 163000), '2m 41s');
+});
+
+void test('activity storage evicts complete turns before trimming details and counts UTF-8 bytes', () => {
+  const entry = (i: number): WingmanActivity => ({
+    id: String(i),
+    command: 'test',
+    category: 'Read',
+    description: 'Read dimensions',
+    outcome: 'succeeded',
+    startedAt: i,
+    afterMessageId: i < 100 ? 0 : 1,
+  });
+  const entries = Array.from({ length: 501 }, (_, i) => entry(i));
+  assert.equal(boundActivity(entries, [1]).length, 401);
+  assert.equal(boundActivity(entries, [])[0]?.id, '1');
+  const large = entries
+    .slice(100, 103)
+    .map((e) => ({ ...e, description: '界'.repeat(300000) }));
+  const trimmed = boundActivity(large, []);
+  assert.deepEqual(
+    trimmed.map((e) => e.id),
+    ['101', '102'],
+  );
+  assert.ok(Buffer.byteLength(JSON.stringify(trimmed)) <= 2 * 1024 * 1024);
 });

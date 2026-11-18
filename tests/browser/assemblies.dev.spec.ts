@@ -9,6 +9,7 @@ import {
 } from './assemblies';
 import { startProject } from './takeoff';
 import { materialLayoutWorkflow } from './material-layouts';
+import { openPanel } from './panels';
 
 test('assemblies support project copies, object overrides and piece schedules', async ({
   page,
@@ -60,6 +61,7 @@ test('ceiling estimates restore missing starters and calculate separate grid mat
       errors.push(message.text());
   });
   await ceilingWorkflow(page);
+  await openPanel(page, 'Sheets');
   await page
     .getByRole('button', { name: 'Ceilings, 1 drawing objects', exact: true })
     .click();

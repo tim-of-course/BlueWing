@@ -73,7 +73,7 @@ The CLI operates the running desktop app:
 src-tauri/target/release/bundle/macos/Bluewing.app/Contents/MacOS/bluewing commands.list
 ```
 
-Wingman shows the latest CLI-rendered plan or 3D location in a live corner preview. Click to swap views and click again to return. Choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**, and paste it into your AI's chat to get started. In Wingman chat, Enter sends and Shift+Enter adds a new line. **Pause CLI** stops new and queued CLI actions; **End conversation** ends an active message wait. Use **Attach screenshot** or Cmd/Ctrl+Shift+X to capture any rectangle inside the app for the next message. See [Wingman behavior and verification](docs/wingman.md).
+Wingman’s right sidebar shows the project conversation and CLI activity. Click a live plan or 3D thumbnail to open its saved position. **Return to your view** restores your original workspace. Each AI reply folds the preceding work into an expandable elapsed-time summary. Choose **Copy AI prompt** in the empty chat or the **Wingman options** menu, then **Wingman + chat** or **Chat only**, and paste it into your AI's chat to get started. In Wingman chat, Enter sends and Shift+Enter adds a new line. **Pause CLI** stops new and queued CLI actions; **End conversation** ends an active message wait. Use **Attach screenshot** or Cmd/Ctrl+Shift+X to capture any rectangle inside the app for the next message. See [Wingman behavior and verification](docs/wingman.md).
 
 See [CLI requests and coordinates](docs/cli.md) and [building web releases](docs/web-releases.md). A public web-release host is not configured in this repository.
 

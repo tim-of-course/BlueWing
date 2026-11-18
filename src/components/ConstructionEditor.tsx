@@ -2,8 +2,18 @@ import { starterKickers } from '../core/modeled-starters';
 import { quantityLabel } from './quantity-label';
 import { formatLength, lengthHint } from '../core/length';
 import QuantityInput from './QuantityInput';
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onSettled,
+  untrack,
+  Show,
+} from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
+import type { ActivityTarget } from '../app/wingman-types';
+import { constructionKind } from '../app/wingman-activity';
 import type { Observation } from '../app/application';
 import type { PayloadSchema } from '../core/commands';
 import { constructionSchemas } from '../core/detailed-commands';
@@ -412,12 +422,16 @@ export function ConstructionFields(props: {
 }
 
 export default function ConstructionEditor(props: {
+  initialTarget?: ActivityTarget | null;
   controller: WorkspaceController;
   onClose: () => void;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
 }) {
-  const [kind, setKind] = createSignal<Kind>('walls');
+  const target = untrack(() => props.initialTarget);
+  const [kind, setKind] = createSignal<Kind>(
+    constructionKind(target?.kind ?? '') ?? 'walls',
+  );
   const [draft, setDraft] = createSignal<Record<string, unknown> | null>(null);
   const [dirty, setDirty] = createSignal(false);
   const [filter, setFilter] = createSignal('');
@@ -483,6 +497,11 @@ export default function ConstructionEditor(props: {
       report(message);
     });
   }
+  onSettled(() => {
+    const item =
+      target && constructionKind(target.kind) && data()[kind()][target.id];
+    if (item) begin(item);
+  });
   function begin(value?: unknown) {
     const current = props.controller.project();
     if (!current) return;

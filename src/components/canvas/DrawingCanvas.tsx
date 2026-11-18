@@ -1463,23 +1463,18 @@ export default function DrawingCanvas(props: {
       </canvas>
       <Show when={crosshair()}>
         {(point) => (
-          <div class="canvas-crosshair" aria-hidden="true">
-            <span
-              class="crosshair-horizontal"
-              style={{ top: `${String(point().y)}px` }}
-            />
-            <span
-              class="crosshair-vertical"
-              style={{ left: `${String(point().x)}px` }}
-            />
-            <svg
-              class="canvas-reticle"
-              viewBox="-13 -13 26 26"
-              style={{
-                left: `${String(point().x)}px`,
-                top: `${String(point().y)}px`,
-              }}
-            >
+          <div
+            class="canvas-crosshair"
+            aria-hidden="true"
+            style={{
+              '--cursor-x': `${String(point().x)}px`,
+              '--cursor-y': `${String(point().y)}px`,
+            }}
+          >
+            <span class="crosshair-horizontal" />
+            <span class="crosshair-vertical" />
+            <svg class="canvas-reticle" viewBox="-13 -13 26 26">
+              <path stroke="white" d="M-13 .5h26M.5-13v26" />
               <path
                 class="reticle-shape"
                 d="M-4-8H-8V-4 M4-8H8V-4 M8 4V8H4 M-4 8H-8V4"

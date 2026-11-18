@@ -10,7 +10,10 @@ import { drawWall } from './takeoff';
 declare global {
   interface Window {
     wingmanCalculation(): CalculationSnapshot;
-    wingmanWatchModelBuilds(): Promise<{ builds(): number; dispose(): void }>;
+    wingmanWatchModelBuilds(): Promise<{
+      builds(): { viewer: number; preview: number };
+      dispose(): void;
+    }>;
     wingmanCli(
       name: string,
       request: unknown,
@@ -39,6 +42,8 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
   page,
 }, info) => {
   const errors = await captureErrors(page);
+  // Inspect the navigator, drawing and live Wingman preview throughout the same calculation.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startWingmanProject(page, true);
   await drawWall(page);
   let project = (await cli<Project>(page, 'project.inspect')).response.data;
@@ -101,6 +106,12 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
       },
     ],
   });
+  await page
+    .getByRole('button', { name: 'Collapse Wingman', exact: true })
+    .click();
+  await expect(
+    page.getByRole('complementary', { name: 'Wingman' }),
+  ).toBeHidden();
   const accepted = await page.evaluateHandle(() => window.wingmanCalculation());
   const parsing = await page.evaluateHandle(() => {
     // eslint-disable-next-line @typescript-eslint/unbound-method
@@ -162,14 +173,20 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
         .getByRole('combobox', { name: 'Level', exact: true })
         .selectOption('floor');
       await expect(viewer.getByRole('status')).toBeHidden();
+      await expect
+        .poll(() => rendering.evaluate((probe) => probe.builds().viewer))
+        .toBeGreaterThan(0);
+      expect(await rendering.evaluate((probe) => probe.builds().preview)).toBe(
+        0,
+      );
       expect((await cli(page, 'wingman.flash')).exitCode).toBe(0);
       await expect(page.locator('.wingman-preview canvas')).toBeVisible();
       await expect(
         page.getByText('Loading 3D preview…', { exact: true }),
       ).toBeHidden();
       await expect
-        .poll(() => rendering.evaluate((probe) => probe.builds()))
-        .toBeGreaterThanOrEqual(2);
+        .poll(() => rendering.evaluate((probe) => probe.builds().preview))
+        .toBeGreaterThan(0);
       const modelBuilds = await rendering.evaluate((probe) => probe.builds());
       project = (await cli<Project>(page, 'project.inspect')).response.data;
       const group = Object.values(project.groups).find(
@@ -220,7 +237,7 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
             ),
           ),
       );
-      expect(await rendering.evaluate((probe) => probe.builds())).toBe(
+      expect(await rendering.evaluate((probe) => probe.builds())).toEqual(
         modelBuilds,
       );
       const exported = await cli<string>(page, 'pieces.export', {
@@ -253,9 +270,13 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
               .model.pieces.find((piece) => piece.role === 'stud')?.cutLength,
         ),
       ).toBe(before);
-      await expect
-        .poll(() => rendering.evaluate((probe) => probe.builds()))
-        .toBeGreaterThan(modelBuilds);
+      for (const role of ['viewer', 'preview'] as const) {
+        await expect
+          .poll(() =>
+            rendering.evaluate((probe, key) => probe.builds()[key], role),
+          )
+          .toBeGreaterThan(modelBuilds[role]);
+      }
       await rendering.evaluate((probe) => {
         probe.dispose();
       });

@@ -19,7 +19,10 @@ import RecipeEditor from './components/RecipeEditor';
 import Quantities from './components/Quantities';
 import UpdateDialog from './components/UpdateDialog';
 import ToolIcon from './components/ToolIcon';
-import WorkspacePanel from './components/WorkspacePanel';
+import WorkspacePanel, {
+  createPanelPreferences,
+} from './components/WorkspacePanel';
+import { fitWorkspacePanels, type PanelName } from './app/panel-layout';
 import SheetNavigator from './components/SheetNavigator';
 import { PdfDropTarget } from './components/PdfDropTarget';
 import SheetScaleDialog from './components/SheetScaleDialog';
@@ -35,6 +38,7 @@ import { chooseHandoff } from './app/files';
 import { prepareHandoff, type HandoffDocument } from './app/handoff';
 import { formatScale } from './core/scale';
 import { resolveConstruction } from './core/applied-assemblies';
+import { constructionKind } from './app/wingman-activity';
 import Wingman from './components/Wingman';
 import type {
   ModelView,
@@ -42,6 +46,7 @@ import type {
   ViewportPort,
   WingmanVisual,
   WorkspaceViewSnapshot,
+  ActivityTarget,
 } from './app/wingman-types';
 
 const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
@@ -68,16 +73,56 @@ export default function App(props: { application?: Application }) {
     const project = controller.project();
     return project ? resolveConstruction(project) : undefined;
   });
-  const [sheetsVisible, setSheetsVisible] = createSignal(
-    localStorage.getItem('bluewing.panel.sheets.pinned') !== 'false',
-    {
-      name: 'workspace.sheetsVisible',
-    },
+  const panels = {
+    sheets: createPanelPreferences('sheets'),
+    inspector: createPanelPreferences('inspector'),
+    wingman: createPanelPreferences('wingman'),
+  };
+  let workspaceBody!: HTMLDivElement;
+  const [workspaceWidth, setWorkspaceWidth] = createSignal(window.innerWidth);
+  const [panelOrder, setPanelOrder] = createSignal<PanelName[]>([
+    'inspector',
+    'sheets',
+    'wingman',
+  ]);
+  const projectOpen = createMemo(() => !!controller.project());
+  const displayed = createMemo(() =>
+    fitWorkspacePanels(
+      workspaceWidth(),
+      panelOrder()
+        .filter((name) => name !== 'wingman' || projectOpen())
+        .map((name) => ({
+          name,
+          width: panels[name].width(),
+          pinned: panels[name].pinned(),
+        })),
+    ),
   );
-  const [inspectorVisible, setInspectorVisible] = createSignal(
-    localStorage.getItem('bluewing.panel.inspector.pinned') !== 'false',
-  );
+  function prioritize(name: PanelName) {
+    setPanelOrder((previous) =>
+      previous.at(-1) === name
+        ? previous
+        : [...previous.filter((p) => p !== name), name],
+    );
+  }
+  function pinPanel(name: PanelName, value: boolean) {
+    if (value) prioritize(name);
+    panels[name].savePin(value);
+  }
   const [inspectorPeek, setInspectorPeek] = createSignal(0);
+  function requestInspector() {
+    prioritize('inspector');
+    setInspectorPeek((value) => value + 1);
+  }
+  onSettled(() => {
+    const observer = new ResizeObserver(() =>
+      setWorkspaceWidth(workspaceBody.clientWidth),
+    );
+    observer.observe(workspaceBody);
+    return () => {
+      observer.disconnect();
+    };
+  });
   const [sheetDraft, setSheetDraft] = createSignal(false);
   const [alignmentDraft, setAlignmentDraft] = createSignal(false);
   const [scaleDialog, setScaleDialog] = createSignal<{
@@ -88,12 +133,6 @@ export default function App(props: { application?: Application }) {
     sheets: Sheet[];
     expected: Observation;
   } | null>(null);
-  createEffect(sheetsVisible, (value) => {
-    localStorage.setItem('bluewing.panel.sheets.pinned', String(value));
-  });
-  createEffect(inspectorVisible, (value) => {
-    localStorage.setItem('bluewing.panel.inspector.pinned', String(value));
-  });
   const [tool, setTool] = createSignal<DrawingTool>('select', {
     name: 'workspace.tool',
   });
@@ -108,6 +147,8 @@ export default function App(props: { application?: Application }) {
   const [followingAgent, setFollowingAgent] = createSignal(false);
   let planViewport: ViewportPort<PlanView> | undefined;
   let modelViewport: ViewportPort<ModelView> | undefined;
+  const [activityTarget, setActivityTarget] =
+    createSignal<ActivityTarget | null>(null);
   const [constructionOpen, setConstructionOpen] = createSignal(false);
   const [reviewOpen, setReviewOpen] = createSignal(false);
   const [handoff, setHandoff] = createSignal<HandoffDocument | null>(null, {
@@ -172,8 +213,7 @@ export default function App(props: { application?: Application }) {
     setTool(id);
     if (id === 'select') controller.setActiveGroupId(null);
     setQuantities(false);
-    if (id !== 'select' && id !== 'annotations')
-      setInspectorPeek((value) => value + 1);
+    if (id !== 'select' && id !== 'annotations') requestInspector();
   };
   function captureView(): WorkspaceViewSnapshot | null {
     const project = controller.project();
@@ -193,10 +233,18 @@ export default function App(props: { application?: Application }) {
     const project = controller.project();
     if (!project || next.projectId !== project.id)
       throw new Error('This view belongs to another project');
-    if (next.takeoffId !== project.takeoffId)
-      throw new Error('This view belongs to another takeoff');
     if (hasDraft() || controller.busy())
       throw new Error('Finish your current edit before swapping views');
+    if (
+      'view' in next &&
+      next.view.kind === 'plan' &&
+      !project.sheets[next.view.sheetId]
+    )
+      throw new Error('The source sheet is no longer available');
+    if (next.takeoffId !== project.takeoffId) {
+      controller.selectTakeoff(next.takeoffId);
+      flush();
+    }
     if ('context' in next) {
       controller.restoreContext(next.context);
       setView(next.mode);
@@ -204,8 +252,6 @@ export default function App(props: { application?: Application }) {
       setTool(next.tool);
       setFollowingAgent(false);
     } else {
-      if (next.view.kind === 'plan' && !project.sheets[next.view.sheetId])
-        throw new Error('The source sheet is no longer available');
       const context = controller.captureContext();
       controller.restoreContext({
         ...context,
@@ -240,6 +286,59 @@ export default function App(props: { application?: Application }) {
       if (next.model && next.mode !== 'plan') modelViewport?.apply(next.model);
     } else if (next.view.kind === 'plan') planViewport?.apply(next.view);
     else modelViewport?.apply(next.view);
+  }
+  function openActivityTarget(target: ActivityTarget, takeoffId?: string) {
+    if (hasDraft() || controller.busy()) return;
+    const id = target.kind === 'takeoff' ? target.id : takeoffId;
+    if (id && id !== controller.project()?.takeoffId) {
+      controller.selectTakeoff(id);
+      flush();
+    }
+    const project = controller.project();
+    if (!project) return;
+    setActivityTarget(target);
+    if (target.kind === 'assembly') {
+      setRecipeOpen(true);
+      return;
+    }
+    if (target.kind === 'snippet') {
+      setReviewOpen(true);
+      return;
+    }
+    if (constructionKind(target.kind)) {
+      setConstructionOpen(true);
+      return;
+    }
+    setQuantities(false);
+    setView('plan');
+    setTool('select');
+    if (target.kind === 'sheet') controller.setActiveSheetId(target.id);
+    if (target.kind === 'geometry') {
+      const group = Object.values(project.groups).find((g) =>
+        g.geometryIds.includes(target.id),
+      );
+      controller.showGeometry(target.id, group?.id ?? '');
+      if (!group) controller.setActiveGroupId(null);
+    }
+    if (target.kind === 'group') {
+      const group = project.groups[target.id];
+      const sheetId = group?.geometryIds
+        .map((id) => project.geometries[id]?.sheetId)
+        .find(Boolean);
+      if (sheetId) controller.setActiveSheetId(sheetId);
+      controller.setSelection(
+        group?.geometryIds.filter(
+          (id) =>
+            project.geometries[id]?.sheetId === sheetId &&
+            controller.visibleGeometryIds().has(id),
+        ) ?? [],
+      );
+      controller.setActiveGroupId(target.id);
+    }
+    if (target.kind === 'geometry' || target.kind === 'group') {
+      setNotesView(false);
+      requestInspector();
+    }
   }
   const nextGroupColor = () => {
     const groups = Object.values(controller.project()?.groups ?? {});
@@ -360,7 +459,10 @@ export default function App(props: { application?: Application }) {
           run(() => controller.importPdfFiles(files));
         }}
       />
-      <header class="workspace-header">
+      <header
+        class="workspace-header"
+        inert={recipeOpen() || constructionOpen() || reviewOpen()}
+      >
         <strong class="brand">
           <img src="/brand/bluewing.svg" width="28" height="28" alt="" />
           Bluewing
@@ -523,16 +625,18 @@ export default function App(props: { application?: Application }) {
           </button>
         </div>
       </Show>
-      <div class="workspace-body">
+      <div ref={workspaceBody} class="workspace-body">
         <WorkspacePanel
-          id="sheet-navigator"
+          name="sheets"
           label="Sheets"
           side="left"
-          defaultWidth={292}
-          minWidth={220}
-          maxWidth={500}
-          pinned={sheetsVisible()}
-          onPinnedChange={setSheetsVisible}
+          preferences={panels.sheets}
+          temporarilyCollapsed={
+            panels.sheets.pinned() && !displayed().has('sheets')
+          }
+          onPinnedChange={(value) => {
+            pinPanel('sheets', value);
+          }}
         >
           <SheetNavigator
             controller={controller}
@@ -554,7 +658,7 @@ export default function App(props: { application?: Application }) {
             }}
             onInspect={() => {
               setTool('select');
-              setInspectorPeek((value) => value + 1);
+              requestInspector();
             }}
           />
         </WorkspacePanel>
@@ -595,8 +699,8 @@ export default function App(props: { application?: Application }) {
             <div
               class="workspace-toolbar"
               style={{
-                'padding-left': sheetsVisible() ? undefined : '42px',
-                'padding-right': inspectorVisible() ? undefined : '42px',
+                'padding-left': panels.sheets.pinned() ? undefined : '42px',
+                'padding-right': panels.inspector.pinned() ? undefined : '42px',
               }}
             >
               <button
@@ -832,30 +936,18 @@ export default function App(props: { application?: Application }) {
               </Show>
             </div>
           </Show>
-          <Wingman
-            controller={controller}
-            captureView={captureView}
-            applyView={applyView}
-            navigationDisabled={
-              hasDraft() ||
-              controller.busy() ||
-              constructionOpen() ||
-              reviewOpen() ||
-              !!handoff() ||
-              recipeOpen() ||
-              updateOpen()
-            }
-          />
         </main>
         <WorkspacePanel
-          id="group-inspector"
+          name="inspector"
           label="Inspector"
           side="right"
-          defaultWidth={330}
-          minWidth={260}
-          maxWidth={550}
-          pinned={inspectorVisible()}
-          onPinnedChange={setInspectorVisible}
+          preferences={panels.inspector}
+          temporarilyCollapsed={
+            panels.inspector.pinned() && !displayed().has('inspector')
+          }
+          onPinnedChange={(value) => {
+            pinPanel('inspector', value);
+          }}
           peekRequest={inspectorPeek()}
         >
           <div class="panel-heading">
@@ -1059,6 +1151,105 @@ export default function App(props: { application?: Application }) {
             </div>
           </Show>
         </nav>
+        <Show when={recipeOpen()}>
+          <div class="modal-backdrop">
+            <section
+              class="dialog recipe-dialog"
+              role="dialog"
+              aria-modal="false"
+              aria-label="Assembly editor"
+            >
+              <RecipeEditor
+                initialId={
+                  activityTarget()?.kind === 'assembly'
+                    ? activityTarget()?.id
+                    : undefined
+                }
+                controller={controller}
+                onClose={() => {
+                  setActivityTarget(null);
+                  setRecipeOpen(false);
+                  setRecipeDraft(false);
+                }}
+                onError={setError}
+                onDraftChange={setRecipeDraft}
+              />
+            </section>
+          </div>
+        </Show>
+        <Show when={constructionOpen()}>
+          <div class="modal-backdrop">
+            <section
+              class="dialog detailed-dialog"
+              role="dialog"
+              aria-modal="false"
+              aria-label="Construction editor"
+            >
+              <ConstructionEditor
+                initialTarget={activityTarget()}
+                controller={controller}
+                onClose={() => {
+                  setActivityTarget(null);
+                  setConstructionOpen(false);
+                  setDetailDraft(false);
+                }}
+                onError={setError}
+                onDraftChange={setDetailDraft}
+              />
+            </section>
+          </div>
+        </Show>
+        <Show when={reviewOpen()}>
+          <div class="modal-backdrop">
+            <section
+              class="dialog detailed-dialog"
+              role="dialog"
+              aria-modal="false"
+              aria-label="Takeoff review"
+            >
+              <ReviewPanel
+                initialSnippetId={
+                  activityTarget()?.kind === 'snippet'
+                    ? activityTarget()?.id
+                    : undefined
+                }
+                controller={controller}
+                onClose={() => {
+                  setActivityTarget(null);
+                  setReviewOpen(false);
+                  setDetailDraft(false);
+                }}
+                onError={setError}
+                onDraftChange={setDetailDraft}
+              />
+            </section>
+          </div>
+        </Show>
+        <Wingman
+          preferences={panels.wingman}
+          temporarilyCollapsed={
+            panels.wingman.pinned() && !displayed().has('wingman')
+          }
+          onPinnedChange={(value) => {
+            pinPanel('wingman', value);
+          }}
+          onReveal={() => {
+            prioritize('wingman');
+          }}
+          controller={controller}
+          openTarget={openActivityTarget}
+          captureView={captureView}
+          applyView={applyView}
+          navigationDisabled={
+            hasDraft() ||
+            controller.busy() ||
+            constructionOpen() ||
+            reviewOpen() ||
+            !!handoff() ||
+            recipeOpen() ||
+            updateOpen()
+          }
+        />
       </div>
       <footer>
         <button
@@ -1216,66 +1407,7 @@ export default function App(props: { application?: Application }) {
           </section>
         </div>
       </Show>
-      <Show when={recipeOpen()}>
-        <div class="modal-backdrop">
-          <section
-            class="dialog recipe-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Assembly editor"
-          >
-            <RecipeEditor
-              controller={controller}
-              onClose={() => {
-                setRecipeOpen(false);
-                setRecipeDraft(false);
-              }}
-              onError={setError}
-              onDraftChange={setRecipeDraft}
-            />
-          </section>
-        </div>
-      </Show>
-      <Show when={constructionOpen()}>
-        <div class="modal-backdrop">
-          <section
-            class="dialog detailed-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Construction editor"
-          >
-            <ConstructionEditor
-              controller={controller}
-              onClose={() => {
-                setConstructionOpen(false);
-                setDetailDraft(false);
-              }}
-              onError={setError}
-              onDraftChange={setDetailDraft}
-            />
-          </section>
-        </div>
-      </Show>
-      <Show when={reviewOpen()}>
-        <div class="modal-backdrop">
-          <section
-            class="dialog detailed-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Takeoff review"
-          >
-            <ReviewPanel
-              controller={controller}
-              onClose={() => {
-                setReviewOpen(false);
-                setDetailDraft(false);
-              }}
-              onError={setError}
-              onDraftChange={setDetailDraft}
-            />
-          </section>
-        </div>
-      </Show>
+
       <Show when={updateOpen()}>
         <UpdateDialog
           controller={controller}

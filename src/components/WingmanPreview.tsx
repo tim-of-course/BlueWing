@@ -83,17 +83,23 @@ export function paintPlanPresentation(
 export default function WingmanPreview(props: {
   controller: WorkspaceController;
   view: WingmanView;
+  takeoffId: string;
   planImages: RegionImages;
 }) {
   let canvas: HTMLCanvasElement | undefined;
   let snapshot: ReturnType<typeof acquireConstructionSnapshot> | undefined;
   const [status, setStatus] = createSignal('');
+  const sourceProject = createMemo(() =>
+    props.controller.projectForTakeoff(props.takeoffId),
+  );
   const model = createMemo(() =>
-    props.view.kind === '3d' ? props.controller.construction() : null,
+    props.view.kind === '3d'
+      ? props.controller.constructionForTakeoff(props.takeoffId)
+      : null,
   );
   const sceneContext = createMemo(
     () => {
-      const project = props.controller.project();
+      const project = sourceProject();
       return project ? constructionSceneContext(project) : null;
     },
     { equals: sameConstructionSceneContext },
@@ -106,7 +112,7 @@ export default function WingmanPreview(props: {
       const geometryIds = view.selectedOnly
         ? (view.geometryIds ?? [...selected]).filter((id) => selected.has(id))
         : view.geometryIds;
-      const project = view.levelId ? props.controller.project() : null;
+      const project = view.levelId ? sourceProject() : null;
       const construction = project ? resolveConstruction(project) : null;
       const levelGeometryIds = construction
         ? [
@@ -142,7 +148,7 @@ export default function WingmanPreview(props: {
   });
   createEffect(
     () => ({
-      project: props.controller.project(),
+      project: props.view.kind === 'plan' ? sourceProject() : null,
       scene: modelScene(),
       view: props.view,
       planImages: props.planImages,
@@ -168,11 +174,6 @@ export default function WingmanPreview(props: {
       const context = element.getContext('2d');
       if (!context) return;
       setStatus('');
-      if (!project || (view.kind === 'plan' && !project.sheets[view.sheetId])) {
-        context.clearRect(0, 0, element.width, element.height);
-        setStatus('Source sheet is no longer available.');
-        return;
-      }
       if (view.kind === '3d') {
         context.clearRect(0, 0, element.width, element.height);
         if (!scene) {
@@ -216,8 +217,12 @@ export default function WingmanPreview(props: {
           cancelled = true;
         };
       }
-      const sheet = project.sheets[view.sheetId];
-      if (!sheet) return;
+      const sheet = project?.sheets[view.sheetId];
+      if (!project || !sheet) {
+        context.clearRect(0, 0, element.width, element.height);
+        setStatus('Source sheet is no longer available.');
+        return;
+      }
       const draw = (image?: HTMLCanvasElement) => {
         if (cancelled) return;
         context.fillStyle = '#0f1218';

@@ -186,7 +186,7 @@ export const applicationCommands = [
   ),
   entry(
     'wingman.flash',
-    'Expand and glow the Wingman corner preview.',
+    'Reveal and briefly highlight the Wingman sidebar.',
     {},
     [],
     false,

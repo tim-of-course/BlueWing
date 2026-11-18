@@ -3,11 +3,13 @@ import { drawWall, startProject } from './takeoff';
 import { captureErrors, cli, startWingmanProject } from './wingman';
 import type { Project } from '../../src/core/types';
 import type { WorkspaceViewSnapshot } from '../../src/app/wingman-types';
+import { openPanel } from './panels';
 
 export async function categoryVisibilityWorkflow(page: Page): Promise<void> {
   await startProject(page);
   await drawWall(page);
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
+  await openPanel(page, 'Sheets');
   const filter = page.locator('details.category-filter').first();
   await filter.locator('summary').click();
   await expect(
@@ -24,6 +26,7 @@ export async function categoryVisibilityWorkflow(page: Page): Promise<void> {
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await expect(canvas).toHaveAttribute('aria-busy', 'false');
+  await openPanel(page, 'Sheets');
   await filter.locator('summary').click();
   await expect(filter.getByLabel('All', { exact: true })).not.toBeChecked();
   await filter.getByLabel('Uncategorized').check();
@@ -63,6 +66,7 @@ export async function categoryEditorWorkflow(page: Page): Promise<void> {
     .getByRole('button', { name: 'Save assembly', exact: true })
     .click();
   await editor.getByRole('button', { name: 'Close', exact: true }).click();
+  await openPanel(page, 'Sheets');
   const filter = page.locator('details.category-filter').first();
   await filter.locator('summary').click();
   await filter.getByLabel('Specialty scope', { exact: true }).check();
@@ -74,6 +78,7 @@ export async function categoryEditorWorkflow(page: Page): Promise<void> {
   await expect(
     page.getByLabel('Drawing canvas', { exact: true }),
   ).toHaveAttribute('aria-busy', 'false');
+  await openPanel(page, 'Sheets');
   await filter.locator('summary').click();
   await expect(
     filter.getByLabel('Specialty scope', { exact: true }),
@@ -103,6 +108,7 @@ export async function categoryWingmanWorkflow(page: Page): Promise<void> {
     (await cli<{ main: WorkspaceViewSnapshot }>(page, 'wingman.inspect'))
       .response.data.main;
   expect((await main()).plan?.categories).toEqual([]);
+  await openPanel(page, 'Sheets');
   const filter = page.locator('details.category-filter').first();
   await filter.locator('summary').click();
   await filter.getByLabel('Uncategorized').check();
@@ -113,6 +119,7 @@ export async function categoryWingmanWorkflow(page: Page): Promise<void> {
     .poll(async () => (await main()).plan?.visibleGeometryIds?.length)
     .toBe(1);
   await filter.locator('summary').click();
+  await openPanel(page, 'Wingman');
   await page
     .getByRole('button', { name: 'Return to your view', exact: true })
     .click();

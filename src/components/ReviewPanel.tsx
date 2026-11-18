@@ -1,4 +1,12 @@
-import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onSettled,
+  untrack,
+  Show,
+} from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
 import type { PlanSnippet, SourceReference } from '../core/review';
@@ -6,11 +14,13 @@ import { inspectReview, sourceEntity } from '../core/review';
 import { resolveConstruction } from '../core/applied-assemblies';
 
 export default function ReviewPanel(props: {
+  initialSnippetId?: string | undefined;
   controller: WorkspaceController;
   onClose: () => void;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
 }) {
+  const initialSnippetId = untrack(() => props.initialSnippetId);
   const [tab, setTab] = createSignal<'review' | 'snippets'>('review');
   const [target, setTarget] = createSignal<SourceReference | null>(null);
   const [note, setNote] = createSignal('');
@@ -162,6 +172,15 @@ export default function ReviewPanel(props: {
     setDraft((current) => (current ? { ...current, ...patch } : null));
     setDirty(true);
   }
+  onSettled(() => {
+    const snippet =
+      initialSnippetId &&
+      props.controller.project()?.review?.snippets[initialSnippetId];
+    if (snippet) {
+      setTab('snippets');
+      begin(snippet);
+    }
+  });
   function begin(snippet?: PlanSnippet) {
     const project = props.controller.project();
     const sheet = project?.sheets[props.controller.activeSheetId() ?? ''];

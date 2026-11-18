@@ -62,6 +62,8 @@ test('wheel and pinch anchor the cursor; pan and resize preserve the drawing vie
 }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // Keep the other pinned panels in place to isolate the Sheets resize and camera adjustment.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startProject(page);
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
   const drawing = await page.evaluateHandle(() => {

@@ -6,12 +6,14 @@ import {
   captureWorkflow,
   startWingmanProject,
 } from './wingman';
+import { openPanel } from './panels';
 
 test('built Wingman keyboard and desktop connection guidance', async ({
   page,
 }) => {
   const errors = await captureErrors(page);
   await startWingmanProject(page);
+  await openPanel(page, 'Wingman');
   await browserPromptWorkflow(page);
   await page
     .getByRole('button', { name: 'Copy AI prompt', exact: true })
@@ -24,6 +26,8 @@ test('built Wingman captures pixels and preserves messages across reopen', async
   page,
 }) => {
   const errors = await captureErrors(page);
+  // The capture includes content from Sheets, the drawing and Wingman, followed by an Inspector edit.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startWingmanProject(page);
   await captureWorkflow(page);
   expect(errors).toEqual([]);

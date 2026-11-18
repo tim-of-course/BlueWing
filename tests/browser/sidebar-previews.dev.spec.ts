@@ -5,6 +5,7 @@ import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import type { PdfDocuments as PdfDocumentCache } from '../../src/pdf/documents';
 import type { PageImages as PageImageCache } from '../../src/pdf/page-images';
 import { captureErrors } from './wingman';
+import { openPanel } from './panels';
 
 declare global {
   interface Window {
@@ -155,6 +156,7 @@ test('the real sidebar requests only visible previews and cancels work on scroll
       .click();
     await page.getByLabel('Project name', { exact: true }).fill('Visible rows');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await openPanel(page, 'Sheets');
     const choosing = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
     await (await choosing).setFiles('tests/fixtures/assessment-plan.pdf');

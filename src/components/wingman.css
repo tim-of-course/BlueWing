@@ -1,29 +1,14 @@
 .wingman {
-  position: absolute;
-  right: 12px;
-  bottom: 48px;
-  z-index: 35;
-  width: 326px;
-  max-width: calc(100% - 24px);
-  max-height: calc(100% - 100px);
   display: flex;
+  flex: 1;
   flex-direction: column;
-  border: 1px solid #46576a;
-  border-radius: 8px;
+  min-height: 0;
   background: #182330;
   color: #e5edf7;
-  box-shadow: 0 8px 30px #0008;
   overflow: hidden;
 }
-.quantities ~ .wingman {
-  position: static;
-  align-self: flex-end;
-  flex-shrink: 0;
-  margin: 0 12px 8px;
-}
 .wingman-header,
-.wingman-compose-actions,
-.wingman-chat-title {
+.wingman-compose-actions {
   display: flex;
   gap: 6px;
   padding: 8px;
@@ -31,9 +16,141 @@
   justify-content: space-between;
   flex-shrink: 0;
 }
-.wingman-chat-open {
-  --wingman-preview-height: min(18vh, 150px);
+.wingman-header {
+  position: relative;
+  gap: 6px;
+  padding: 4px 6px 4px 9px;
+  border-bottom: 1px solid #354150;
 }
+.wingman-status,
+.wingman-turn small {
+  color: #a6b7c8;
+  font-size: 11px;
+}
+.wingman-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  white-space: nowrap;
+}
+.wingman-status::before {
+  content: '';
+  height: 6px;
+  width: 6px;
+  border-radius: 50%;
+  background: #8895a8;
+}
+.wingman-status[data-status='Working']::before {
+  background: #71b8f3;
+}
+.wingman-status[data-status='Waiting']::before {
+  background: #86b4a0;
+}
+.wingman-status[data-status='Paused']::before {
+  background: #cfaa70;
+}
+.wingman-icon {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 0;
+  color: #bac8d8;
+}
+.wingman-options {
+  position: relative;
+}
+.wingman-options > button {
+  font-size: 18px;
+}
+.wingman-menu {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  top: 100%;
+  display: grid;
+  min-width: 146px;
+  padding: 3px;
+  background: #202935;
+  border: 1px solid #394555;
+  border-radius: 4px;
+}
+.wingman-menu[hidden] {
+  display: none;
+}
+.wingman-menu button {
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+.wingman-turn {
+  margin: 4px 0;
+}
+.wingman-disclosure,
+.wingman-target {
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: #c8d7e8;
+}
+.wingman-disclosure {
+  display: block;
+  width: 100%;
+  font-size: 12px;
+  padding: 3px 2px;
+  color: #a6b7c8;
+}
+.wingman-disclosure::before {
+  content: '';
+  display: inline-block;
+  border: 4px solid transparent;
+  border-left-color: currentColor;
+  margin-right: 4px;
+}
+.wingman-disclosure[aria-expanded='true']::before {
+  transform: rotate(90deg);
+  transform-origin: 2px center;
+}
+.wingman-disclosure span {
+  color: #a6b7c8;
+}
+.wingman-turn ul {
+  padding: 0 0 0 18px;
+  margin: 0;
+  list-style: none;
+}
+.wingman-turn li {
+  display: grid;
+  gap: 3px;
+  padding: 5px 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.wingman-turn li p {
+  margin: 0;
+}
+.wingman-target {
+  text-decoration: underline;
+  padding: 3px 0;
+}
+.wingman-thumbnail {
+  display: grid;
+  place-items: center;
+  height: clamp(96px, 17vh, 160px);
+  --wingman-preview-height: clamp(96px, 17vh, 160px);
+  overflow: hidden;
+}
+.wingman-preview p {
+  position: absolute;
+  bottom: 0;
+  background: #172333eb;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
 .wingman-header button {
   font-size: 12px;
   padding: 5px 8px;
@@ -73,20 +190,12 @@
 .wingman-swap > :first-child {
   pointer-events: none;
 }
-.wingman-caption,
-.wingman-swap-hint {
+.wingman-caption {
   display: block;
   padding: 7px 10px;
   white-space: normal;
-}
-.wingman-caption {
   font-size: 13px;
   overflow-wrap: anywhere;
-}
-.wingman-swap-hint {
-  color: #a6b7c8;
-  font-size: 11px;
-  padding-top: 0;
 }
 .wingman-empty {
   margin: 0;
@@ -96,39 +205,47 @@
   line-height: 1.5;
 }
 .wingman-chat {
-  border-bottom: 1px solid #46576a;
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
-.wingman-chat-title span {
-  font-size: 11px;
-  color: #a6b7c8;
-}
 .wingman-messages {
-  max-height: min(32vh, 280px);
+  flex: 1;
+  overscroll-behavior: contain;
   overflow: auto;
   padding: 0 8px;
   min-height: 0;
 }
 .wingman-message {
-  padding: 8px;
-  margin-bottom: 8px;
-  background: #223346;
-  border-radius: 5px;
+  position: relative;
+  margin: 3px 0 9px;
+  font-size: 13px;
 }
 .wingman-message-user {
+  width: fit-content;
+  max-width: 85%;
+  margin-left: auto;
+  padding: 5px 9px;
+  border-radius: 7px;
   background: #183a50;
 }
-.wingman-message strong {
-  font-size: 11px;
-  color: #b9cadd;
+.wingman-message-agent {
+  padding: 2px 0;
+}
+.wingman-speaker {
+  position: absolute;
+  height: 1px;
+  width: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .wingman-message p {
-  margin: 5px 0;
+  margin: 0;
+  color: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 13px;
 }
 .wingman-message-images {
   display: flex;
@@ -142,22 +259,39 @@
   object-fit: contain;
 }
 .wingman-chat form {
-  padding: 8px;
+  margin: 5px 7px 7px;
+  padding: 4px;
+  border: 1px solid #39485b;
+  border-radius: 5px;
+  background: #1b212c;
   flex-shrink: 0;
 }
-.wingman-chat label {
-  display: block;
-  font-size: 12px;
-  margin-bottom: 5px;
-}
 .wingman-chat textarea {
+  display: block;
   width: 100%;
-  min-height: 64px;
+  min-height: 34px;
+  padding: 5px;
+  field-sizing: content;
   max-height: 160px;
-  resize: vertical;
+  border: 0;
+  background: transparent;
+  resize: none;
 }
 .wingman-compose-actions {
-  padding: 7px 0 0;
+  padding: 0;
+  justify-content: flex-start;
+  gap: 3px;
+}
+.wingman-compose-actions .workspace-panel-control {
+  position: static;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.wingman-send {
+  margin-left: auto;
 }
 .wingman-attachments {
   display: flex;
@@ -190,24 +324,15 @@
 }
 .wingman-pause-note {
   margin: 0;
-  padding: 6px 9px;
+  padding: 3px 9px;
   font-size: 11px;
-  background: #59401e;
-  color: #ffe1ad;
+  color: #a6b7c8;
 }
 .wingman-error {
   margin: 0;
   padding: 8px;
   color: #ffb4b4;
   font-size: 12px;
-}
-.wingman-connect {
-  padding: 0 8px 8px;
-}
-.wingman-connect button {
-  width: 100%;
-  font-size: 12px;
-  padding: 5px 8px;
 }
 .wingman-prompts {
   padding: 0 10px 10px;
@@ -220,17 +345,4 @@
 .wingman-prompts textarea {
   width: 100%;
   min-height: 120px;
-}
-.wingman-keyboard-hint {
-  margin: 5px 0 0;
-  font-size: 11px;
-  color: #a6b7c8;
-}
-.wingman-waiting {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 8px;
-  font-size: 12px;
 }

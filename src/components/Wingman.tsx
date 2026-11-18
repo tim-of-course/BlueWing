@@ -1,3 +1,4 @@
+import WingmanMenu from './WingmanMenu';
 import {
   createEffect,
   createMemo,
@@ -11,20 +12,27 @@ import {
 import type { WorkspaceController } from '../app/contracts';
 import { connectionPrompt } from '../app/cli-guide';
 import type { Attachment } from '../app/messaging';
-import { visibleDrawingIds } from '../app/visibility';
+import { groupActivity } from '../app/wingman-activity';
+import WorkspacePanel, { type PanelPreferences } from './WorkspacePanel';
+import WingmanTurn from './WingmanTurn';
 import type {
   WingmanPresentation,
   WingmanVisual,
-  WingmanView,
+  ActivityTarget,
+  WingmanActivity,
   WorkspaceViewSnapshot,
 } from '../app/wingman-types';
 import ScreenshotCapture from './ScreenshotCapture';
-import WingmanPreview from './WingmanPreview';
 import { RegionImages } from '../pdf/region-images';
 import './wingman.css';
 
 interface Props {
+  preferences: PanelPreferences;
+  temporarilyCollapsed: boolean;
+  onPinnedChange(value: boolean): void;
+  onReveal(): void;
   controller: WorkspaceController;
+  openTarget(target: ActivityTarget, takeoffId?: string): void;
   captureView(): WorkspaceViewSnapshot | null;
   applyView(view: WorkspaceViewSnapshot | WingmanVisual): Promise<void>;
   navigationDisabled: boolean;
@@ -46,7 +54,38 @@ export default function Wingman(props: Props) {
   const [messages, setMessages] = createSignal(initialConversation.messages, {
     name: 'wingman.messages',
   });
+  const [entries, setEntries] = createSignal(messaging.activity);
+  const [peeking, setPeeking] = createSignal(false);
+  const visible = () =>
+    (props.preferences.pinned() && !props.temporarilyCollapsed) || peeking();
+  const [peek, setPeek] = createSignal(0);
+  const replyIds = createMemo(
+    () =>
+      messages().flatMap((message) =>
+        message.sender === 'agent' ? [message.id] : [],
+      ),
+    {
+      equals: (a, b) =>
+        a.length === b.length && a.every((id, i) => id === b[i]),
+    },
+  );
+  const turns = createMemo(
+    (previous: Map<number, WingmanActivity[]> | undefined) => {
+      const grouped = groupActivity(entries(), replyIds());
+      for (const [id, items] of grouped) {
+        const prior = previous?.get(id);
+        if (
+          prior &&
+          items.length === prior.length &&
+          items.every((item, index) => item === prior[index])
+        )
+          grouped.set(id, prior);
+      }
+      return grouped;
+    },
+  );
   let transcript: HTMLDivElement | undefined;
+  let composerActions: HTMLDivElement | undefined;
   let followMessages = true;
   let messageCursor = initialConversation.messages.at(-1)?.id ?? 0;
   const [lastRead, setLastRead] = createSignal(messageCursor, {
@@ -56,10 +95,14 @@ export default function Wingman(props: Props) {
     messaging.subscribe((change) => {
       setConversation(messaging.status());
       if (change === 'status') return;
+      if (change === 'bind' || change === 'activity')
+        setEntries(messaging.activity);
+      if (change === 'activity') return;
       const incoming = messaging.snapshot(
         change === 'bind' ? 0 : messageCursor,
       ).messages;
-      messageCursor = incoming.at(-1)?.id ?? 0;
+      messageCursor =
+        incoming.at(-1)?.id ?? (change === 'bind' ? 0 : messageCursor);
       // Measure before the new rows change the height of the log.
       const distanceFromBottom = transcript
         ? transcript.scrollHeight -
@@ -72,6 +115,7 @@ export default function Wingman(props: Props) {
         incoming.some((message) => message.sender === 'user');
       if (change === 'bind') {
         // The conversation rebinds whenever the project opens, closes or switches.
+        setPeeking(false);
         setVisual(null);
         setLastRead(messageCursor);
         setMessages(incoming);
@@ -84,18 +128,17 @@ export default function Wingman(props: Props) {
     () => props.controller.project()?.takeoffId ?? null,
     { name: 'wingman.takeoffId' },
   );
-  const [publishedVisual, setVisual] = createSignal<WingmanVisual | null>(
-    null,
-    { name: 'wingman.agentView' },
-  );
-  // A view published for another project or takeoff is never shown, including
-  // in the frame before the switch clears it.
+  const [publication, setVisual] = createSignal<{
+    source: WingmanVisual;
+    visual: WingmanVisual;
+  } | null>(null, { name: 'wingman.agentView' });
   const visual = createMemo(
     () => {
-      const published = publishedVisual();
-      return published?.projectId === projectId() &&
-        published.takeoffId === takeoffId()
-        ? published
+      const current = publication()?.visual;
+      const project = projectId();
+      const takeoff = takeoffId();
+      return current?.projectId === project && current.takeoffId === takeoff
+        ? current
         : null;
     },
     { name: 'wingman.currentAgentView' },
@@ -105,8 +148,6 @@ export default function Wingman(props: Props) {
       name: 'wingman.returnView',
     });
   const [swapped, setSwapped] = createSignal(false);
-  const [expanded, setExpanded] = createSignal(false);
-  const [chatOpen, setChatOpen] = createSignal(false);
   const [glowing, setGlowing] = createSignal(false);
   const [pendingView, setPendingView] = createSignal(false);
   const [changingView, setChangingView] = createSignal(false);
@@ -119,10 +160,25 @@ export default function Wingman(props: Props) {
   const [copyStatus, setCopyStatus] = createSignal('');
   const [fallbackPrompt, setFallbackPrompt] = createSignal('');
   const [now, setNow] = createSignal(Date.now(), { name: 'wingman.clock' });
+  const contact = createMemo(() => {
+    const current = controller.lastCliContact();
+    if (current !== null) return current;
+    const reply = messages()
+      .filter((message) => message.sender === 'agent')
+      .at(-1);
+    return (
+      Math.max(
+        entries().at(-1)?.startedAt ?? 0,
+        reply ? Date.parse(reply.createdAt) : 0,
+      ) || null
+    );
+  });
+  const firstConnection = () =>
+    contact() == null && !messages().length && !entries().length;
   createEffect(
-    controller.lastCliContact,
+    contact,
     (contact) => {
-      if (contact === null) return;
+      if (contact == null) return;
       const timer = setInterval(() => setNow(Date.now()), 5000);
       return () => {
         clearInterval(timer);
@@ -132,15 +188,17 @@ export default function Wingman(props: Props) {
   );
   const activity = createMemo(
     () => {
-      if (controller.cliExecuting()) return 'AI is working';
-      const contact = controller.lastCliContact();
-      if (contact === null) return 'No AI connected yet';
-      const seconds = Math.max(0, Math.floor((now() - contact) / 1000));
+      if (conversation().paused) return 'Paused';
+      if (conversation().waiting) return 'Waiting for you';
+      if (controller.cliExecuting() || turns().has(0)) return 'Working';
+      const last = contact();
+      if (last == null) return 'Not connected';
+      const seconds = Math.max(0, Math.floor((now() - last) / 1000));
       const age =
         seconds < 60
-          ? `${String(seconds)} s`
-          : `${String(Math.floor(seconds / 60))} min`;
-      return `AI last active ${age} ago`;
+          ? `${String(seconds)}s`
+          : `${String(Math.floor(seconds / 60))}m`;
+      return `Idle · last active ${age} ago`;
     },
     { name: 'wingman.activity' },
   );
@@ -148,41 +206,12 @@ export default function Wingman(props: Props) {
   let glowTimer: ReturnType<typeof setTimeout> | undefined;
   let screenshotNumber = 0;
   const unread = createMemo(() =>
-    chatOpen()
+    visible()
       ? 0
       : messages().filter(
           (message) => message.sender === 'agent' && message.id > lastRead(),
         ).length,
   );
-  const preview = createMemo<WingmanView | null>(() => {
-    if (!swapped()) return visual()?.view ?? null;
-    const saved = returnView();
-    if (saved?.mode === '3d') return saved.model;
-    return saved?.plan
-      ? {
-          ...saved.plan,
-          visibleGeometryIds: [
-            ...visibleDrawingIds(
-              props.controller.project(),
-              saved.context.visibility,
-              saved.context.categories,
-            ),
-          ],
-        }
-      : (saved?.model ?? null);
-  });
-  const title = createMemo(() => {
-    if (swapped())
-      return returnView()?.quantities ? 'Your quantities view' : 'Your view';
-    const current = visual();
-    if (current?.caption) return current.caption;
-    if (current?.view.kind === 'plan')
-      return (
-        props.controller.project()?.sheets[current.view.sheetId]?.name ??
-        'Plan unavailable'
-      );
-    return current ? 'Construction · 3D' : 'Your AI’s view will appear here';
-  });
   async function apply(view: WorkspaceViewSnapshot | WingmanVisual) {
     setChangingView(true);
     setError('');
@@ -193,11 +222,19 @@ export default function Wingman(props: Props) {
       setChangingView(false);
     }
   }
-  function publish(next: WingmanVisual) {
+  function publish(next: WingmanVisual, annotated = false) {
     if (next.projectId !== props.controller.project()?.id) return false;
     if (next.takeoffId !== props.controller.project()?.takeoffId) return false;
+    const previous = publication();
+    const displayed = visual();
+    const source =
+      annotated && displayed
+        ? displayed === previous?.visual
+          ? previous.source
+          : displayed
+        : next;
     const current = structuredClone(next);
-    setVisual(current);
+    setVisual({ source, visual: current });
     if (swapped()) {
       if (props.navigationDisabled || changingView()) setPendingView(true);
       else
@@ -215,12 +252,13 @@ export default function Wingman(props: Props) {
       main: props.captureView(),
       agent: visual(),
       swapped: swapped(),
-      expanded: expanded(),
+      expanded: visible(),
       pendingView: pendingView(),
       draftPending: props.navigationDisabled,
     }),
     flash() {
-      setExpanded(true);
+      props.onReveal();
+      setPeek((value) => value + 1);
       setGlowing(true);
       clearTimeout(glowTimer);
       glowTimer = setTimeout(() => setGlowing(false), 1800);
@@ -251,14 +289,17 @@ export default function Wingman(props: Props) {
         )
       )
         throw new Error('Annotation points must fit the displayed sheet');
-      publish({
-        ...current,
-        view: {
-          ...current.view,
-          annotations,
-          ...(highlightIds ? { highlightIds } : {}),
+      publish(
+        {
+          ...current,
+          view: {
+            ...current.view,
+            annotations,
+            ...(highlightIds ? { highlightIds } : {}),
+          },
         },
-      });
+        true,
+      );
     },
   };
   onSettled(() => {
@@ -283,16 +324,6 @@ export default function Wingman(props: Props) {
     };
   });
   createEffect(
-    () => takeoffId(),
-    () => {
-      planImages.clear();
-      setReturnView(null);
-      setSwapped(false);
-      setPendingView(false);
-    },
-    { name: 'wingman.takeoff' },
-  );
-  createEffect(
     () => projectId(),
     () => {
       planImages.clear();
@@ -310,30 +341,52 @@ export default function Wingman(props: Props) {
     { name: 'wingman.project' },
   );
   createEffect(
-    () => ({ open: chatOpen(), messages: messages() }),
-    ({ open }) => {
+    () => ({ open: visible(), messages: messages(), entries: entries() }),
+    ({ open, messages }) => {
+      if (open) setLastRead(messages.at(-1)?.id ?? 0);
       if (open && transcript && followMessages)
         transcript.scrollTop = transcript.scrollHeight;
     },
     { name: 'wingman.readConversation' },
   );
-  async function swap() {
+  async function openView(current: WingmanVisual) {
     if (props.navigationDisabled || changingView()) return;
-    if (swapped()) {
-      const saved = returnView();
-      if (!saved) return;
-      await apply(saved);
-      setSwapped(false);
-      setReturnView(null);
-    } else {
-      const current = visual();
-      const saved = props.captureView();
-      if (!current || !saved) return;
-      await apply(current);
-      setReturnView(saved);
-      setSwapped(true);
-      if (visual() !== current) setPendingView(true);
-    }
+    const saved = returnView() ?? props.captureView();
+    if (!saved) return;
+    const publishedAtClick = publication();
+    await apply(current);
+    if (visual() && publication() !== publishedAtClick) setPendingView(true);
+    setReturnView(saved);
+    setSwapped(true);
+  }
+  async function restore() {
+    const saved = returnView();
+    if (!saved || props.navigationDisabled || changingView()) return;
+    await apply(saved);
+    setSwapped(false);
+    setReturnView(null);
+  }
+  function turn(items: () => WingmanActivity[], endedAt?: number) {
+    return (
+      <WingmanTurn
+        entries={items()}
+        {...(endedAt === undefined ? {} : { endedAt })}
+        controller={controller}
+        visible={visible()}
+        planImages={planImages}
+        navigationDisabled={props.navigationDisabled || changingView()}
+        displayedVisual={(source) => {
+          const current = publication();
+          return current?.source === source ? current.visual : source;
+        }}
+        onOpenView={(view) => {
+          action(openView.bind(null, view));
+        }}
+        onOpenTarget={(target, takeoffId) => {
+          props.openTarget(target, takeoffId);
+        }}
+      />
+    );
   }
   function action(operation: () => Promise<unknown>) {
     void operation().catch((cause: unknown) =>
@@ -372,80 +425,227 @@ export default function Wingman(props: Props) {
   return (
     <>
       <Show when={props.controller.project()}>
-        <aside
-          class={[
-            'wingman',
-            chatOpen() && 'wingman-chat-open',
-            glowing() && 'wingman-glowing',
-            conversation().paused && 'wingman-paused',
-          ]}
-          aria-label="Wingman"
+        <WorkspacePanel
+          name="wingman"
+          label="Wingman"
+          side="right"
+          preferences={props.preferences}
+          temporarilyCollapsed={props.temporarilyCollapsed}
+          onPinnedChange={(value) => {
+            props.onPinnedChange(value);
+          }}
+          bottomControl
+          bottomControlHost={() => composerActions}
+          unread={unread()}
+          peekState={[peeking, setPeeking]}
+          peekRequest={peek()}
         >
-          <Show when={chatOpen()}>
+          <div
+            class={[
+              'wingman',
+              glowing() && 'wingman-glowing',
+              conversation().paused && 'wingman-paused',
+            ]}
+          >
+            <div class="wingman-header">
+              <strong>Wingman</strong>
+              <span
+                class="wingman-status"
+                role="status"
+                data-status={activity().split(' ')[0]}
+              >
+                {activity()}
+              </span>
+              <button
+                type="button"
+                class="wingman-icon"
+                aria-label={conversation().paused ? 'Resume CLI' : 'Pause CLI'}
+                title={conversation().paused ? 'Resume CLI' : 'Pause CLI'}
+                onClick={() => {
+                  messaging.setPaused(!conversation().paused);
+                }}
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    d={
+                      conversation().paused
+                        ? 'M4 2v12l9-6z'
+                        : 'M4 3h3v10H4zM9 3h3v10H9z'
+                    }
+                  />
+                </svg>
+              </button>
+              <WingmanMenu
+                waiting={conversation().waiting}
+                onCopyPrompt={() => setPromptOpen((v) => !v)}
+                onEnd={() => {
+                  messaging.stopWaiting();
+                }}
+              />
+            </div>
+            <Show when={conversation().paused}>
+              <p class="wingman-pause-note">
+                CLI paused. A running action may finish.
+              </p>
+            </Show>
+            <Show when={promptOpen()}>
+              <section class="wingman-prompts" aria-label="Connect your AI">
+                <Show
+                  when={props.controller.cliConnection()}
+                  fallback={
+                    <p>
+                      Connecting an AI needs the Bluewing desktop app. Open this
+                      project there to copy a connection prompt.
+                    </p>
+                  }
+                >
+                  <p>Copy a prompt and paste it into your AI’s chat.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void copyPrompt('wingman');
+                    }}
+                  >
+                    Wingman + chat
+                  </button>
+                  <p>Talk here or in your AI’s chat.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void copyPrompt('chat');
+                    }}
+                  >
+                    Chat only
+                  </button>
+                  <p>Keep the conversation in your AI’s chat.</p>
+                  <Show when={copyStatus()}>
+                    <p role="status">{copyStatus()}</p>
+                  </Show>
+                  <Show when={fallbackPrompt()}>
+                    <label for="wingman-prompt">AI connection prompt</label>
+                    <textarea
+                      id="wingman-prompt"
+                      readonly
+                      value={fallbackPrompt()}
+                      onFocus={(event) => {
+                        event.currentTarget.select();
+                      }}
+                    />
+                  </Show>
+                </Show>
+              </section>
+            </Show>
+            <Show when={swapped()}>
+              <button
+                type="button"
+                disabled={props.navigationDisabled || changingView()}
+                onClick={() => {
+                  action(restore);
+                }}
+              >
+                Return to your view
+              </button>
+              <Show when={pendingView()}>
+                <button
+                  type="button"
+                  disabled={props.navigationDisabled || changingView()}
+                  onClick={() => {
+                    const current = visual();
+                    if (current) action(() => apply(current));
+                  }}
+                >
+                  Show latest agent view
+                </button>
+              </Show>
+            </Show>
+
             <section class="wingman-chat" aria-label="Wingman conversation">
-              <div class="wingman-chat-title">
-                <strong>Conversation</strong>
-                <span>
-                  {conversation().waiting ? 'With your AI' : activity()}
-                </span>
-              </div>
               <div
                 class="wingman-messages"
                 ref={(element) => {
                   transcript = element;
                   followMessages = true;
                 }}
+                onScroll={(event) => {
+                  const log = event.currentTarget;
+                  followMessages =
+                    log.scrollHeight - log.scrollTop - log.clientHeight <= 4;
+                }}
                 role="log"
                 aria-label="Messages"
                 aria-live="polite"
               >
-                <Show when={!messages().length}>
-                  <p class="wingman-empty">
-                    Messages are saved here. Your AI sees them on its next
-                    Bluewing command.
-                  </p>
+                <Show when={!messages().length && !entries().length}>
+                  <div class="wingman-empty">
+                    <p>
+                      Messages are saved here. Your AI sees them on its next
+                      Bluewing command.
+                    </p>
+                    <Show when={firstConnection()}>
+                      <button
+                        type="button"
+                        class="primary"
+                        aria-expanded={promptOpen() ? 'true' : 'false'}
+                        onClick={() => setPromptOpen((open) => !open)}
+                      >
+                        Copy AI prompt
+                      </button>
+                    </Show>
+                  </div>
                 </Show>
                 <For each={messages()}>
                   {(message) => (
-                    <article
-                      class={[
-                        'wingman-message',
-                        `wingman-message-${message.sender}`,
-                      ]}
-                    >
-                      <strong>
-                        {message.sender === 'user' ? 'You' : 'AI'}
-                      </strong>
-                      <p>{message.text}</p>
-                      <div class="wingman-message-images">
-                        <For each={message.attachments}>
-                          {(attachment) => (
-                            <Show
-                              when={!attachment.unavailable}
-                              fallback={
-                                <span class="wingman-empty">
-                                  {attachment.name} (image unavailable)
-                                </span>
-                              }
-                            >
-                              <a
-                                href={attachment.dataUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                title="Open screenshot"
+                    <>
+                      <Show when={turns().get(message.id)}>
+                        {(items) => turn(items, Date.parse(message.createdAt))}
+                      </Show>
+                      <article
+                        class={[
+                          'wingman-message',
+                          `wingman-message-${message.sender}`,
+                        ]}
+                      >
+                        <span class="wingman-speaker">
+                          {message.sender === 'user' ? 'You' : 'AI'}
+                        </span>
+                        <p>{message.text}</p>
+                        <div class="wingman-message-images">
+                          <For each={message.attachments}>
+                            {(attachment) => (
+                              <Show
+                                when={!attachment.unavailable}
+                                fallback={
+                                  <span class="wingman-empty">
+                                    {attachment.name} (image unavailable)
+                                  </span>
+                                }
                               >
-                                <img
-                                  src={attachment.dataUrl}
-                                  alt={attachment.name}
-                                />
-                              </a>
-                            </Show>
-                          )}
-                        </For>
-                      </div>
-                    </article>
+                                <a
+                                  href={attachment.dataUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  title="Open screenshot"
+                                >
+                                  <img
+                                    src={attachment.dataUrl}
+                                    alt={attachment.name}
+                                  />
+                                </a>
+                              </Show>
+                            )}
+                          </For>
+                        </div>
+                      </article>
+                    </>
                   )}
                 </For>
+                <Show when={turns().get(0)}>{(items) => turn(items)}</Show>
               </div>
               <form
                 onSubmit={(event) => {
@@ -453,14 +653,12 @@ export default function Wingman(props: Props) {
                   action(send);
                 }}
               >
-                <label for="wingman-message">Message</label>
                 <textarea
-                  id="wingman-message"
+                  aria-label="Message"
                   value={text()}
                   readonly={sending()}
                   placeholder="Ask a question or give a correction…"
                   onInput={(event) => setText(event.currentTarget.value)}
-                  aria-describedby="wingman-keyboard-hint"
                   onCompositionStart={() => {
                     composing = true;
                   }}
@@ -482,9 +680,6 @@ export default function Wingman(props: Props) {
                     }
                   }}
                 />
-                <p id="wingman-keyboard-hint" class="wingman-keyboard-hint">
-                  Enter to send · Shift+Enter for a new line
-                </p>
                 <div class="wingman-attachments">
                   <For each={attachments()}>
                     {(attachment) => (
@@ -506,202 +701,69 @@ export default function Wingman(props: Props) {
                     )}
                   </For>
                 </div>
-                <div class="wingman-compose-actions">
+                <div class="wingman-compose-actions" ref={composerActions}>
                   <button
                     type="button"
-                    title="Attach screenshot (Cmd/Ctrl+Shift+X)"
+                    class="wingman-icon"
+                    title="Attach screenshot"
+                    aria-label="Attach screenshot"
                     disabled={sending()}
                     onClick={() => setCapturing(true)}
                   >
-                    Attach screenshot
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 6.5h3l1.5-2h6l1.5 2h3v10h-15z" />
+                      <circle cx="10" cy="11" r="3" />
+                    </svg>
                   </button>
                   <button
                     type="submit"
+                    class="wingman-icon wingman-send"
+                    aria-label="Send"
+                    title="Enter to send · Shift+Enter for a new line"
                     disabled={
                       sending() || (!text().trim() && !attachments().length)
                     }
                   >
-                    {sending() ? 'Sending…' : 'Send'}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M10 16V4m-5 5 5-5 5 5" />
+                    </svg>
                   </button>
                 </div>
               </form>
             </section>
-          </Show>
-          <div class="wingman-header">
-            <button
-              type="button"
-              aria-label={
-                expanded() ? 'Collapse Wingman view' : 'Expand Wingman view'
+            <Show
+              when={
+                error() ||
+                conversation().loadError ||
+                conversation().activityError
               }
-              aria-expanded={expanded() ? 'true' : 'false'}
-              onClick={() => setExpanded((value) => !value)}
             >
-              Wingman {expanded() ? '▾' : '▴'}
-            </button>
-            <button
-              type="button"
-              aria-label="Wingman chat"
-              aria-expanded={chatOpen() ? 'true' : 'false'}
-              onClick={() => {
-                setLastRead(messages().at(-1)?.id ?? 0);
-                setChatOpen((value) => !value);
-              }}
-            >
-              Chat{unread() ? ` (${String(unread())})` : ''}
-            </button>
-            <button
-              type="button"
-              class={conversation().paused ? 'wingman-resume' : ''}
-              onClick={() => {
-                messaging.setPaused(!conversation().paused);
-              }}
-            >
-              {conversation().paused ? 'Resume CLI' : 'Pause CLI'}
-            </button>
-          </div>
-          <div class="wingman-connect">
-            <button
-              type="button"
-              aria-expanded={promptOpen() ? 'true' : 'false'}
-              onClick={() => setPromptOpen((open) => !open)}
-            >
-              Copy AI prompt
-            </button>
-          </div>
-          <Show when={promptOpen()}>
-            <section class="wingman-prompts" aria-label="Connect your AI">
-              <Show
-                when={props.controller.cliConnection()}
-                fallback={
-                  <p>
-                    Connecting an AI needs the Bluewing desktop app. Open this
-                    project there to copy a connection prompt.
-                  </p>
-                }
-              >
-                <p>Copy a prompt and paste it into your AI’s chat.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void copyPrompt('wingman');
-                  }}
-                >
-                  Wingman + chat
-                </button>
-                <p>Talk here or in your AI’s chat.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void copyPrompt('chat');
-                  }}
-                >
-                  Chat only
-                </button>
-                <p>Keep the conversation in your AI’s chat.</p>
-                <Show when={copyStatus()}>
-                  <p role="status">{copyStatus()}</p>
-                </Show>
-                <Show when={fallbackPrompt()}>
-                  <label for="wingman-prompt">AI connection prompt</label>
-                  <textarea
-                    id="wingman-prompt"
-                    readonly
-                    value={fallbackPrompt()}
-                    onFocus={(event) => {
-                      event.currentTarget.select();
-                    }}
-                  />
-                </Show>
-              </Show>
-            </section>
-          </Show>
-          <Show
-            when={conversation().waiting}
-            fallback={
-              // With the chat open the same line is in its title, so the
-              // transcript keeps its height.
-              <Show when={!chatOpen()}>
-                <div class="wingman-swap-hint">{activity()}</div>
-              </Show>
-            }
-          >
-            <div class="wingman-waiting">
-              <span role="status">Waiting for your message</span>
-              <button
-                type="button"
-                onClick={() => {
-                  messaging.stopWaiting();
-                }}
-              >
-                End conversation
-              </button>
-            </div>
-          </Show>
-          <Show when={conversation().paused}>
-            <p class="wingman-pause-note" role="status">
-              AI actions paused. An action already running may finish.
-            </p>
-          </Show>
-          <Show when={expanded()}>
-            <button
-              type="button"
-              class="wingman-swap"
-              aria-label={
-                swapped() ? 'Return to your view' : 'Swap to agent view'
-              }
-              disabled={!visual() || props.navigationDisabled || changingView()}
-              onClick={() => {
-                action(swap);
-              }}
-            >
-              <Show
-                when={preview()}
-                fallback={
-                  <div class="wingman-empty">
-                    Views shared by your AI will appear here.
-                  </div>
-                }
-              >
-                {(current) => (
-                  <WingmanPreview
-                    controller={props.controller}
-                    view={current()}
-                    planImages={planImages}
-                  />
-                )}
-              </Show>
-              <span class="wingman-caption">{title()}</span>
-              <Show when={visual()}>
-                <span class="wingman-swap-hint">
-                  {props.navigationDisabled
-                    ? 'Finish your edit to swap views'
-                    : swapped()
-                      ? 'Click to return to your view'
-                      : 'Click to swap views'}
-                </span>
-              </Show>
-            </button>
-            <Show when={pendingView()}>
-              <button
-                type="button"
-                disabled={props.navigationDisabled || changingView()}
-                onClick={() => {
-                  const current = visual();
-                  if (current) action(() => apply(current));
-                }}
-              >
-                Show latest agent view
-              </button>
+              {(problem) => (
+                <p class="wingman-error" role="alert">
+                  {problem()}
+                </p>
+              )}
             </Show>
-          </Show>
-          <Show when={error() || conversation().loadError}>
-            {(problem) => (
-              <p class="wingman-error" role="alert">
-                {problem()}
-              </p>
-            )}
-          </Show>
-        </aside>
+          </div>
+        </WorkspacePanel>
       </Show>
       <Show when={capturing()}>
         <ScreenshotCapture
@@ -709,7 +771,8 @@ export default function Wingman(props: Props) {
           onError={(message) => {
             setError(message);
             setCapturing(false);
-            setChatOpen(true);
+            props.onPinnedChange(true);
+            setPeek((value) => value + 1);
           }}
           onCapture={(capture) => {
             setAttachments((items) => [
@@ -721,7 +784,8 @@ export default function Wingman(props: Props) {
               },
             ]);
             setCapturing(false);
-            setChatOpen(true);
+            props.onPinnedChange(true);
+            setPeek((value) => value + 1);
           }}
         />
       </Show>

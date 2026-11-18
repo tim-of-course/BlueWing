@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { openPanel } from './panels';
 
 test('sheet order, history, recent projects and dropped PDFs', async ({
   page,
@@ -10,6 +11,7 @@ test('sheet order, history, recent projects and dropped PDFs', async ({
     .click();
   await page.getByLabel('Project name', { exact: true }).fill('Navigation job');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await openPanel(page, 'Sheets');
   const choosing = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   await (await choosing).setFiles('tests/fixtures/sheet-name-plan.pdf');
@@ -98,6 +100,7 @@ test('a missing recent project and a failed PDF batch explain what happened', as
     'Could not open recent project',
   );
   await expect(page.getByRole('button', { name: 'Current job' })).toBeVisible();
+  await openPanel(page, 'Sheets');
   const choosing = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   const valid = await readFile('tests/fixtures/assessment-plan.pdf');

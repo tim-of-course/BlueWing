@@ -13,6 +13,7 @@ test('positioned takeoff, linked 3D and highlighted review survive reopening', a
       errors.push(message.text());
   });
   await detailedWorkflow(page);
+  await page.getByLabel('Workspace view', { exact: true }).hover();
   const { artifact } = await captureBrowserArtifact(
     page,
     async () => {

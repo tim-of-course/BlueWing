@@ -8,7 +8,7 @@ Wingman's copied prompt includes both the executable and the running app's `BLUE
 
 `web.inspect` reports `runningSource`, `runningVersion`, and `runningUrl` for the current webview. `activeVersion` remains the selected offline bundle; it can differ while `bun run desktop` is displaying the development server.
 
-In Wingman, choose **Copy AI prompt**, then **Wingman + chat** or **Chat only**, and paste the prompt into your agent's chat. It includes the installed executable, the open project identity, and your conversation preference. Keep Bluewing open. This works with any agent that can run local commands; Bluewing does not run or select a model.
+Choose **Copy AI prompt** in the empty chat or in **Wingman options**, then **Wingman + chat** or **Chat only**, and paste the prompt into your agent's chat. It includes the installed executable, the open project identity, and your conversation preference. Keep Bluewing open. This works with any agent that can run local commands; Bluewing does not run or select a model.
 
 Start with `bluewing help` for a short introduction, or `bluewing help messages.send` for one command's schema and examples. `bluewing connect '{"payload":{"mode":"wingman"}}'` returns the current project and Wingman conversation instructions; mode `chat` keeps answers in the external chat. These modes communicate intent through instructions, without changing other callers' behavior or storing a global conversation mode. `commands.list` returns an alphabetical index of names, short descriptions and mutation flags, plus the request protocol.
 
@@ -279,7 +279,7 @@ Every CLI request accepts one optional envelope cursor, `messagesAfter`. Parsed 
 
 The UI's pause control rejects all non-messaging CLI commands with `WINGMAN_PAUSED`, including inspection and rendering. Commands queued before a pause remain rejected after resume; submit a new request to retry. Commands already executing may finish. UI operations and messages continue while paused.
 
-Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. When the user is viewing a different takeoff, the view is not shown and the result carries `notShownToUser` with the reason; the image file is still written. `wingman.inspect` reads the presentation, `wingman.flash` expands and glows the corner preview, and `wingman.annotate` replaces local plan annotations with `{ "annotations": [{ "points": [{ "x": 10, "y": 20 }], "label": "Check", "color": "#ff8800" }], "highlightIds": [] }`. These commands do not edit the estimate.
+Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. Wingman logs the saved position under **Rendered**. A render for a different takeoff leaves the main workspace in place. The result includes `notShownToUser` with both takeoff names and the log location. Clicking the thumbnail opens that takeoff. `wingman.inspect` reads the presentation, `wingman.flash` reveals and briefly highlights the sidebar, and `wingman.annotate` replaces local plan annotations with `{ "annotations": [{ "points": [{ "x": 10, "y": 20 }], "label": "Check", "color": "#ff8800" }], "highlightIds": [] }`. These commands do not edit the estimate.
 
 For ordinary work, include the most recent received message ID in the next command. There is no separate acknowledgement command or destructive inbox read:
 
@@ -293,4 +293,4 @@ bluewing wingman.flash '{}'
 
 A normal user message is delivered with the next CLI result. It does not interrupt an operation already running. The separate **Pause CLI** button cancels pending CLI work. Resume is available only in the desktop UI. The CLI cannot resume itself.
 
-While a message wait is pending, Wingman shows **Waiting for your message** and **End conversation**. Ending wakes active waits and prevents their renewal. A later new wait can start another conversation. This indicator establishes that a request is waiting, not that a model is guaranteed to respond; if a caller is killed, the outstanding application wait expires within 25 seconds. Pausing CLI actions leaves messaging and waits available.
+While a message wait is pending, the Wingman header shows **Waiting for you**. Choose **End conversation** in **Wingman options** to end the wait. Ending wakes active waits and prevents their renewal. A later new wait can start another conversation. This indicator establishes that a request is waiting, not that a model is guaranteed to respond; if a caller is killed, the outstanding application wait expires within 25 seconds. Pausing CLI actions leaves messaging and waits available.

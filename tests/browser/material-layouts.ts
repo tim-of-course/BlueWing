@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { drawWall, startProject } from './takeoff';
+import { openPanel } from './panels';
 
 export async function materialLayoutWorkflow(page: Page): Promise<void> {
   await startProject(page);
@@ -160,6 +161,7 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   await construction
     .getByRole('button', { name: 'Close', exact: true })
     .click();
+  await openPanel(page, 'Sheets');
   await page
     .getByRole('button', { name: 'FRP walls, 1 drawing objects', exact: true })
     .click();

@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { startProject, drawWall } from './takeoff';
+import { openPanel } from './panels';
 
 export async function systemWorkflow(page: Page): Promise<void> {
   await startProject(page);
@@ -80,6 +81,7 @@ export async function systemWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(totals).toContainText('288 ft²');
   await expect(totals).toContainText('19 ea');
+  await openPanel(page, 'Sheets');
   await page
     .getByRole('button', {
       name: 'System walls, 1 drawing objects',

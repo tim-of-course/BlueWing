@@ -36,21 +36,18 @@ Object.assign(window, {
   wingmanWatchModelBuilds: async () => {
     const { ConstructionRenderer } = await import('../../src/three/renderer');
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    const original = ConstructionRenderer.prototype.render;
-    const models = new WeakMap<
-      InstanceType<typeof ConstructionRenderer>,
-      Parameters<typeof original>[0]
-    >();
-    let builds = 0;
-    ConstructionRenderer.prototype.render = function (model, options) {
-      if (models.get(this) !== model) builds++;
-      models.set(this, model);
-      original.call(this, model, options);
+    const original = ConstructionRenderer.prototype['setModel'];
+    const builds = { viewer: 0, preview: 0 };
+    ConstructionRenderer.prototype['setModel'] = function (model) {
+      original.call(this, model);
+      // The viewer owns a mounted canvas. After the exports, only Wingman uses the offscreen renderer.
+      if (this['canvas'].isConnected) builds.viewer++;
+      else builds.preview++;
     };
     return {
-      builds: () => builds,
+      builds: () => ({ ...builds }),
       dispose: () => {
-        ConstructionRenderer.prototype.render = original;
+        ConstructionRenderer.prototype['setModel'] = original;
       },
     };
   },

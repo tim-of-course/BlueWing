@@ -14,6 +14,8 @@ test('compact groups show measured totals and visibility leaves estimating data 
 }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // Exercise the Sheets and Inspector controls together with the default pinned chat.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startProject(page);
   const { artifact: visibilityArtifact } = await captureBrowserArtifact(
     page,

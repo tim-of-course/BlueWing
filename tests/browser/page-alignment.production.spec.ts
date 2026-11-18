@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { detailedWorkflow } from './detailed';
 import { captureErrors } from './wingman';
+import { openPanel } from './panels';
 
 test('built page filtering and numeric alignment persist without a CLI test bridge', async ({
   page,
@@ -8,6 +9,7 @@ test('built page filtering and numeric alignment persist without a CLI test brid
   const errors = await captureErrors(page);
   await detailedWorkflow(page);
   await page.getByRole('button', { name: 'Drawing', exact: true }).click();
+  await openPanel(page, 'Sheets');
   const first = page.locator('.sheet-branch').first();
   const firstId = await first.getAttribute('data-sheet-id');
   if (!firstId) throw new Error('Missing original sheet');
