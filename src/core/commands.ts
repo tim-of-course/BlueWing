@@ -102,9 +102,13 @@ const unit: PayloadSchema = {
   type: 'string',
   enum: ['m', 'mm', 'ft', 'in', 'm2', 'ft2', 'ea', 'scalar'],
 };
-const allowance = object(
-  { wastePercent: { type: 'number', minimum: 0 }, packageSize: positive },
-  ['wastePercent'],
+const wastePercent: PayloadSchema = { type: 'number', minimum: 0 };
+const allowance = object({ wastePercent, packageSize: positive }, [
+  'wastePercent',
+]);
+const allowanceOverride = object(
+  { wastePercent, packageSize: { ...positive, nullable: true } },
+  [],
 );
 const sheet = object(
   {
@@ -210,7 +214,7 @@ const assignment = object(
     groupId: string,
     recipeId: string,
     inputs: inputValues,
-    allowances: { type: 'object', additionalProperties: allowance },
+    allowances: { type: 'object', additionalProperties: allowanceOverride },
     geometryInputs: { type: 'object', additionalProperties: inputValues },
     wallOverrides: wallOverrideSchema,
     ceilingOverrides: ceilingOverrideSchema,
@@ -479,7 +483,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ['recipe.delete', 'Delete an unused recipe.', id, true, { id: 'custom' }],
   [
     'assignment.put',
-    'Add or replace an assignment using declared input units and output allowance overrides.',
+    'Add or replace an assignment using declared input units and output allowance overrides. Omitted allowance fields inherit recipe values. Set packageSize to null to clear package rounding.',
     assignment,
     true,
     {
@@ -1004,7 +1008,7 @@ export function validateProject(
       if (!output) throw new Error(`Unknown allowance output: ${outputId}`);
       if (
         output.piece &&
-        allowance.packageSize !== undefined &&
+        allowance.packageSize != null &&
         !Number.isInteger(allowance.packageSize)
       )
         throw new Error('Piece package size must be a whole number');

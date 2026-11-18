@@ -117,6 +117,11 @@ test('assembly preview is lazy while closed and current when reopened', async ({
   await editor
     .getByLabel('Choose assembly', { exact: true })
     .selectOption('wall-area');
+  const height = editor.getByRole('group', { name: 'Input 1', exact: true });
+  await height
+    .getByLabel('Required input (no default)', { exact: true })
+    .uncheck();
+  await height.getByLabel('Default', { exact: true }).fill('8');
   const preview = editor.locator('details').filter({
     has: page.locator('summary', { hasText: 'Preview on selected drawing' }),
   });
@@ -132,10 +137,7 @@ test('assembly preview is lazy while closed and current when reopened', async ({
       await expect(preview).toContainText('192 ft2');
       await preview.locator('summary').click();
       await expect(preview.locator('strong')).toHaveCount(0);
-      await editor
-        .getByRole('group', { name: 'Input 1', exact: true })
-        .getByLabel('Default', { exact: true })
-        .fill('10');
+      await height.getByLabel('Default', { exact: true }).fill('10');
       await expect(preview.locator('strong')).toHaveCount(0);
       await preview.locator('summary').click();
       await expect(preview).toContainText('240 ft2');

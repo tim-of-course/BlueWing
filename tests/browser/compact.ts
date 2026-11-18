@@ -18,6 +18,10 @@ export async function compactWorkflow(page: Page) {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
+  await page.getByLabel('height (ft)', { exact: true }).fill('8');
+  await page
+    .getByRole('button', { name: 'Save assignment', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
   await page.getByRole('button', { name: /^Hide Walls on/ }).click();
   await expect(page.getByText('0 selected', { exact: true })).toBeVisible();

@@ -91,6 +91,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
+  await page.getByLabel('height (ft)', { exact: true }).fill('8');
   await page.getByLabel('layers (scalar)', { exact: true }).fill('2');
   await page.getByLabel('layers (scalar)', { exact: true }).press('Tab');
   await page
@@ -127,6 +128,19 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
   ).toContainText('448 ft2');
+  const packageSize = page.getByLabel('Quantity per package (optional)', {
+    exact: true,
+  });
+  await packageSize.fill('');
+  await packageSize.press('Tab');
+  await page
+    .getByRole('button', { name: 'Save assignment', exact: true })
+    .click();
+  await expect(
+    page.getByRole('table', { name: 'Material totals' }),
+  ).toContainText('422.4 ft2');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(packageSize).toHaveValue('32');
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   // WebKit replaces spaces with underscores in suggested download names.

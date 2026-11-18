@@ -1,8 +1,11 @@
-import { resolveConstruction } from './applied-assemblies';
+import {
+  emptyConstructionContext,
+  resolveConstruction,
+} from './applied-assemblies';
 import type { CommandCall, Project, Takeoff } from './types';
 import type { CommandDefinition } from './commands';
 import { newId } from './geometry';
-import type { SheetPlacement } from './construction-types';
+import type { WallCondition } from './construction-types';
 
 export const ownedCollections = [
   'geometries',
@@ -201,39 +204,24 @@ export function manageTakeoff(project: Project, call: CommandCall): unknown {
   const selected = new Set(p.geometryIds as string[]);
   const ids: Record<string, string> = {};
   const remap = (id: string) => (ids[id] ??= newId());
+  const copyRecord = <T extends { id: string }>(record: T): T => ({
+    ...structuredClone(record),
+    id: remap(record.id),
+  });
   for (const id of selected) {
     const geometry = source.geometries[id];
     if (!geometry) throw new Error(`Geometry not in source takeoff: ${id}`);
-    target.geometries[remap(id)] = {
-      ...structuredClone(geometry),
-      id: remap(id),
-    };
+    target.geometries[remap(id)] = copyRecord(geometry);
   }
-  // Remap every referenced ID in applied definitions/context, while preserving material identities.
   const groups = Object.values(source.groups).filter((g) =>
     g.geometryIds.some((id) => selected.has(id)),
   );
   const assignments = Object.values(source.assignments).filter((a) =>
     groups.some((g) => g.id === a.groupId),
   );
-  for (const g of groups) remap(g.id);
-  for (const a of assignments) {
-    remap(a.id);
-    remap(a.recipeId);
-  }
-  const resolved = resolveConstruction(source);
-  const applied = [
-    ...Object.values(resolved.walls),
-    ...Object.values(resolved.ceilings),
-    ...Object.values(resolved.materials ?? {}),
-  ].filter(
-    (item) =>
-      selected.has(item.geometryId) &&
-      assignments.some((a) => a.id === item.assignmentId),
-  );
-  for (const item of applied) remap(item.id);
+  const { walls } = resolveConstruction(source);
   const openings = Object.values(source.construction?.openings ?? {}).filter(
-    (o) => applied.some((item) => item.id === o.wallId),
+    (o) => selected.has(required(walls[o.wallId]).geometryId),
   );
   const headers = Object.values(source.construction?.headers ?? {}).filter(
     (h) => openings.some((o) => o.headerId === h.id),
@@ -244,104 +232,87 @@ export function manageTakeoff(project: Project, call: CommandCall): unknown {
   const placements = Object.values(
     source.construction?.placements ?? {},
   ).filter((p) => sheets.has(p.sheetId));
-  const usedLevels = new Set(
-    applied.map((item) => item.levelId).filter(Boolean),
-  );
-  const levels = Object.values(source.construction?.levels ?? {}).filter(
-    (level) => usedLevels.has(level.id),
-  );
-  for (const item of [...openings, ...headers, ...levels, ...placements])
-    remap(item.id);
-  for (const level of levels) {
-    const existing = Object.values(target.construction?.levels ?? {}).find(
-      (item) => item.name === level.name && item.elevation === level.elevation,
-    );
-    if (existing) ids[level.id] = existing.id;
-  }
-  for (const a of assignments)
-    for (const id of selected)
-      if (required(source.groups[a.groupId]).geometryIds.includes(id)) {
-        const oldId = a.geometryDetails?.[id]?.id ?? `${a.id}/${id}`;
-        remap(oldId);
-      }
-  const rewrite = <T>(value: T, reference = false, keys = false): T => {
-    if (typeof value === 'string')
-      return (reference ? (ids[value] ?? value) : value) as T;
-    if (Array.isArray(value))
-      return (value as unknown[]).map((item) => rewrite(item, reference)) as T;
-    if (value && typeof value === 'object')
-      return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => [
-          keys ? (ids[key] ?? key) : key,
-          key === 'materialId'
-            ? item
-            : rewrite(
-                item,
-                key === 'id' || key.endsWith('Id') || key === 'geometryIds',
-                key === 'geometryInputs' || key === 'geometryDetails',
-              ),
-        ]),
-      ) as T;
-    return value;
+  const context = () => (target.construction ??= emptyConstructionContext());
+  const reusedContextIds: Record<string, string> = {};
+  const remapSettings = (settings?: {
+    levelId?: string | null;
+    conditions?: WallCondition[];
+  }) => {
+    if (settings?.levelId) {
+      const level = required(source.construction?.levels[settings.levelId]);
+      const levels = context().levels;
+      const existing = Object.values(before.construction?.levels ?? {}).find(
+        (item) =>
+          item.name === level.name && item.elevation === level.elevation,
+      );
+      const copy = existing ?? copyRecord(level);
+      levels[copy.id] = copy;
+      if (existing) reusedContextIds[level.id] = existing.id;
+      settings.levelId = copy.id;
+    }
+    for (const condition of settings?.conditions ?? [])
+      if (condition.ownerWallId)
+        condition.ownerWallId = remap(condition.ownerWallId);
   };
-  for (const group of groups)
-    target.groups[remap(group.id)] = rewrite({
-      ...structuredClone(group),
-      geometryIds: group.geometryIds.filter((id) => selected.has(id)),
-    });
+  for (const group of groups) {
+    const copy = copyRecord(group);
+    copy.geometryIds = group.geometryIds
+      .filter((id) => selected.has(id))
+      .map(remap);
+    target.groups[copy.id] = copy;
+  }
   for (const a of assignments) {
-    const copy = structuredClone(a);
-    copy.geometryDetails ??= {};
-    for (const id of selected)
-      if (required(source.groups[a.groupId]).geometryIds.includes(id))
-        copy.geometryDetails[id] = {
-          ...copy.geometryDetails[id],
-          id: a.geometryDetails?.[id]?.id ?? `${a.id}/${id}`,
-        };
-    for (const key of ['geometryInputs', 'geometryDetails'] as const)
-      if (copy[key])
-        copy[key] = Object.fromEntries(
-          Object.entries(copy[key]).filter(([id]) => selected.has(id)),
-        );
-    target.assignments[remap(a.id)] = { ...rewrite(copy), direction };
-    target.recipes[remap(a.recipeId)] = rewrite(
-      structuredClone(required(source.recipes[a.recipeId])),
+    const copy = copyRecord(a);
+    copy.groupId = remap(a.groupId);
+    copy.recipeId = remap(a.recipeId);
+    copy.direction = direction;
+    remapSettings(copy.wallOverrides);
+    remapSettings(copy.ceilingOverrides);
+    remapSettings(copy.materialOverrides);
+    if (copy.geometryInputs)
+      copy.geometryInputs = Object.fromEntries(
+        Object.entries(copy.geometryInputs)
+          .filter(([id]) => selected.has(id))
+          .map(([id, inputs]) => [remap(id), inputs]),
+      );
+    copy.geometryDetails = {};
+    for (const id of required(source.groups[a.groupId]).geometryIds) {
+      if (!selected.has(id)) continue;
+      const detail = structuredClone(a.geometryDetails?.[id] ?? {});
+      detail.id = remap(detail.id ?? `${a.id}/${id}`);
+      remapSettings(detail.wall);
+      remapSettings(detail.ceiling);
+      remapSettings(detail.material);
+      copy.geometryDetails[remap(id)] = detail;
+    }
+    target.assignments[copy.id] = copy;
+    target.recipes[copy.recipeId] ??= copyRecord(
+      required(source.recipes[a.recipeId]),
     );
   }
-  if (openings.length || levels.length || placements.length || headers.length) {
-    target.construction ??= {
-      openings: {},
-      headers: {},
-      levels: {},
-      placements: {},
-    };
-    for (const [collection, items] of [
-      ['openings', openings],
-      ['headers', headers],
-      ['levels', levels],
-      ['placements', placements],
-    ] as const)
-      for (const item of items) {
-        if (collection === 'placements') {
-          const placement = rewrite(item) as SheetPlacement;
-          const existing = Object.values(target.construction.placements).find(
-            (p) => p.sheetId === placement.sheetId,
-          );
-          if (existing) {
-            if (
-              JSON.stringify({ ...placement, id: existing.id }) !==
-              JSON.stringify(existing)
-            )
-              throw new Error('Conflicting construction placement');
-            ids[item.id] = existing.id;
-            continue;
-          }
-        }
-        Object.assign(target.construction[collection], {
-          [remap(item.id)]: rewrite(structuredClone(item)),
-        });
-      }
+  for (const header of headers)
+    context().headers[remap(header.id)] = copyRecord(header);
+  for (const opening of openings) {
+    const copy = copyRecord(opening);
+    copy.wallId = remap(opening.wallId);
+    if (opening.headerId) copy.headerId = remap(opening.headerId);
+    context().openings[copy.id] = copy;
   }
+  for (const placement of placements) {
+    const records = context().placements;
+    const existing = Object.values(records).find(
+      (p) => p.sheetId === placement.sheetId,
+    );
+    if (existing) {
+      if (
+        JSON.stringify({ ...placement, id: existing.id }) !==
+        JSON.stringify(existing)
+      )
+        throw new Error('Conflicting construction placement');
+      reusedContextIds[placement.id] = existing.id;
+    } else records[remap(placement.id)] = copyRecord(placement);
+  }
+  Object.assign(ids, reusedContextIds);
   mergeTakeoff(project, target, before);
   (destination.copies ??= []).push({
     sourceTakeoffId: required(source.takeoffId),

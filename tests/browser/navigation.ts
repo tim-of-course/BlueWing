@@ -96,12 +96,20 @@ export async function navigatorWorkflow(page: Page) {
   await editor
     .getByLabel('Choose assembly', { exact: true })
     .selectOption('wall-area');
+  const height = editor.getByRole('group', { name: 'Input 1', exact: true });
+  await height
+    .getByLabel('Required input (no default)', { exact: true })
+    .uncheck();
+  await height.getByLabel('Default', { exact: true }).fill('8');
   await editor
     .getByText('Preview on selected drawing', { exact: true })
     .click();
   await expect(
     editor.getByText('Wall area: 192 ft2', { exact: true }),
   ).toBeVisible();
+  await editor
+    .getByRole('button', { name: 'Cancel editing', exact: true })
+    .click();
   await editor.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Path (L)', exact: true }).click();
   await expect(

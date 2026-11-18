@@ -402,10 +402,27 @@ export function sheetPointToWorld(
     z: placement?.worldOffset.z ?? 0,
   };
 }
-function path(geometry: Geometry, scale: number, placement?: SheetPlacement) {
-  const points = geometry.points.map((p) =>
-    sheetPointToWorld(p, scale, placement),
+function continuesStraight(a: Point, b: Point, c: Point) {
+  const dx = b.x - a.x,
+    dy = b.y - a.y;
+  const nextDx = c.x - b.x,
+    nextDy = c.y - b.y;
+  const left = dx * nextDy,
+    right = dy * nextDx;
+  return (
+    dx * nextDx + dy * nextDy > 0 &&
+    Math.abs(left - right) <=
+      Number.EPSILON * (Math.abs(left) + Math.abs(right))
   );
+}
+function path(geometry: Geometry, scale: number, placement?: SheetPlacement) {
+  const points = geometry.points
+    .filter((point, i, all) => {
+      const before = all[i - 1],
+        after = all[i + 1];
+      return !before || !after || !continuesStraight(before, point, after);
+    })
+    .map((p) => sheetPointToWorld(p, scale, placement));
   const stations = [0];
   for (let i = 1; i < points.length; i++)
     stations.push(

@@ -26,6 +26,10 @@ export async function productionQuantityWorkflow(page: Page) {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
+  await page.getByLabel('height (ft)', { exact: true }).fill('8');
+  await page
+    .getByRole('button', { name: 'Save assignment', exact: true })
+    .click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const totals = page.getByRole('table', { name: 'Material totals' });
   await expect(totals).toContainText('192 SF');

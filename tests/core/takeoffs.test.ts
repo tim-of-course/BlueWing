@@ -220,6 +220,64 @@ void test('shared page calibration invalidates every takeoff and undo restores a
   assert.equal(f.session.calculationFor('main').totals[0]?.amount, 4);
 });
 
+void test('copying floor-area to a phase or change order preserves its output ID and allowance', async () => {
+  const f = fixture();
+  await f.call({
+    name: 'geometry.put',
+    payload: {
+      id: 'room',
+      name: 'Room',
+      kind: 'area',
+      sheetId: 's',
+      points: [
+        { x: 0, y: 0 },
+        { x: 3, y: 0 },
+        { x: 3, y: 3 },
+        { x: 0, y: 3 },
+      ],
+    },
+  });
+  await f.call({
+    name: 'group.put',
+    payload: { id: 'floor', name: 'Floor', geometryIds: ['room'] },
+  });
+  await f.call({
+    name: 'assignment.put',
+    payload: {
+      id: 'finish',
+      groupId: 'floor',
+      recipeId: 'floor-area',
+      inputs: {},
+      allowances: { 'floor-area': { wastePercent: 10 } },
+    },
+  });
+  for (const [id, kind, direction] of [
+    ['phase', 'phase', 'add'],
+    ['co', 'change-order', 'deduct'],
+  ] as const) {
+    await f.create(id, kind);
+    await f.call({
+      name: 'takeoff.copyItems',
+      takeoffId: id,
+      payload: { sourceTakeoffId: 'main', geometryIds: ['room'], direction },
+    });
+    const view = takeoffProject(f.session.project, id);
+    const assignment = required(Object.values(view.assignments)[0]);
+    assert.notEqual(assignment.recipeId, 'floor-area');
+    assert.deepEqual(
+      view.recipes[assignment.recipeId]?.outputs,
+      f.session.project.recipes['floor-area']?.outputs,
+    );
+    assert.deepEqual(assignment.allowances, {
+      'floor-area': { wastePercent: 10 },
+    });
+    const output = required(f.report(id).outputs[0]);
+    assert.equal(output.direction, direction);
+    assert.equal(output.wastePercent, 10);
+    assert.ok(Math.abs(output.purchasedAmount - (9 / 0.09290304) * 1.1) < 1e-9);
+  }
+});
+
 void test('ownership rejects cross-takeoff writes/references and phases reject deductions', async () => {
   const f = fixture();
   await f.create();
@@ -387,7 +445,7 @@ void test('project notes and category colors remain shared when edited from anot
   assert.equal(f.session.project.notes, '# Shared project note');
 });
 
-void test('copied modeled walls remap openings and applied IDs; unresolved deductions stay incomplete', async () => {
+void test('copied wall deductions retain signed exports and openings when reapplied to their trace', async () => {
   const f = fixture();
   await f.call({
     name: 'level.put',
@@ -417,6 +475,24 @@ void test('copied modeled walls remap openings and applied IDs; unresolved deduc
     },
   });
   await f.call({
+    name: 'header.put',
+    payload: {
+      id: 'header',
+      name: 'Door header',
+      components: [
+        {
+          id: 'channel',
+          role: 'header',
+          member: { materialId: 'channel', width: 0.09, depth: 0.04 },
+          startExtension: 0,
+          endExtension: 0,
+          verticalOffset: 0.02,
+          faceOffset: 0,
+        },
+      ],
+    },
+  });
+  await f.call({
     name: 'opening.put',
     payload: {
       id: 'door',
@@ -426,6 +502,7 @@ void test('copied modeled walls remap openings and applied IDs; unresolved deduc
       sill: 0,
       height: 2,
       jambCount: 1,
+      headerId: 'header',
     },
   });
   const baseline = f.report('main');
@@ -438,7 +515,37 @@ void test('copied modeled walls remap openings and applied IDs; unresolved deduc
   );
   assert.notEqual(opening.id, 'door');
   assert.notEqual(opening.wallId, 'wall');
-  assert.ok(walls[opening.wallId]);
+  const wall = walls[opening.wallId];
+  assert.ok(wall);
+  const signedRows = () => {
+    const view = takeoffProject(f.session.project, 'co');
+    return estiMakerTakeoff(view, calculateProject(view)).rows.map((row) => [
+      row.source.materialId,
+      row.unit,
+      row.quantity,
+    ]);
+  };
+  const before = signedRows();
+  assert.ok(before.some(([material]) => material === 'channel'));
+  assert.ok(before.every(([, , quantity]) => Number(quantity) < 0));
+  const reapply = (geometryId: string) =>
+    f.call({
+      name: 'wall.fromAssembly',
+      takeoffId: 'co',
+      payload: { id: wall.id, assemblyId: wall.recipeId, geometryId },
+    });
+  await reapply(wall.geometryId);
+  assert.deepEqual(signedRows(), before);
+  await f.call({
+    name: 'geometry.put',
+    takeoffId: 'co',
+    payload: { ...co.geometries[wall.geometryId], id: 'other-trace' },
+  });
+  await assert.rejects(reapply('other-trace'), /cannot move to another trace/);
+  assert.deepEqual(
+    takeoffProject(f.session.project, 'co').construction?.openings[opening.id],
+    opening,
+  );
   assert.ok(f.report('co').model.pieces.every((p) => p.direction === 'deduct'));
   const colored = structuredClone(co);
   for (const recipe of Object.values(colored.recipes))

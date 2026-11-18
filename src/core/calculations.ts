@@ -3,7 +3,10 @@ import { takeoffProject, takeoffContext } from './takeoffs';
 import type { CalculationSnapshot } from './calculation-state';
 import { purchaseAmount } from './purchasing';
 import { generateConstruction } from './construction';
-import { resolveConstruction } from './applied-assemblies';
+import {
+  mergeMaterialSettings,
+  resolveConstruction,
+} from './applied-assemblies';
 import type {
   Assignment,
   AssemblyComponent,
@@ -42,7 +45,7 @@ export function starterRecipes(): Record<string, Recipe> {
       name: 'Wall area',
       geometryKinds: ['path'],
       inputs: [
-        { name: 'height', type: 'number', unit: 'ft', default: 8 },
+        { name: 'height', type: 'number', unit: 'ft' },
         { name: 'layers', type: 'number', unit: 'scalar', default: 1 },
       ],
       outputs: [
@@ -325,7 +328,10 @@ export function calculateProject(project: Project): CalculationResult {
         if (!group) diagnostics.push('Assignment group is missing');
         if (group?.geometryIds.length && !sources.length)
           diagnostics.push('No compatible drawing objects in this group');
-        const allowance = assignment.allowances[output.id] ?? output.allowance;
+        const override = assignment.allowances[output.id];
+        const allowance = override
+          ? mergeMaterialSettings(output.allowance, override)
+          : output.allowance;
         const baseAmount = sources.reduce(
           (sum, entry) => sum + (entry.value ?? 0),
           0,

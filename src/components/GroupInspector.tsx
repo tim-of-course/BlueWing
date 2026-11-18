@@ -4,7 +4,7 @@ import AssemblyInputs from './AssemblyInputs';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
-import type { Assignment, OutputAllowance } from '../core/types';
+import type { Assignment } from '../core/types';
 import type { PayloadSchema } from '../core/commands';
 import {
   wallOverrideSchema,
@@ -114,19 +114,12 @@ export default function GroupInspector(props: Props) {
   const setAllowance = (
     id: string,
     outputId: string,
-    defaults: OutputAllowance,
-    patch: { wastePercent?: number; packageSize?: number | undefined },
+    patch: Assignment['allowances'][string],
   ) => {
     editAssignment(id, (assignment) => {
-      const allowance = {
-        ...(assignment.allowances[outputId] ?? defaults),
-        ...patch,
-      };
       assignment.allowances[outputId] = {
-        wastePercent: allowance.wastePercent,
-        ...(allowance.packageSize === undefined
-          ? {}
-          : { packageSize: allowance.packageSize }),
+        ...assignment.allowances[outputId],
+        ...patch,
       };
       return assignment;
     });
@@ -587,15 +580,10 @@ export default function GroupInspector(props: Props) {
                                 output().allowance.wastePercent
                               }
                               onChange={(event) => {
-                                setAllowance(
-                                  id,
-                                  output().id,
-                                  output().allowance,
-                                  {
-                                    wastePercent:
-                                      event.currentTarget.valueAsNumber,
-                                  },
-                                );
+                                setAllowance(id, output().id, {
+                                  wastePercent:
+                                    event.currentTarget.valueAsNumber,
+                                });
                               }}
                             />
                           </label>
@@ -606,23 +594,18 @@ export default function GroupInspector(props: Props) {
                               step="any"
                               min="0"
                               value={
-                                (
-                                  assignment()?.allowances[output().id] ??
-                                  output().allowance
-                                ).packageSize ?? ''
+                                {
+                                  ...output().allowance,
+                                  ...assignment()?.allowances[output().id],
+                                }.packageSize ?? ''
                               }
                               onChange={(event) => {
-                                setAllowance(
-                                  id,
-                                  output().id,
-                                  output().allowance,
-                                  {
-                                    packageSize:
-                                      event.currentTarget.value === ''
-                                        ? undefined
-                                        : event.currentTarget.valueAsNumber,
-                                  },
-                                );
+                                setAllowance(id, output().id, {
+                                  packageSize:
+                                    event.currentTarget.value === ''
+                                      ? null
+                                      : event.currentTarget.valueAsNumber,
+                                });
                               }}
                             />
                           </label>
