@@ -216,7 +216,7 @@ void test('groups reject duplicate or dangling memberships and edits remain inde
   }).project;
   assert.deepEqual(moved.geometries.copy?.points[0], { x: 10, y: 0 });
   assert.deepEqual(moved.geometries.wall?.points[0], { x: 1, y: 2 });
-  assert.deepEqual(moved.groups.walls?.geometryIds, ['wall']);
+  assert.deepEqual(moved.groups.walls?.geometryIds, ['wall', 'copy']);
 });
 
 void test('payload schemas reject invalid input and retain boolean recipe declarations', () => {
@@ -331,7 +331,8 @@ void test('public command snapshots, results, payloads, and registry data are is
 
   const payload = { id: 'wall', newId: 'copy', dx: 10 };
   const copied = executeCommand(project, { name: 'geometry.copy', payload });
-  const copiedPoint = (copied.data as { points: { x: number }[] }).points[0];
+  const copiedPoint = (copied.data as { geometry: { points: { x: number }[] } })
+    .geometry.points[0];
   assert.ok(copiedPoint);
   copiedPoint.x = 100;
   assert.equal(copied.project.geometries.copy?.points[0]?.x, 10);

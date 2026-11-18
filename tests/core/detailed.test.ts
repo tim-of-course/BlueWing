@@ -228,7 +228,33 @@ void test('invalid snippets and batched openings roll back, while geometry delet
 
 void test('duplicating geometry copies its construction and openings as independent unreviewed records', async () => {
   const { session, call, wall } = fixture();
-  await call({ name: 'wall.put', payload: wall });
+  await call({
+    name: 'wall.put',
+    payload: {
+      ...wall,
+      conditions: [
+        { id: 'end', kind: 'end', distance: 0, count: 1, ownerWallId: 'w' },
+      ],
+    },
+  });
+  await call({
+    name: 'header.put',
+    payload: {
+      id: 'h',
+      name: 'Door header',
+      components: [
+        {
+          id: 'web',
+          role: 'header',
+          member: wall.track,
+          startExtension: 0,
+          endExtension: 0,
+          verticalOffset: 0.05,
+          faceOffset: 0,
+        },
+      ],
+    },
+  });
   await call({
     name: 'opening.put',
     payload: {
@@ -239,9 +265,34 @@ void test('duplicating geometry copies its construction and openings as independ
       sill: 1,
       height: 1,
       jambCount: 1,
+      headerId: 'h',
     },
   });
   await call({
+    name: 'snippet.put',
+    payload: {
+      id: 'detail',
+      name: 'Door',
+      sheetId: 's',
+      bounds: { x: 0, y: 0, width: 20, height: 20 },
+      geometryIds: ['g'],
+      sources: [{ kind: 'wall', id: 'w' }],
+      annotations: [],
+      note: 'Door detail',
+    },
+  });
+  await call({
+    name: 'review.mark',
+    payload: {
+      id: 'r',
+      target: { kind: 'wall', id: 'w' },
+      status: 'reviewed',
+      note: 'Checked',
+    },
+  });
+  await call({ name: 'notes.write', payload: { markdown: 'Door verified' } });
+  const before = structuredClone(session.project);
+  const result = await call({
     name: 'geometry.copy',
     payload: { id: 'g', newId: 'g2', dx: 0, dy: 5 },
   });
@@ -249,17 +300,49 @@ void test('duplicating geometry copies its construction and openings as independ
     (w) => w.geometryId === 'g2',
   );
   assert.ok(copied);
-  assert.equal(
-    Object.values(session.project.construction?.openings ?? {}).filter(
-      (o) => o.wallId === copied.id,
-    ).length,
-    1,
+  const copiedOpenings = Object.values(
+    session.project.construction?.openings ?? {},
+  ).filter((o) => o.wallId === copied.id);
+  assert.equal(copiedOpenings.length, 1);
+  const copiedOpening = copiedOpenings[0];
+  assert.ok(copiedOpening?.headerId);
+  assert.notEqual(copiedOpening.id, 'o');
+  assert.notEqual(copiedOpening.headerId, 'h');
+  const header = session.project.construction?.headers[copiedOpening.headerId];
+  assert.deepEqual(
+    header?.components,
+    before.construction?.headers.h?.components,
   );
-  assert.equal(
-    inspectReview(session.project).unreviewed.filter(
-      (target) => target.kind === 'wall',
-    ).length,
-    2,
+  const condition = copied.conditions?.[0];
+  assert.ok(condition);
+  assert.notEqual(condition.id, 'end');
+  assert.equal(condition.ownerWallId, copied.id);
+  assert.deepEqual(result.data, {
+    geometry: session.project.geometries.g2,
+    groupIds: [copied.groupId],
+    assignmentIds: [copied.assignmentId],
+    applicationIds: [copied.id],
+    openingIds: [copiedOpening.id],
+    headerIds: [copiedOpening.headerId],
+    conditionIds: [condition.id],
+  });
+  assert.deepEqual(session.project.review, before.review);
+  assert.equal(session.project.notes, before.notes);
+  const model = generateConstruction(
+    session.project,
+    resolveConstruction(session.project),
+  );
+  const schedule = (wallId: string) =>
+    model.pieces
+      .filter((piece) => piece.wallId === wallId)
+      .map(({ materialId, role, cutLength }) => [materialId, role, cutLength]);
+  assert.ok(schedule('w').length);
+  assert.deepEqual(schedule(copied.id), schedule('w'));
+  assert.deepEqual(
+    inspectReview(session.project)
+      .unreviewed.filter((target) => target.kind === 'wall')
+      .map((target) => target.id),
+    [copied.id],
   );
   const exported = executeCommand(session.project, {
     name: 'construction.export',
@@ -267,6 +350,110 @@ void test('duplicating geometry copies its construction and openings as independ
   }).data;
   assert.equal(typeof exported, 'string');
   assert.match(String(exported), /cutLength_m/);
+  await call({
+    name: 'opening.put',
+    payload: { ...copiedOpening, width: 1.5 },
+  });
+  assert.deepEqual(
+    session.project.construction?.openings.o,
+    before.construction?.openings.o,
+  );
+  await call({
+    name: 'header.put',
+    payload: { ...header, name: 'Changed copy' },
+  });
+  assert.deepEqual(
+    session.project.construction?.headers.h,
+    before.construction?.headers.h,
+  );
+  await call({ name: 'history.undo' });
+  await call({ name: 'history.undo' });
+  await call({ name: 'history.undo' });
+  assert.deepEqual(session.project, {
+    ...before,
+    revision: session.project.revision,
+  });
+});
+
+void test('copied junctions count members only when their owner is on the copied trace', async () => {
+  for (const sameTrace of [false, true]) {
+    const { session, call, wall } = fixture();
+    const junction = {
+      id: 'shared',
+      kind: 'junction',
+      distance: 0,
+      count: 2,
+      memberOffsets: [
+        { along: 0, face: 0 },
+        { along: 0.1, face: 0 },
+      ],
+    };
+    await call({
+      name: 'wall.put',
+      payload: { ...wall, conditions: [junction] },
+    });
+    const geometryId = sameTrace ? 'g' : 'dependent-trace';
+    if (!sameTrace)
+      await call({
+        name: 'geometry.put',
+        payload: { ...session.project.geometries.g, id: geometryId },
+      });
+    await call({
+      name: 'wall.put',
+      payload: {
+        ...wall,
+        id: 'dependent',
+        geometryId,
+        conditions: [{ ...junction, ownerWallId: 'w' }],
+      },
+    });
+    const before = resolveConstruction(session.project);
+    const beforeModel = generateConstruction(session.project, before);
+    assert.equal(beforeModel.complete, true);
+    await call({
+      name: 'geometry.copy',
+      payload: { id: geometryId, newId: 'copy', dx: 17 },
+    });
+    const after = resolveConstruction(session.project);
+    const model = generateConstruction(session.project, after);
+    assert.equal(model.complete, true);
+    for (const id of ['w', 'dependent']) {
+      assert.deepEqual(after.walls[id], before.walls[id]);
+      assert.deepEqual(
+        model.pieces.filter((p) => p.wallId === id),
+        beforeModel.pieces.filter((p) => p.wallId === id),
+      );
+    }
+    const copies = Object.values(after.walls).filter(
+      (w) => w.geometryId === 'copy',
+    );
+    const dependent = copies.find(
+      (w) => w.assignmentId === before.walls.dependent?.assignmentId,
+    );
+    const condition = dependent?.conditions?.[0];
+    assert.ok(condition);
+    assert.notEqual(condition.id, 'shared');
+    if (sameTrace) {
+      const owner = copies.find(
+        (w) => w.assignmentId === before.walls.w?.assignmentId,
+      );
+      assert.ok(owner);
+      assert.equal(condition.ownerWallId, owner.id);
+      assert.equal(condition.id, owner.conditions?.[0]?.id);
+      assert.equal(condition.count, 2);
+    } else {
+      assert.deepEqual(condition, {
+        id: condition.id,
+        kind: 'junction',
+        distance: 0,
+        count: 0,
+      });
+    }
+    assert.equal(
+      model.pieces.filter((p) => p.geometryId === 'copy').length,
+      beforeModel.pieces.filter((p) => p.geometryId === geometryId).length,
+    );
+  }
 });
 
 void test('ordinary quantities, exact piece exports and preview deltas share positioned results', async () => {

@@ -8,6 +8,7 @@ import {
 } from '../../src/core/commands';
 import { calculateProject } from '../../src/core/calculations';
 import { starterAssemblies } from '../../src/core/assemblies';
+import { geometryCategories } from '../../src/core/categories';
 import { constructionSceneInput } from '../../src/three/scene';
 import { ProjectSession } from '../../src/core/session';
 import { inspectReview } from '../../src/core/review';
@@ -707,6 +708,120 @@ void test('material override validation does not depend on a compatible trace al
   );
 });
 
+void test('copying a trace twice adds equal formula and modeled contributions in its existing groups', () => {
+  let project = fixture('frp-wall');
+  project = command(project, 'group.put', {
+    id: 'phase',
+    name: 'Phase one',
+    geometryIds: ['trace'],
+  });
+  project = command(project, 'assignment.put', {
+    id: 'formula',
+    groupId: 'g',
+    recipeId: 'wall-area',
+    inputs: {},
+    allowances: {},
+    geometryInputs: { trace: { height: 11, layers: 2 } },
+  });
+  project = command(project, 'assignment.put', {
+    ...applied(project),
+    geometryDetails: { trace: { material: { height: 7 * ft } } },
+  });
+
+  const members = ['trace'];
+  for (const nextId of ['second', 'third']) {
+    const result = executeCommand(project, {
+      name: 'geometry.copy',
+      payload: { id: members.at(-1), newId: nextId, dy: 10 },
+    });
+    project = result.project;
+    members.push(nextId);
+    assert.deepEqual(Object.keys(project.groups), ['g', 'phase']);
+    assert.deepEqual(Object.keys(project.assignments), ['a', 'formula']);
+    const categories = geometryCategories(project);
+    assert.deepEqual(categories[nextId], categories.trace);
+    for (const group of Object.values(project.groups))
+      assert.deepEqual(group.geometryIds, members);
+    const applicationId = `a/${nextId}`;
+    assert.ok(resolveConstruction(project).materials?.[applicationId]);
+    assert.deepEqual(result.data, {
+      geometry: project.geometries[nextId],
+      groupIds: ['g', 'phase'],
+      assignmentIds: ['a', 'formula'],
+      applicationIds: [applicationId],
+      openingIds: [],
+      headerIds: [],
+      conditionIds: [],
+    });
+    const calculation = calculateProject(project);
+    assert.equal(calculation.complete, true);
+    assert.equal(calculation.outputs.length, 2);
+    for (const output of calculation.outputs) {
+      const expected = output.assignmentId === 'formula' ? 24 * 11 * 2 : 24 * 7;
+      near(output.baseAmount, expected * members.length);
+      for (const id of members)
+        near(
+          output.sources
+            .filter((s) => s.geometryId === id)
+            .reduce((n, s) => n + (s.value ?? 0), 0),
+          expected,
+        );
+    }
+  }
+});
+
+void test('offset duplicates keep ceiling grids and joist rows aligned with the copied room', () => {
+  for (const recipeId of ['ceiling-grid-2x2', 'steel-joists']) {
+    let project = fixture(recipeId, 'area');
+    project = command(project, 'placement.put', {
+      id: 'p',
+      sheetId: 's',
+      rotation: Math.PI / 2,
+      pageOrigin: { x: 1, y: 2 },
+      worldOffset: { x: ft, y: ft, z: 0 },
+    });
+    const before = calculateProject(project).model;
+    assert.ok(before.pieces.length);
+    project = command(project, 'geometry.copy', {
+      id: 'trace',
+      newId: 'room',
+      dx: 7.5,
+      dy: 1.5,
+    });
+    const after = calculateProject(project).model;
+    assert.equal(after.complete, true);
+    const copied = after.pieces.filter((p) => p.geometryId === 'room');
+    assert.equal(copied.length, before.pieces.length);
+    for (const [i, piece] of before.pieces.entries()) {
+      const duplicate = copied[i];
+      assert.ok(duplicate);
+      assert.equal(duplicate.role, piece.role);
+      near(duplicate.cutLength, piece.cutLength);
+      near(duplicate.start.x, piece.start.x + 1.5 * ft);
+      near(duplicate.start.y, piece.start.y + 7.5 * ft);
+    }
+  }
+});
+
+void test('a modeled group member gets its implicit application without storing a local override', () => {
+  const project = fixture('steel-joists', 'area');
+  const result = executeCommand(project, {
+    name: 'geometry.copy',
+    payload: { id: 'trace', newId: 'room' },
+  });
+  assert.equal(applied(result.project).geometryDetails, undefined);
+  assert.deepEqual(result.data, {
+    geometry: result.project.geometries.room,
+    groupIds: ['g'],
+    assignmentIds: ['a'],
+    applicationIds: ['a/room'],
+    openingIds: [],
+    headerIds: [],
+    conditionIds: [],
+  });
+  assert.ok(resolveConstruction(result.project).materials?.['a/room']);
+});
+
 void test('copying and deleting a traced finish preserves independent applications and undo restores its deductions', async () => {
   let project = fixture('frp-wall');
   project = command(project, 'assignment.put', {
@@ -751,7 +866,11 @@ void test('copying and deleting a traced finish preserves independent applicatio
   });
   const copied = calculateProject(project);
   linked(copied);
-  assert.equal(Object.keys(project.assignments).length, 2);
+  assert.deepEqual(Object.keys(project.assignments), ['a']);
+  const copyOpening =
+    applied(project).geometryDetails?.second?.material?.openings?.[0];
+  assert.ok(copyOpening);
+  assert.notEqual(copyOpening.id, 'door');
   near(
     copied.outputs.reduce((sum, output) => sum + output.baseAmount, 0),
     342,
@@ -772,7 +891,10 @@ void test('copying and deleting a traced finish preserves independent applicatio
     projectId: project.id,
     expectedRevision: 0,
   });
-  assert.deepEqual(applied(session.project).geometryDetails, {});
+  assert.deepEqual(
+    Object.keys(applied(session.project).geometryDetails ?? {}),
+    ['second'],
+  );
   near(
     calculateProject(session.project).outputs.reduce(
       (sum, output) => sum + output.baseAmount,

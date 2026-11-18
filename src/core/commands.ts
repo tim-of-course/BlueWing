@@ -580,7 +580,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'geometry.copy',
-    'Copy a trace, translating its page points. Modeled applications get independent groups and assignments.',
+    'Duplicate a trace, translating its page points, with its group memberships, assemblies and per-trace details. Its quantities are added. Returns the new geometry and affected IDs.',
     object({ id: string, newId: string, ...translation }, ['id']),
     true,
     { id: 'original-wall-id', dx: 10 },
@@ -1428,8 +1428,10 @@ export function executeCommandOnDraft(
         p.y += (payload.dy as number | undefined) ?? 0;
       });
       next.geometries[source.id] = source;
-      copyDetailedGeometry(next, entityId, source.id);
-      data = source;
+      data = {
+        geometry: source,
+        ...copyDetailedGeometry(next, entityId, source.id),
+      };
       break;
     }
     case 'geometry.delete':

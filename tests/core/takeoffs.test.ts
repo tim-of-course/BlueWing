@@ -87,6 +87,63 @@ function fixture() {
     },
   };
 }
+void test('duplicating a count set in a change order keeps its deduction and leaves Main untouched', async () => {
+  const f = fixture();
+  await f.call({
+    name: 'geometry.put',
+    payload: {
+      id: 'markers',
+      name: 'Devices',
+      kind: 'count',
+      sheetId: 's',
+      points: [
+        { x: 3, y: 8 },
+        { x: 4, y: 8 },
+      ],
+    },
+  });
+  await f.call({
+    name: 'group.put',
+    payload: { id: 'devices', name: 'Devices', geometryIds: ['markers'] },
+  });
+  await f.call({
+    name: 'assignment.put',
+    payload: {
+      id: 'count',
+      recipeId: 'count',
+      groupId: 'devices',
+      inputs: {},
+      allowances: {},
+    },
+  });
+  await f.create();
+  await f.copy('deduct', ['markers']);
+  const main = takeoffProject(f.session.project, 'main');
+  const original = required(
+    Object.values(takeoffProject(f.session.project, 'co').geometries)[0],
+  );
+  await f.call({
+    name: 'geometry.copy',
+    takeoffId: 'co',
+    payload: { id: original.id, newId: 'more' },
+  });
+  const output = required(f.report('co').outputs[0]);
+  assert.equal(output.direction, 'deduct');
+  assert.equal(output.baseAmount, 4);
+  assert.deepEqual(
+    output.sources.map((s) => [s.geometryId, s.value]),
+    [
+      [original.id, 2],
+      ['more', 2],
+    ],
+  );
+  assert.equal(f.report('co').totals[0]?.amount, -4);
+  assert.deepEqual(
+    takeoffProject(f.session.project, 'main').geometries,
+    main.geometries,
+  );
+});
+
 void test('signed takeoff projection preserves intentional counts and missing-dimension zero rows', () => {
   let project = importFixture();
   project = executeCommand(project, {
