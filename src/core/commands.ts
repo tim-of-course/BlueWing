@@ -30,7 +30,11 @@ import {
   pieceSchedule,
   exportPieces,
 } from './calculations';
-import { calibrationFromRatio, type PaperScale } from './scale';
+import {
+  calibrationFromRatio,
+  type PaperScale,
+  type ScaleDistance,
+} from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
 import { validateCategoryColor } from './categories';
 import { validateWallTemplate, validateCeilingTemplate } from './wall-template';
@@ -1389,7 +1393,7 @@ export function executeCommandOnDraft(
         calibrationFromDistance(
           payload.start as { x: number; y: number },
           payload.end as { x: number; y: number },
-          payload.distance as { value: number; unit: 'ft' },
+          payload.distance as ScaleDistance,
         );
       break;
     case 'sheet.delete':

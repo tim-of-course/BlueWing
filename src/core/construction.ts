@@ -615,8 +615,7 @@ export function generateConstruction(
         );
         continue;
       }
-      const scale =
-        project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
+      const scale = project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
       if (!scale) {
         diagnostic(
           source,
@@ -1340,8 +1339,7 @@ export function generateConstruction(
         );
         continue;
       }
-      const scale =
-        project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
+      const scale = project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
       if (!scale) {
         diagnostic(
           source,

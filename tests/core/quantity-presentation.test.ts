@@ -86,9 +86,7 @@ void test('direct lengths/areas convert purchased quantities once and generic ex
     ['ft', 10, 10, 'LF'],
     ['in', 120, 10, 'LF'],
 
-
     ['ft2', 100, 100, 'SF'],
-
   ] as const) {
     const project = fixture();
     const output = definition(project);

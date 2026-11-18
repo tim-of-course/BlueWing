@@ -471,8 +471,7 @@ void test('ordinary quantities, exact piece exports and preview deltas share pos
   assert.ok(
     Math.abs(
       (before.totals.find((total) => total.materialId === 'board')?.amount ??
-        0) -
-        36,
+        0) - 36,
     ) < 1e-7,
   );
   assert.equal(
@@ -483,8 +482,7 @@ void test('ordinary quantities, exact piece exports and preview deltas share pos
   const changes = quantityChanges(before, calculateProject(session.project));
   assert.ok(
     Math.abs(
-      (changes.find((change) => change.materialId === 'board')?.delta ?? 0) +
-        6,
+      (changes.find((change) => change.materialId === 'board')?.delta ?? 0) + 6,
     ) < 1e-7,
   );
 });

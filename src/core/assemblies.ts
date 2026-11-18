@@ -38,7 +38,7 @@ const output = (
 function ceilingGrid(square: boolean): Assembly {
   const size = square ? '2x2' : '2x4';
   const section = {
-    width: (15 / 16) / 12,
+    width: 15 / 16 / 12,
     depth: 1.5 / 12,
     wastePercent: 5,
   };
@@ -82,8 +82,8 @@ function ceilingGrid(square: boolean): Assembly {
         wallAngle: {
           materialId: 'ceiling-wall-angle-12ft-unspecified',
           wastePercent: 5,
-          width: (7 / 8) / 12,
-          depth: (7 / 8) / 12,
+          width: 7 / 8 / 12,
+          depth: 7 / 8 / 12,
           stockLength: 12,
         },
       },

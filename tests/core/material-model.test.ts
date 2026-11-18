@@ -17,7 +17,6 @@ import type {
   Recipe,
 } from '../../src/core/types';
 
-
 function near(actual: number, expected: number) {
   assert.ok(
     Math.abs(actual - expected) < 1e-7,
@@ -293,8 +292,7 @@ void test('opening geometry drives layered finish area, header elevation, backin
   );
   assert.ok(
     backing.every(
-      (piece) =>
-        piece.end.x <= 8 + 1e-8 || piece.start.x >= 11 - 1e-8,
+      (piece) => piece.end.x <= 8 + 1e-8 || piece.start.x >= 11 - 1e-8,
     ),
   );
 });

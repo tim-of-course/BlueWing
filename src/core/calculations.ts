@@ -191,10 +191,7 @@ function source(
     if (output.piece) {
       if (!Number.isInteger(value))
         throw new Error('Piece quantity must be a whole number');
-      const length = (definition: {
-        formula: string;
-        unit: 'ft' | 'in';
-      }) => {
+      const length = (definition: { formula: string; unit: 'ft' | 'in' }) => {
         const value = formulaQuantity({
           value: formulaOutput(
             evaluate(definition.formula, variables),
@@ -515,7 +512,7 @@ export function calculateProject(project: Project): CalculationResult {
       output.purchasedAmount * (output.direction === 'deduct' ? -1 : 1);
     if (total.stockLength)
       total.purchasedLength = {
-        value: (total.amount * total.stockLength.value),
+        value: total.amount * total.stockLength.value,
         unit: 'ft',
       };
     total.complete &&= output.complete;

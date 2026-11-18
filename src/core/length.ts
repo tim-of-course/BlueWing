@@ -6,13 +6,20 @@ const decimal = /^(?:\d+(?:\.\d+)?|\.\d+)$/;
 function inchValue(text: string): number {
   if (decimal.test(text)) return Number(text);
   const fraction = /^(?:(\d+)[ -])?(\d+)\/(\d+)$/.exec(text);
-  if (!fraction || Number(fraction[3]) === 0 || Number(fraction[2]) >= Number(fraction[3]))
+  if (
+    !fraction ||
+    Number(fraction[3]) === 0 ||
+    Number(fraction[2]) >= Number(fraction[3])
+  )
     throw new Error(lengthError);
   return Number(fraction[1] ?? 0) + Number(fraction[2]) / Number(fraction[3]);
 }
 
 /** An explicit unit overrides the bare-number unit selected on a scale form. */
-export function parseLength(text: string, bareUnit: 'ft' | 'in' = 'ft'): number {
+export function parseLength(
+  text: string,
+  bareUnit: 'ft' | 'in' = 'ft',
+): number {
   const signed = /^([+-]?)(.+)$/.exec(text.trim());
   if (!signed) throw new Error(lengthError);
   const value = signed[2] ?? '';
@@ -21,7 +28,9 @@ export function parseLength(text: string, bareUnit: 'ft' | 'in' = 'ft'): number 
   if (feet) {
     const rest = feet[2] ?? '';
     if (rest && !/^\d+$/.test(feet[1] ?? '')) throw new Error(lengthError);
-    result = Number(feet[1]) + (rest ? inchValue(rest.replace(/\s*(?:"|in)$/i, '')) / 12 : 0);
+    result =
+      Number(feet[1]) +
+      (rest ? inchValue(rest.replace(/\s*(?:"|in)$/i, '')) / 12 : 0);
   } else if (/(?:"|in)$/i.test(value)) {
     result = inchValue(value.replace(/\s*(?:"|in)$/i, '')) / 12;
   } else if (decimal.test(value)) {
@@ -33,10 +42,13 @@ export function parseLength(text: string, bareUnit: 'ft' | 'in' = 'ft'): number 
 
 export function formatLength(feet: number): string {
   if (!Number.isFinite(feet)) throw new Error(lengthError);
-  const ticks = Math.round(Math.abs(feet) * 192);
-  if (!ticks) return "0'";
-  const wholeFeet = Math.floor(ticks / 192);
-  const inches = Math.floor((ticks % 192) / 16);
+  const magnitude = Math.abs(feet);
+  const feetPart = Math.floor(magnitude);
+  const ticksPerFoot = 12 * 16;
+  const ticks = Math.round((magnitude - feetPart) * ticksPerFoot);
+  const wholeFeet = feetPart + Math.floor(ticks / ticksPerFoot);
+  if (!wholeFeet && !ticks) return "0'";
+  const inches = Math.floor((ticks % ticksPerFoot) / 16);
   let numerator = ticks % 16;
   let denominator = 16;
   while (numerator && numerator % 2 === 0) {
@@ -47,6 +59,9 @@ export function formatLength(feet: number): string {
     inches ? String(inches) : '',
     numerator ? String(numerator) + '/' + String(denominator) : '',
   ].filter(Boolean);
-  const parts = [wholeFeet ? String(wholeFeet) + "'" : '', inchParts.length ? inchParts.join(' ') + '"' : ''];
+  const parts = [
+    wholeFeet ? String(wholeFeet) + "'" : '',
+    inchParts.length ? inchParts.join(' ') + '"' : '',
+  ];
   return (feet < 0 ? '-' : '') + parts.filter(Boolean).join(' ');
 }

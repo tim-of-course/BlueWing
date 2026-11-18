@@ -33,6 +33,8 @@ void test('global library persists independently, rejects stale edits and surviv
   fail = false;
   await store.save(1, assembly.id);
   assert.equal((await store.read()).assemblies[assembly.id], undefined);
+  saved = JSON.stringify({ ...reopened, version: 2 });
+  await assert.rejects(store.read(), /Invalid assembly library/);
   saved = 'broken';
   await assert.rejects(store.read());
 });

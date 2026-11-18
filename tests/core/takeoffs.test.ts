@@ -331,7 +331,7 @@ void test('copying floor-area to a phase or change order preserves its output ID
     const output = required(f.report(id).outputs[0]);
     assert.equal(output.direction, direction);
     assert.equal(output.wastePercent, 10);
-    assert.ok(Math.abs(output.purchasedAmount - (9) * 1.1) < 1e-9);
+    assert.ok(Math.abs(output.purchasedAmount - 9 * 1.1) < 1e-9);
   }
 });
 
@@ -385,8 +385,7 @@ void test('ownership rejects cross-takeoff writes/references and phases reject d
   });
   assert.equal(f.session.project.sheets.s?.calibration?.feetPerUnit, 2);
   assert.equal(
-    takeoffProject(f.session.project, 'co').sheets.s?.calibration
-      ?.feetPerUnit,
+    takeoffProject(f.session.project, 'co').sheets.s?.calibration?.feetPerUnit,
     2,
   );
   assert.equal(f.session.project.sheets.s.name, 'Shared name');

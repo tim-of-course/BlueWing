@@ -116,6 +116,8 @@ export function quantityLabel(project: Project, output: Output) {
       )
     : undefined;
   return {
+    inputDefinitions:
+      definition?.component?.assembly.inputs ?? recipe?.inputs ?? [],
     description:
       definition?.output.name ??
       (output.modeling === 'modeled'
@@ -221,13 +223,13 @@ export function presentQuantities(
         output.role !== undefined ||
         output.stockLength != null ||
         output.cutLength != null);
-    const requiredInputs =
-      definition?.component?.assembly.inputs ?? recipe?.inputs ?? [];
     const missingInput = output.sources.some((entry) =>
-      requiredInputs.some(
+      label.inputDefinitions.some(
         (input) =>
           input.type === 'number' &&
-          (input.unit === 'ft' || input.unit === 'in' || input.unit === 'ft2') &&
+          (input.unit === 'ft' ||
+            input.unit === 'in' ||
+            input.unit === 'ft2') &&
           entry.inputs[input.name] === undefined &&
           input.default === undefined,
       ),
@@ -346,7 +348,10 @@ export function presentQuantities(
         cutSchedule: [...schedule.values()],
       };
     } else if (output.unit === 'ft' || output.unit === 'in') {
-      quantity = convertQuantity({ value: output.purchasedAmount, unit: output.unit }, 'ft').value;
+      quantity = convertQuantity(
+        { value: output.purchasedAmount, unit: output.unit },
+        'ft',
+      ).value;
       unit = 'LF';
     } else if (output.unit === 'ft2') {
       quantity = output.purchasedAmount;

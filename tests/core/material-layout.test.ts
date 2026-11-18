@@ -99,7 +99,7 @@ void test('standalone finish subtracts the union of located openings before laye
   const result = generateMaterialLayout(project, application, context);
   assert.equal(result.complete, true);
   assert.equal(result.pieces.length, 0);
-  // 30 m² wall less 6 + 4 - 1 m² overlapping openings, then two layers.
+  // 30 ft² wall less 6 + 4 - 1 ft² overlapping openings, then two layers.
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
     42,

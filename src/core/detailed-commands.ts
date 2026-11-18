@@ -136,8 +136,7 @@ const finish = object(
     thickness,
     startHeight: {
       ...nonnegative,
-      description:
-        'Finish bottom in feet above the wall base. Defaults to 0.',
+      description: 'Finish bottom in feet above the wall base. Defaults to 0.',
     },
     height: {
       ...positive,
@@ -299,8 +298,7 @@ export const constructionSchemas = {
               },
               verticalOffset: {
                 ...number,
-                description:
-                  'Member centreline in feet above the rough head.',
+                description: 'Member centreline in feet above the rough head.',
               },
               faceOffset: {
                 ...number,
@@ -1220,7 +1218,7 @@ export function exportConstruction(
         category,
         piece.materialId,
         piece.role,
-        piece.cutLength.toFixed(8),
+        Math.round(piece.cutLength / 3.28e-8),
         piece.stockLength,
       ]);
       const group = groups.get(key) ?? {

@@ -14,7 +14,7 @@ void test('printed architectural, custom and full-size scales use paper size', (
     paper: { value: 0.25, unit: 'in' },
     real: { value: 1, unit: 'ft' },
   });
-  assert.ok(Math.abs((432 * architectural.feetPerUnit) - 24) < 1e-9);
+  assert.ok(Math.abs(432 * architectural.feetPerUnit - 24) < 1e-9);
   const custom = calibrationFromRatio({
     paper: { value: 1, unit: 'in' },
     real: { value: 100, unit: 'in' },

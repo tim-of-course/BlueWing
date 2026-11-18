@@ -35,9 +35,14 @@ function fixture(length = 24, height = 10) {
     geometryId: 'path',
     baseElevation: 0,
     height,
-    studSpacing: (16 / 12),
+    studSpacing: 16 / 12,
     stud: { ...spec },
-    track: { ...spec, width: 3.625 / 12, depth: 1.25 / 12, materialId: 'track-92' },
+    track: {
+      ...spec,
+      width: 3.625 / 12,
+      depth: 1.25 / 12,
+      materialId: 'track-92',
+    },
     finishes: [{ id: 'front', face: 'front', materialId: 'board', layers: 2 }],
   };
   return { project, data, wall: data.walls.wall };
@@ -85,7 +90,7 @@ function addHeader(data: ReturnType<typeof emptyConstruction>) {
 }
 void test('24 ft wall: 19 studs, exact endpoints, net face layers and deterministic derived data', () => {
   const { project, data, wall } = fixture();
-  wall.bottomAllowance = (0.5 / 12);
+  wall.bottomAllowance = 0.5 / 12;
   wall.stud.stockLength = 12;
   wall.stud.wastePercent = 10;
   wall.stud.packageSize = 20;
@@ -125,9 +130,7 @@ void test('collinear wall points leave studs, tracks and finishes unchanged and 
   assert.equal(straight.pieces.filter((p) => p.role === 'stud').length, 9);
   points.splice(1, 0, { x: 5, y: 0 });
   assert.deepEqual(generateConstruction(project, data), straight);
-  wall.conditions = [
-    { id: 'joint', kind: 'junction', distance: 5, count: 1 },
-  ];
+  wall.conditions = [{ id: 'joint', kind: 'junction', distance: 5, count: 1 }];
   const authored = generateConstruction(project, data);
   assert.equal(authored.complete, true);
   assert.equal(authored.pieces.filter((p) => p.role === 'junction').length, 1);
@@ -754,7 +757,7 @@ void test('partial-height finishes deduct only covered openings, apply layers an
   data.openings.window = opening('window', 4, 2, 1, 1);
   const result = generateConstruction(project, data);
   assert.equal(result.complete, true);
-  // 8*1.2 - 1*1.2 - 2*0.2 = 8 m²; two layers = 16 m².
+  // 8*1.2 - 1*1.2 - 2*0.2 = 8 ft²; two layers = 16 ft².
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.geometricArea, 0),
     8,
@@ -818,7 +821,7 @@ void test('an elevated finish clips to sloped and stepped wall tops', () => {
     ],
   };
   const slope = generateConstruction(project, data);
-  // A triangle from x=1 to 3 (2 m²), then a 2 m tall strip from x=3 to 4.
+  // A triangle from x=1 to 3 (2 ft²), then a 2 ft tall strip from x=3 to 4.
   close(
     slope.surfaces.reduce((sum, s) => sum + s.area, 0),
     4,
@@ -830,7 +833,7 @@ void test('an elevated finish clips to sloped and stepped wall tops', () => {
     }
   wall.topProfile.mode = 'step';
   const step = generateConstruction(project, data);
-  // Only the second 2 m run reaches 3 m, leaving 1 m of finish above the start.
+  // Only the second 2 ft run reaches 3 ft, leaving 1 ft of finish above the start.
   assert.equal(step.surfaces.length, 1);
   close(present(step.surfaces[0]).area, 2);
   assert.ok(present(step.surfaces[0]).points.every((p) => p.x >= 2));

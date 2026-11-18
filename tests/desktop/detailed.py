@@ -179,7 +179,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert database_snapshot(project_path)['assets'] == []
         sheets = call('project.import', {'path': str(ROOT / 'tests/fixtures/assessment-plan.pdf')}, True)
         sheet = sheets[0]['id']
-        # 300 page units = 6 m. Physical dimension edits must preserve these points.
+        # 300 page units = 6 ft. Physical dimension edits must preserve these points.
         call('sheet.calibrate', {'id': sheet, 'start': {'x': 72, 'y': 144},
                                 'end': {'x': 372, 'y': 144}, 'distance': {'value': 6, 'unit': 'ft'}}, True)
         geometry = {'id': 'wall-path', 'name': 'Wall W1', 'sheetId': sheet, 'kind': 'path',

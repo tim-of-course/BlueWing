@@ -968,10 +968,7 @@ void test('failed saves, final validation and previews preserve the accepted cal
   assert.equal(Object.isFrozen(stockLength), false);
   assert.equal(Reflect.set(stockLength, 'value', 999), true);
   studDelta.after = -1;
-  near(
-    required(material(baseline, 'estimated-stud').stockLength).value,
-    10,
-  );
+  near(required(material(baseline, 'estimated-stud').stockLength).value, 10);
   near(
     required(
       (preview.data as Quantities[])[1]?.totals.find(
