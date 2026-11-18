@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openPanel } from './panels';
 
 export async function pagePoint(
   page: Page,
@@ -49,6 +50,7 @@ export async function startProject(page: Page): Promise<void> {
     .getByLabel('Project name', { exact: true })
     .fill('Workflow fixture');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await openPanel(page, 'Sheets');
   const choosing = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   await (await choosing).setFiles('tests/fixtures/assessment-plan.pdf');
@@ -195,6 +197,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('combobox', { name: 'Assembly to assign', exact: true })
     .selectOption('floor-area');
+  await openPanel(page, 'Sheets', 'peek');
   await expect(
     page.getByRole('button', { name: 'Floor, 1 drawing objects', exact: true }),
   ).toContainText('ft²');
@@ -234,6 +237,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('combobox', { name: 'Assembly to assign', exact: true })
     .selectOption('count');
+  await openPanel(page, 'Sheets', 'peek');
   await expect(
     page.getByRole('button', {
       name: 'Fixtures, 1 drawing objects',

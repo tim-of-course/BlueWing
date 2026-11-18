@@ -7,6 +7,8 @@ test('built paint selection and compact toolbar work', async ({
 }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // Exercise the Sheets and Inspector controls together with the default pinned chat.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startProject(page);
   await selectionWorkflow(page);
   expect(errors).toEqual([]);

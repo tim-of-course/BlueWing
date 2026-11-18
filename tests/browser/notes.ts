@@ -1,7 +1,9 @@
 import { expect, type Page } from '@playwright/test';
 import { cli } from './wingman';
+import { openPanel } from './panels';
 
 export async function notesWorkflow(page: Page, harness = false) {
+  await openPanel(page, 'Inspector');
   await page.getByRole('button', { name: 'Notes', exact: true }).click();
   const editor = page.getByLabel('Markdown scratchpad', { exact: true });
   await editor.fill('# Scratchpad\nÄ detail.* detail.*\n😀 another');

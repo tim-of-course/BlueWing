@@ -4,6 +4,7 @@ import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import type { Project } from '../../src/core/types';
 import { captureErrors, cli, startWingmanProject } from './wingman';
 import { drawWall } from './takeoff';
+import { openPanel } from './panels';
 
 async function mutate(page: Page, name: string, payload: unknown) {
   const current = (await cli(page, 'project.inspect')).response;
@@ -48,6 +49,7 @@ test('navigator retains sheet and group elements while their live labels update'
     geometryIds: [geometry.id],
   };
   await mutate(page, 'group.put', group);
+  await openPanel(page, 'Sheets');
   const groupRow = page.getByRole('button', {
     name: 'Framing, 1 drawing objects',
     exact: true,

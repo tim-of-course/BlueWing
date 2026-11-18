@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { drawWall, pagePoint, startProject } from './takeoff';
+import { openPanel } from './panels';
 
 export async function assemblyWorkflow(page: Page): Promise<void> {
   await startProject(page);
@@ -173,6 +174,7 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
     editor.getByLabel('Cut length formula', { exact: true }),
   ).toHaveValue('height - endAllowance');
   await editor.getByRole('button', { name: 'Close', exact: true }).click();
+  await openPanel(page, 'Sheets');
   await page
     .getByRole('button', {
       name: 'Detailed walls, 1 drawing objects',

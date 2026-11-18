@@ -20,6 +20,7 @@ import {
   viewWorkflow,
   warmSwapWorkflow,
 } from './wingman';
+import { openPanel } from './panels';
 
 for (const [name, workflow] of [
   ['CLI activity since opening the project', activityWorkflow],
@@ -42,7 +43,15 @@ for (const [name, workflow] of [
 ] as const) {
   test(name, async ({ page }, testInfo) => {
     const errors = await captureErrors(page);
+    // Preserve the drawing bounds during swaps and include all visible panels in the capture workflow.
+    if (
+      workflow === viewWorkflow ||
+      workflow === modelWorkflow ||
+      workflow === captureWorkflow
+    )
+      await page.setViewportSize({ width: 1760, height: 720 });
     await startWingmanProject(page, true);
+    await openPanel(page, 'Wingman');
     const { artifact } = await captureBrowserArtifact(
       page,
       () => workflow(page),
@@ -66,6 +75,7 @@ test('turn log, editor continuity and visible saved views', async ({
   page,
   browserName,
 }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
   await startWingmanProject(page, true);
   const errors = await captureErrors(page);
   const panel = page.getByRole('complementary', { name: 'Wingman' });
@@ -83,7 +93,6 @@ test('turn log, editor continuity and visible saved views', async ({
       });
     }
   };
-  await page.setViewportSize({ width: 1400, height: 900 });
   await expect(button('Pin Inspector')).toBeVisible();
   await expect(button('Collapse Wingman')).toBeVisible();
   await expect(button('Collapse Sheets')).toBeVisible();

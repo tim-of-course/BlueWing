@@ -469,9 +469,6 @@ th {
   color: #fbbf24;
 }
 .drawing-canvas {
-  /* Blend the moving crosshair against the canvas on its own compositor layer. */
-  contain: paint;
-  transform: translateZ(0);
   position: relative;
   flex: 1;
   min-height: 0;

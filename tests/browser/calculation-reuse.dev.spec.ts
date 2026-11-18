@@ -39,6 +39,8 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
   page,
 }, info) => {
   const errors = await captureErrors(page);
+  // Inspect the navigator, drawing and live Wingman preview throughout the same calculation.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startWingmanProject(page, true);
   await drawWall(page);
   let project = (await cli<Project>(page, 'project.inspect')).response.data;

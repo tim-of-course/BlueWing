@@ -8,6 +8,7 @@ import type {
   WingmanVisual,
   WorkspaceViewSnapshot,
 } from '../../src/app/wingman-types';
+import { openPanel } from './panels';
 
 interface CliResult<T = unknown> {
   exitCode: number;
@@ -156,6 +157,7 @@ export async function startWingmanProject(page: Page, harness = false) {
     .getByLabel('Project name', { exact: true })
     .fill('Wingman fixture');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await openPanel(page, 'Sheets');
   const choosing = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   await (await choosing).setFiles('tests/fixtures/assessment-plan.pdf');

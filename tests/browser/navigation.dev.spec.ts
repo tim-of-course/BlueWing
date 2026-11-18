@@ -222,6 +222,8 @@ test('sheet navigation preserves previews, groups, layout and saved order', asyn
     if (message.type() === 'warning' || message.type() === 'error')
       errors.push(message.text());
   });
+  // Editing Inspector fields must leave the Sheets tree and its splitter visible.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await navigatorWorkflow(page);
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page

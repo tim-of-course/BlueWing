@@ -7,6 +7,7 @@ import type { PerformanceReport } from '../../src/performance/recorder';
 import { PAGE_PREVIEW_DIMENSION } from '../../src/pdf/page-images';
 import { captureErrors, cli } from './wingman';
 import { pagePoint } from './takeoff';
+import { openPanel } from './panels';
 
 // Small enough for every verify run, populated enough to exercise snapping,
 // canvas overlays, navigator filtering, serialization and quantity readers.
@@ -24,6 +25,7 @@ async function createProject(page: Page) {
 }
 
 async function importPlans(page: Page) {
+  await openPanel(page, 'Sheets');
   const choosing = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   await (await choosing).setFiles('tests/fixtures/sheet-name-plan.pdf');

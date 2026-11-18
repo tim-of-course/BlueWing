@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import { startWingmanProject } from './wingman';
 import type { Project } from '../../src/core/types';
+import { openPanel } from './panels';
+
 interface ReturnTypeOfCli {
   exitCode: number;
   response: { projectId: string; revision: number; data: unknown };
@@ -242,6 +244,7 @@ export async function namedTakeoffs(page: Page) {
   ).toMatchObject({ totals: [{ amount: -4 }] });
   await mutate('takeoff.delete', { id: co });
   await expect(page.getByLabel('Active takeoff')).toHaveValue('main');
+  await openPanel(page, 'Inspector');
   await page
     .getByLabel('New group name', { exact: true })
     .fill('Post-delete Main');

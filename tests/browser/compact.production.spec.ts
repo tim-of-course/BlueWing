@@ -7,6 +7,8 @@ test('built workspace has compact quantities, visibility and full crosshairs', a
 }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  // Exercise the Sheets and Inspector controls together with the default pinned chat.
+  await page.setViewportSize({ width: 1760, height: 720 });
   await startProject(page);
   await compactWorkflow(page);
   expect(errors).toEqual([]);

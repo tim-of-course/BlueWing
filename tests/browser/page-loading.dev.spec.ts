@@ -7,6 +7,7 @@ import type { RasterResource as Resource } from '../../src/pdf/raster';
 import type { RasterLease } from '../../src/pdf/raster';
 import type { Project } from '../../src/core/types';
 import { cli } from './wingman';
+import { openPanel } from './panels';
 
 async function setup(page: Page, cachedPreview: boolean) {
   await page.goto('/tests/browser/wingman-harness.html');
@@ -17,6 +18,7 @@ async function setup(page: Page, cachedPreview: boolean) {
     .getByLabel('Project name', { exact: true })
     .fill('Preview loading');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await openPanel(page, 'Sheets');
   const choosing = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'Import PDF', exact: true }).click();
   await (await choosing).setFiles('tests/fixtures/sheet-name-plan.pdf');
