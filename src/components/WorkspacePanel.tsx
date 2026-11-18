@@ -194,6 +194,21 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
     );
   }
 
+  createEffect(
+    () => !pinned() && peeking(),
+    (peeked) => {
+      if (!peeked) return;
+      const outsidePointer = (event: PointerEvent) => {
+        if (event.target instanceof Node && !root.contains(event.target))
+          leave();
+      };
+      window.addEventListener('pointermove', outsidePointer);
+      return () => {
+        window.removeEventListener('pointermove', outsidePointer);
+      };
+    },
+    { name: 'workspace.peekOutsidePointer' },
+  );
   onSettled(() => {
     const pointerEnter = () => {
       pointerInside = true;
@@ -209,14 +224,6 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
         !root.contains(event.relatedTarget)
       )
         queueMicrotask(leave);
-    };
-    const outsidePointer = (event: PointerEvent) => {
-      if (
-        peeking() &&
-        event.target instanceof Node &&
-        !root.contains(event.target)
-      )
-        leave();
     };
     const escape = (event: KeyboardEvent) => {
       if (
@@ -240,14 +247,12 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
     root.addEventListener('pointerleave', pointerLeave);
     root.addEventListener('focusin', enter);
     root.addEventListener('focusout', focusOut);
-    window.addEventListener('pointermove', outsidePointer);
     window.addEventListener('keydown', escape, true);
     return () => {
       root.removeEventListener('pointerenter', pointerEnter);
       root.removeEventListener('pointerleave', pointerLeave);
       root.removeEventListener('focusin', enter);
       root.removeEventListener('focusout', focusOut);
-      window.removeEventListener('pointermove', outsidePointer);
       window.removeEventListener('keydown', escape, true);
       stopResize?.();
       clearTimers();
