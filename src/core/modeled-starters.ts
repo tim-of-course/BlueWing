@@ -1,5 +1,9 @@
 import type { Assembly, CeilingTemplate, WallTemplate } from './types';
-import type { HeaderComponent, MemberSpec } from './construction-types';
+import type {
+  HeaderComponent,
+  MemberSpec,
+  WallKickers,
+} from './construction-types';
 import type { MaterialTemplate } from './material-layout';
 
 const sheet = 32;
@@ -8,13 +12,18 @@ const member = (
   materialId: string,
   width: number,
   depth: number,
-  stockFeet: number,
+  stockFeet?: number,
 ): MemberSpec => ({
   materialId,
   width: width / 12,
   depth: depth / 12,
-  stockLength: stockFeet,
+  ...(stockFeet === undefined ? {} : { stockLength: stockFeet }),
   wastePercent: 5,
+});
+export const starterKickers = (): WallKickers => ({
+  enabled: false,
+  spacing: 6,
+  member: member('steel-kicker-3-5-8-20eq', 1.625, 3.625),
 });
 const component = (
   id: string,

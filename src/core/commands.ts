@@ -971,7 +971,7 @@ export function validateProject(
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 7
+    input.formatVersion !== 8
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -979,7 +979,7 @@ export function validateProject(
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [7] },
+        formatVersion: { type: 'number', enum: [8] },
         takeoffs: {
           type: 'object',
           additionalProperties: object(

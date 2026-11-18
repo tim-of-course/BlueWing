@@ -1,6 +1,6 @@
 # Desktop CLI
 
-`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-7 reset and per-takeoff handoff filenames.
+`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-8 reset and per-takeoff handoff filenames.
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
@@ -247,7 +247,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 7 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 3 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 9.
+Only project format 8 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 4 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 9.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

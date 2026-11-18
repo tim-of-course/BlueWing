@@ -1,5 +1,24 @@
 import type { OutputAllowance } from './types';
 
+export const standardStudStock = [8, 9, 10, 12, 14, 16, 18, 20] as const;
+
+/** Equal-length kickers use the least leftover fraction. Sorted stock breaks ties shorter. */
+export function kickerStockLength(cut: number): number {
+  let selected: number = 20;
+  let best = Infinity;
+  for (const stock of standardStudStock) {
+    const ratio = stock / cut;
+    const count = Math.floor(ratio + Number.EPSILON * ratio * 8);
+    if (!count) continue;
+    const leftover = (stock - count * cut) / stock;
+    if (leftover < best - Number.EPSILON * 8) {
+      best = leftover;
+      selected = stock;
+    }
+  }
+  return selected;
+}
+
 /** First fit in stick-opening order, longest cuts first. */
 export function packedStickCount(cuts: number[], stockLength: number): number {
   const lengths = [...cuts].sort((a, b) => b - a);

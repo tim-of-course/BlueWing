@@ -1,4 +1,5 @@
 import type { Geometry, Point, Project } from './types';
+import { kickerStockLength, wholeQuantity } from './purchasing';
 import { polygonArea } from './geometry';
 import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
 import { summarizeMaterials } from './material-results';
@@ -208,6 +209,16 @@ export function validateConstruction(
     numeric(w.topAllowance ?? 0, 'top allowance', 0);
     member(w.stud);
     member(w.track);
+    if (w.kickers) {
+      requireValue(
+        typeof w.kickers.enabled === 'boolean',
+        'invalid kicker setting',
+      );
+      positive(w.kickers.spacing, 'kicker spacing');
+      if (w.kickers.cutLength !== undefined)
+        positive(w.kickers.cutLength, 'kicker cut length');
+      member(w.kickers.member);
+    }
     if (w.topProfile) {
       requireValue(
         ['linear', 'step'].includes(w.topProfile.mode),
@@ -592,7 +603,7 @@ export function generateConstruction(
       diagnostic(
         source,
         'stock-shortfall',
-        `${id}: cut ${String(cutLength)} m exceeds stock ${String(spec.stockLength)} m`,
+        `${id}: cut ${String(cutLength)} ft exceeds stock ${String(spec.stockLength)} ft`,
       );
   };
   try {
@@ -658,7 +669,12 @@ export function generateConstruction(
         );
         continue;
       }
+      const kickers = wall.kickers;
+      const kickerCount = kickers?.enabled
+        ? wholeQuantity(line.length / kickers.spacing)
+        : 0;
       const estimated =
+        kickerCount +
         line.length / wall.studSpacing +
         openings.reduce((n, o) => n + 2 * o.jambCount, 0) +
         (wall.conditions ?? []).reduce((n, c) => n + c.count, 0);
@@ -673,6 +689,38 @@ export function generateConstruction(
       const base = wallBase(wall);
       const at = (s: number, h: number, offset = 0, directionStation = s) =>
         line.at(s, base + h, offset, directionStation);
+      if (kickers?.enabled) {
+        if (kickers.cutLength === undefined)
+          diagnostic(
+            source,
+            'missing-kicker-length',
+            'Enter the kicker cut length for this wall.',
+          );
+        else {
+          const member = {
+            ...kickers.member,
+            stockLength:
+              kickers.member.stockLength ??
+              kickerStockLength(kickers.cutLength),
+          };
+          const leg = kickers.cutLength / Math.SQRT2;
+          for (let i = 0; i < kickerCount; i++) {
+            const station = i * kickers.spacing;
+            const top = heightAt(wall, station);
+            const start = at(station, top);
+            const normal = at(station, top, 1);
+            emit(
+              source,
+              `${wall.id}/kicker/${String(i)}`,
+              'kicker',
+              member,
+              start,
+              at(station, top + leg, leg),
+              { x: normal.y - start.y, y: start.x - normal.x, z: 0 },
+            );
+          }
+        }
+      }
       for (const condition of wall.conditions ?? []) {
         if (!condition.ownerWallId || condition.ownerWallId === wall.id)
           continue;

@@ -19,7 +19,7 @@ function required<T>(value: T | undefined): T {
 
 function fixture(): Project {
   return {
-    formatVersion: 7,
+    formatVersion: 8,
     takeoffs: { main: { id: 'main', name: 'Main', kind: 'main', owned: {} } },
     id: 'p',
     name: 'Alignment',

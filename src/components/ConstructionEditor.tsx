@@ -1,3 +1,4 @@
+import { starterKickers } from '../core/modeled-starters';
 import { quantityLabel } from './quantity-label';
 import { formatLength, lengthHint } from '../core/length';
 import QuantityInput from './QuantityInput';
@@ -34,6 +35,7 @@ const constructionReferenceKeys = new Set([
   'levelId',
 ]);
 function seed(schema: PayloadSchema, key = ''): unknown {
+  if (key === 'kickers') return starterKickers();
   if (schema.type === 'object')
     return Object.fromEntries(
       (schema.required ?? []).map((name) => [
@@ -143,7 +145,11 @@ export function ConstructionFields(props: {
     <div class="construction-fields">
       <For
         each={Object.keys(props.schema.properties ?? {}).filter(
-          (key) => !props.hide?.includes(key),
+          (key) =>
+            !props.hide?.includes(key) &&
+            (props.parent !== 'kickers' ||
+              key === 'enabled' ||
+              (props.value.enabled ?? props.inherited?.enabled) === true),
         )}
       >
         {(key) => {
@@ -177,7 +183,15 @@ export function ConstructionFields(props: {
                     <Show
                       when={schema().enum || choices(key)}
                       fallback={
-                        schema().type === 'number' ? (
+                        schema().type === 'boolean' ? (
+                          <input
+                            type="checkbox"
+                            checked={value() === true}
+                            onChange={(event) => {
+                              set(key, event.currentTarget.checked);
+                            }}
+                          />
+                        ) : schema().type === 'number' ? (
                           <QuantityInput
                             unit={
                               suffix(key) || scalarKeys.has(key)

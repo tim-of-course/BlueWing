@@ -141,7 +141,7 @@ export interface AssemblyComponent {
 /** Assemblies extend the existing project recipe records without duplicating calculations. */
 export type Assembly = Recipe;
 export interface AssemblyLibrary {
-  version: 3;
+  version: 4;
   revision: number;
   assemblies: Record<string, Assembly>;
 }
@@ -184,7 +184,7 @@ export interface Takeoff {
   }[];
 }
 export interface Project {
-  formatVersion: 7;
+  formatVersion: 8;
   takeoffs: Record<string, Takeoff>;
   /** Derived view context; never written by the session. */
   takeoffId?: string;

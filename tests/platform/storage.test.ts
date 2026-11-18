@@ -204,7 +204,7 @@ const project = (): Project => ({
       owned: {},
     },
   },
-  formatVersion: 7,
+  formatVersion: 8,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -328,7 +328,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 7);
+  assert.equal((await storage.load()).formatVersion, 8);
   const next: Project = {
     ...initial,
     revision: 1,
@@ -367,7 +367,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    7,
+    8,
   );
   database.close();
 });
@@ -376,7 +376,7 @@ void test('old project formats are rejected without changing the saved file', as
   const { storage, database, backups } = fixture();
   await storage.open('unsupported', true);
   await storage.initialize(project());
-  for (const version of [1, 2, 3, 4, 5, 6]) {
+  for (const version of [1, 2, 3, 4, 5, 6, 7]) {
     database.prepare('UPDATE project SET format_version=?').run(version);
     await assert.rejects(storage.load(), /format|version/i);
     assert.equal(

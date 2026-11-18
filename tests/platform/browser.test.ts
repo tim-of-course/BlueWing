@@ -42,7 +42,7 @@ for (const browserType of [chromium, firefox, webkit]) {
               owned: {},
             },
           },
-          formatVersion: 7 as const,
+          formatVersion: 8 as const,
           id: 'p',
           name: 'Original',
           revision: 0,
@@ -146,7 +146,7 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
       assert.equal(result.saved.sheets.s.assetId, 'pdf');
       assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
-      assert.equal(result.saved.formatVersion, 7);
+      assert.equal(result.saved.formatVersion, 8);
       assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
     } finally {
       await browser.close();

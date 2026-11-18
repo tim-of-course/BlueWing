@@ -14,6 +14,26 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
     .click();
   await editor
     .getByLabel('Choose assembly', { exact: true })
+    .selectOption('steel-framing');
+  const kickers = editor.getByRole('group', { name: 'Kickers', exact: true });
+  await expect(
+    kickers.getByRole('checkbox', { name: 'Enabled' }),
+  ).not.toBeChecked();
+  await kickers.getByRole('checkbox', { name: 'Enabled' }).check();
+  await expect(kickers.getByLabel('Spacing', { exact: true })).toHaveValue(
+    "6'",
+  );
+  await expect(
+    kickers.getByLabel('Cut Length (optional)', { exact: true }),
+  ).toHaveValue('');
+  await kickers
+    .getByLabel('Cut Length (optional)', { exact: true })
+    .fill('4\' 6"');
+  await editor
+    .getByRole('button', { name: 'Save assembly', exact: true })
+    .click();
+  await editor
+    .getByLabel('Choose assembly', { exact: true })
     .selectOption('drywall-face');
   await editor
     .getByRole('button', { name: 'Import into project', exact: true })
@@ -205,7 +225,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   if (!finish) throw new Error('Missing finish starter');
   finish.name = 'Company ceiling finish';
   await page.evaluate((library) => {
-    localStorage.setItem('bluewing.assemblies.v3', JSON.stringify(library));
+    localStorage.setItem('bluewing.assemblies.v4', JSON.stringify(library));
   }, old);
   await startProject(page);
   await drawWall(page);

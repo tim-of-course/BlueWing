@@ -6,7 +6,7 @@ import type {
   Unit,
 } from './types';
 import { validateAssembly } from './commands';
-import { modeledStarters } from './modeled-starters';
+import { modeledStarters, starterKickers } from './modeled-starters';
 
 const number = (
   name: string,
@@ -206,6 +206,7 @@ export function starterAssemblies(): Record<string, Assembly> {
           depth: 1.25 / 12,
           stockLength: 10,
         },
+        kickers: starterKickers(),
         bottomAllowance: 0,
         topAllowance: 0,
         finishes: ['front', 'back'].map((face) => ({
@@ -446,7 +447,7 @@ export function starterAssemblies(): Record<string, Assembly> {
   );
 }
 export function createLibrary(): AssemblyLibrary {
-  return { version: 3, revision: 0, assemblies: starterAssemblies() };
+  return { version: 4, revision: 0, assemblies: starterAssemblies() };
 }
 export function validateLibrary(
   value: unknown,
@@ -455,7 +456,7 @@ export function validateLibrary(
     !value ||
     typeof value !== 'object' ||
     !('version' in value) ||
-    value.version !== 3 ||
+    value.version !== 4 ||
     !('revision' in value) ||
     !Number.isInteger(value.revision) ||
     Number(value.revision) < 0 ||
