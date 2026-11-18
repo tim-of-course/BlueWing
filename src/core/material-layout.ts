@@ -20,7 +20,7 @@ export interface MaterialOpening {
   height: number;
 }
 
-/** Metres and radians. The kind selects the fields that may be authored. */
+/** Feet and radians. The kind selects the fields that may be authored. */
 export interface MaterialTemplate {
   kind: 'path-surface' | 'path-members' | 'area-members';
   /** Surface bottom, or member centreline. Added to level and sheet placement. */
@@ -341,7 +341,7 @@ export function materialGeometryKind(template: MaterialTemplate): GeometryKind {
   return template.kind === 'area-members' ? 'area' : 'path';
 }
 
-const EPS = 1e-8;
+const EPS = 3.28e-8;
 const add = (a: Vec3, b: Vec3, factor = 1): Vec3 => ({
   x: a.x + b.x * factor,
   y: a.y + b.y * factor,
@@ -427,7 +427,7 @@ function rowSpans(polygon: Point[], y: number): [number, number][] {
       if (Math.abs(y - a.y) <= EPS) crossings.push(a.x, b.x);
     } else {
       const t = (y - a.y) / (b.y - a.y);
-      if (t >= -EPS && t <= 1 + EPS)
+      if (t >= -1e-8 && t <= 1 + 1e-8)
         crossings.push(a.x + Math.max(0, Math.min(1, t)) * (b.x - a.x));
     }
   }
@@ -487,7 +487,7 @@ export function generateMaterialLayout(
     );
     return result;
   }
-  const scale = project.sheets[geometry.sheetId]?.calibration?.metresPerUnit;
+  const scale = project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
   if (!scale) {
     diagnostic(
       'missing-calibration',

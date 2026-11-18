@@ -19,7 +19,7 @@ function required<T>(value: T | undefined): T {
 
 function fixture(): Project {
   return {
-    formatVersion: 6,
+    formatVersion: 7,
     takeoffs: { main: { id: 'main', name: 'Main', kind: 'main', owned: {} } },
     id: 'p',
     name: 'Alignment',
@@ -34,7 +34,7 @@ function fixture(): Project {
           pageIndex: 0,
           width: 100,
           height: 100,
-          calibration: { metresPerUnit: 0.5 },
+          calibration: { feetPerUnit: 0.5 },
         },
       ]),
     ),
@@ -117,7 +117,7 @@ void test('match solves independent known world transforms, placements and refer
     ],
   });
   near(mismatch.residual, 2);
-  assert.equal(p.sheets.a?.calibration?.metresPerUnit, 0.5);
+  assert.equal(p.sheets.a?.calibration?.feetPerUnit, 0.5);
 });
 
 void test('one point preserves moving rotation and invalid matches reject', () => {

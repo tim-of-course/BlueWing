@@ -23,7 +23,7 @@ function fixture() {
       pageIndex: 0,
       width: 100,
       height: 100,
-      calibration: { metresPerUnit: 1 },
+      calibration: { feetPerUnit: 1 },
     },
   });
   for (const [id, y] of [

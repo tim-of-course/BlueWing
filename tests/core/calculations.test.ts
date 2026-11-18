@@ -28,7 +28,7 @@ function fixture(
         owned: {},
       },
     },
-    formatVersion: 6,
+    formatVersion: 7,
     id: 'project',
     name: 'Estimate',
     revision: 0,
@@ -40,7 +40,7 @@ function fixture(
         pageIndex: 0,
         width: 100,
         height: 100,
-        calibration: { metresPerUnit: 0.3048 },
+        calibration: { feetPerUnit: 1 },
       },
     },
     geometries: {
@@ -224,7 +224,7 @@ void test('unavailable measurement and invalid dimensions keep totals incomplete
   assert.equal(result.complete, false);
   assert.equal(result.totals[0]?.complete, false);
   assert.equal(result.outputs[0]?.sources[0]?.value, null);
-  sheet.calibration = { metresPerUnit: 0.3048 };
+  sheet.calibration = { feetPerUnit: 1 };
   const output = recipe.outputs[0];
   assert.ok(output);
   output.formula = 'length + height';

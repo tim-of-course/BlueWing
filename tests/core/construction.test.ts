@@ -7,9 +7,8 @@ import {
   validateConstruction,
 } from '../../src/core/construction';
 import type { MemberSpec, Opening } from '../../src/core/construction-types';
-const ft = 0.3048;
 const spec: MemberSpec = { materialId: 'stud-92', width: 0.04, depth: 0.092 };
-function fixture(length = 24 * ft, height = 10 * ft) {
+function fixture(length = 24, height = 10) {
   const project = createProject('Construction', 'project');
   project.sheets.plan = {
     id: 'plan',
@@ -18,7 +17,7 @@ function fixture(length = 24 * ft, height = 10 * ft) {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.path = {
     id: 'path',
@@ -36,9 +35,9 @@ function fixture(length = 24 * ft, height = 10 * ft) {
     geometryId: 'path',
     baseElevation: 0,
     height,
-    studSpacing: (16 / 12) * ft,
+    studSpacing: (16 / 12),
     stud: { ...spec },
-    track: { ...spec, width: 0.092075, depth: 0.03175, materialId: 'track-92' },
+    track: { ...spec, width: 3.625 / 12, depth: 1.25 / 12, materialId: 'track-92' },
     finishes: [{ id: 'front', face: 'front', materialId: 'board', layers: 2 }],
   };
   return { project, data, wall: data.walls.wall };
@@ -86,8 +85,8 @@ function addHeader(data: ReturnType<typeof emptyConstruction>) {
 }
 void test('24 ft wall: 19 studs, exact endpoints, net face layers and deterministic derived data', () => {
   const { project, data, wall } = fixture();
-  wall.bottomAllowance = (0.5 / 12) * ft;
-  wall.stud.stockLength = 12 * ft;
+  wall.bottomAllowance = (0.5 / 12);
+  wall.stud.stockLength = 12;
   wall.stud.wastePercent = 10;
   wall.stud.packageSize = 20;
   const before = JSON.stringify(data);
@@ -95,11 +94,11 @@ void test('24 ft wall: 19 studs, exact endpoints, net face layers and determinis
   assert.equal(result.complete, true);
   const studs = result.pieces.filter((p) => p.role === 'stud');
   assert.equal(studs.length, 19);
-  close(present(studs[18]).start.x, 24 * ft);
-  close(present(studs[0]).cutLength, 10 * ft - 0.0127);
+  close(present(studs[18]).start.x, 24);
+  close(present(studs[0]).cutLength, 10 - 0.5 / 12);
   close(
     result.surfaces.reduce((sum, s) => sum + s.area, 0),
-    480 * ft ** 2,
+    480,
   );
   assert.equal(
     present(result.purchases.find((p) => p.materialId === spec.materialId))
@@ -119,22 +118,22 @@ void test('24 ft wall: 19 studs, exact endpoints, net face layers and determinis
   assert.equal(JSON.stringify(data), before);
 });
 void test('collinear wall points leave studs, tracks and finishes unchanged and retain authored member conditions', () => {
-  const { project, data, wall } = fixture(10 * ft);
+  const { project, data, wall } = fixture(10);
   const points = present(project.geometries.path).points;
   const straight = generateConstruction(project, data);
   assert.equal(straight.complete, true);
   assert.equal(straight.pieces.filter((p) => p.role === 'stud').length, 9);
-  points.splice(1, 0, { x: 5 * ft, y: 0 });
+  points.splice(1, 0, { x: 5, y: 0 });
   assert.deepEqual(generateConstruction(project, data), straight);
   wall.conditions = [
-    { id: 'joint', kind: 'junction', distance: 5 * ft, count: 1 },
+    { id: 'joint', kind: 'junction', distance: 5, count: 1 },
   ];
   const authored = generateConstruction(project, data);
   assert.equal(authored.complete, true);
   assert.equal(authored.pieces.filter((p) => p.role === 'junction').length, 1);
   points.splice(1, 1);
   assert.deepEqual(generateConstruction(project, data), authored);
-  points.push({ x: 5 * ft, y: 0 });
+  points.push({ x: 5, y: 0 });
   assert.ok(
     generateConstruction(project, data).diagnostics.some(
       (d) => d.code === 'unresolved-track-joint',
@@ -451,7 +450,7 @@ void test('calibration and path edits preserve authored dimensions and report st
   };
   addHeader(data);
   data.openings.door = opening('door', 3, 1, 0, 2);
-  present(project.sheets.plan).calibration = { metresPerUnit: 0.5 };
+  present(project.sheets.plan).calibration = { feetPerUnit: 0.5 };
   assert.doesNotThrow(() => {
     validateConstruction(project, data);
   });
@@ -514,7 +513,7 @@ void test('channel flange depth does not alter authored slope cuts or backing co
     ],
   };
   wall.backing = [{ id: 'rail', height: 1, member: spec }];
-  for (const flangeDepth of [0.03175, 0.1]) {
+  for (const flangeDepth of [1.25 / 12, 0.1]) {
     wall.track.depth = flangeDepth;
     const result = generateConstruction(project, data);
     assert.equal(result.complete, true);
@@ -695,7 +694,7 @@ void test('bent wall surfaces remain planar and backing is clipped around openin
   addHeader(data);
   data.openings.door = opening('door', 2.5, 0.5, 0, 2);
   const result = generateConstruction(project, data);
-  // Rail starts at station 1 (height crosses 1.5), ends at 4, less half-metre door.
+  // Rail starts at station 1 (height crosses 1.5), ends at 4, less half-foot door.
   close(
     result.pieces
       .filter((p) => p.role === 'backing')
@@ -796,7 +795,7 @@ void test('wainscot height crossing a slope integrates the clipped trapezoid', (
   finish.height = 2;
   finish.layers = 1;
   const result = generateConstruction(project, data);
-  // First metre is a 1-to-2 m trapezoid; remaining three metres are 2 m high.
+  // First foot is a 1-to-2 ft trapezoid; remaining three feet are 2 ft high.
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
     7.5,

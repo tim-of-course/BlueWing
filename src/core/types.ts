@@ -14,16 +14,16 @@ export interface Point {
   x: number;
   y: number;
 }
-export type LengthUnit = 'm' | 'mm' | 'ft' | 'in';
-export type Unit = LengthUnit | 'm2' | 'ft2' | 'ea' | 'scalar';
+export type LengthUnit = 'ft' | 'in';
+export type Unit = LengthUnit | 'ft2' | 'ea' | 'scalar';
 export interface Quantity {
   value: number;
   unit: Unit;
 }
 export interface Calibration {
-  metresPerUnit: number;
+  feetPerUnit: number;
 }
-/** Presentation-only rigid transform in model metres/radians, about world Z. */
+/** Presentation-only rigid transform in model feet/radians, about world Z. */
 export interface Combined3dAlignment {
   offset: Point;
   rotation: number;
@@ -141,7 +141,7 @@ export interface AssemblyComponent {
 /** Assemblies extend the existing project recipe records without duplicating calculations. */
 export type Assembly = Recipe;
 export interface AssemblyLibrary {
-  version: 2;
+  version: 3;
   revision: number;
   assemblies: Record<string, Assembly>;
 }
@@ -184,7 +184,7 @@ export interface Takeoff {
   }[];
 }
 export interface Project {
-  formatVersion: 6;
+  formatVersion: 7;
   takeoffs: Record<string, Takeoff>;
   /** Derived view context; never written by the session. */
   takeoffId?: string;

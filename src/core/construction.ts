@@ -22,7 +22,7 @@ import type {
   WallFinish,
 } from './construction-types';
 export type * from './construction-types';
-const EPS = 1e-8;
+const EPS = 3.28e-8;
 export const CONSTRUCTION_GENERATION_BUDGET = 50000;
 export function emptyConstruction(): ConstructionData {
   return {
@@ -616,7 +616,7 @@ export function generateConstruction(
         continue;
       }
       const scale =
-        project.sheets[geometry.sheetId]?.calibration?.metresPerUnit;
+        project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
       if (!scale) {
         diagnostic(
           source,
@@ -683,7 +683,7 @@ export function generateConstruction(
         );
         const ownerGeometry = present(project.geometries[owner.geometryId]);
         const ownerScale =
-          project.sheets[ownerGeometry.sheetId]?.calibration?.metresPerUnit;
+          project.sheets[ownerGeometry.sheetId]?.calibration?.feetPerUnit;
         if (!ownerScale || (owner.height === undefined && !owner.topProfile)) {
           diagnostic(
             source,
@@ -1280,7 +1280,7 @@ export function generateConstruction(
               const ty = Math.min(high, hy, topHeight);
               const area =
                 ((y - x) * (Math.max(0, tx - low) + Math.max(0, ty - low))) / 2;
-              if (area <= EPS) continue;
+              if (area <= 1.0764e-7) continue;
               if (--budget < 0) throw new Error('generation-budget');
               const thickness =
                 finish.thickness === undefined
@@ -1341,7 +1341,7 @@ export function generateConstruction(
         continue;
       }
       const scale =
-        project.sheets[geometry.sheetId]?.calibration?.metresPerUnit;
+        project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
       if (!scale) {
         diagnostic(
           source,

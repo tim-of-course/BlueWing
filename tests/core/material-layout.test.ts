@@ -48,7 +48,7 @@ function fixture(
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.trace = {
     id: 'trace',
@@ -250,7 +250,7 @@ void test('rotation, calibration, sheet placement and level determine material p
       { x: 2, y: 0 },
     ],
   );
-  present(project.sheets.plan).calibration = { metresPerUnit: 0.5 };
+  present(project.sheets.plan).calibration = { feetPerUnit: 0.5 };
   const context = {
     levels: { floor: { id: 'floor', name: 'Floor', elevation: 4 } },
     placements: {

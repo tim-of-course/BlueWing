@@ -30,7 +30,7 @@ function fixture(
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 0.3048 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.a = {
     id: 'a',
@@ -111,7 +111,7 @@ void test('starters distinguish modeled material layouts from unmodeled quick es
     assert.ok(ceiling?.ceilingTemplate?.grid);
     assert.equal(ceiling.outputs.length, 0);
     assert.equal(ceiling.inputs.length, 0);
-    near(ceiling.ceilingTemplate.elevation, 9 * 0.3048);
+    near(ceiling.ceilingTemplate.elevation, 9);
     assert.match(ceiling.description ?? '', /Starter elevation is 9 ft/);
   }
   const wall = starters['steel-wall'];
@@ -209,9 +209,9 @@ void test('straight framing schedules preserve exact cut lengths, locations and 
     rows.map((r) => r.quantity),
     [19, 19],
   );
-  near(rows[0]?.cutLength_m, 3.048 - 0.0127);
-  near(rows[1]?.cutLength_m, 3.3528 - 0.0127);
-  near(rows[0]?.stockLength_m, 3.6576);
+  near(rows[0]?.cutLength_ft, 10 - 0.5 / 12);
+  near(rows[1]?.cutLength_ft, 11 - 0.5 / 12);
+  near(rows[0]?.stockLength_ft, 12);
   assert.equal(rows[1]?.location, 'Wall B');
   assert.match(exportPieces(project, 'csv'), /Wall B/);
   assert.deepEqual(
@@ -283,7 +283,7 @@ void test('header components use entered detail dimensions and multiple outputs 
     rows.map((row) => row.quantity),
     [6, 3],
   );
-  near(rows[0]?.cutLength_m, 1.3716); // 4 ft + 2 * 3 in = 4.5 ft.
+  near(rows[0]?.cutLength_ft, 4.5); // 4 ft + 2 * 3 in = 4.5 ft.
   assert.equal(calculateProject(project).totals.length, 2);
 });
 void test('FRP, acoustical ceilings, blocking and acoustical panels have independent known quantities', () => {
@@ -411,22 +411,22 @@ void test('ceiling stock and carton rounding follows aggregate quantities and in
   });
   near(ceilingAmounts(project, false)['tee-2ft'], 85);
 });
-void test('ceiling estimates handle metric calibration, irregular perimeters, zero grid and invalid deductions', () => {
+void test('ceiling estimates handle inch calibration, irregular perimeters, zero grid and invalid deductions', () => {
   const project = fixture('ceiling-grid-2x2-estimate', 'area');
   const sheet = project.sheets.s;
   const room = project.geometries.a;
   assert.ok(sheet && room);
-  // Same physical room, authored in millimetres rather than feet.
-  sheet.calibration = { metresPerUnit: 0.001 };
+  // Same physical room, with one drawing unit per inch.
+  sheet.calibration = { feetPerUnit: 1 / 12 };
   room.points = [
     { x: 0, y: 0 },
-    { x: 7315.2, y: 0 },
-    { x: 7315.2, y: 4572 },
-    { x: 0, y: 4572 },
+    { x: 288, y: 0 },
+    { x: 288, y: 180 },
+    { x: 0, y: 180 },
   ];
   near(ceilingAmounts(project)['tee-4ft'], 45);
   near(ceilingAmounts(project).mains, 8);
-  sheet.calibration = { metresPerUnit: 0.3048 };
+  sheet.calibration = { feetPerUnit: 1 };
   // L-shaped area: 24*15 - 12*5 = 300 SF; perimeter still 78 LF.
   room.points = [
     { x: 0, y: 0 },
@@ -467,15 +467,15 @@ void test('ceiling estimates handle metric calibration, irregular perimeters, ze
     );
   }
 });
-void test('metric inputs and imperial inputs produce matching piece lengths', () => {
+void test('inch inputs and foot inputs produce matching piece lengths', () => {
   const project = fixture('steel-straight-run');
   const height = assembly(project).inputs.find(
     (input) => input.name === 'height',
   );
   assert.ok(height);
-  height.unit = 'mm';
-  assignment(project).inputs = { height: 3048, stockLength: 10, spacing: 16 };
-  near(pieceSchedule(project)[0]?.cutLength_m, 3.048);
+  height.unit = 'in';
+  assignment(project).inputs = { height: 120, stockLength: 10, spacing: 16 };
+  near(pieceSchedule(project)[0]?.cutLength_ft, 10);
   assert.equal(calculateProject(project).complete, true);
 });
 void test('object input validation rejects nonmembers, wrong types and values below declared minimums', () => {

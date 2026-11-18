@@ -8,9 +8,8 @@ import { polygonArea, pointInPolygon } from '../../src/core/geometry';
 import type { Point } from '../../src/core/types';
 import { memberFaces, surfaceFaces } from '../../src/three/scene';
 
-const ft = 0.3048;
 const points = (values: [number, number][]): Point[] =>
-  values.map(([x, y]) => ({ x: x * ft, y: y * ft }));
+  values.map(([x, y]) => ({ x: x, y: y }));
 
 function fixture(width = 8, height = 8): CeilingGridInput {
   const spec = { width: 0.024, depth: 0.038 };
@@ -23,19 +22,19 @@ function fixture(width = 8, height = 8): CeilingGridInput {
       [width, height],
       [0, height],
     ]),
-    elevation: 9 * ft,
+    elevation: 9,
     system: '2x2',
     origin: { x: 0, y: 0 },
     rotation: 0,
-    main: { ...spec, materialId: 'main', stockLength: 12 * ft },
+    main: { ...spec, materialId: 'main', stockLength: 12 },
     crossTee4: { ...spec, materialId: 'tee-4' },
     crossTee2: { ...spec, materialId: 'tee-2' },
-    wallAngle: { ...spec, materialId: 'angle', stockLength: 12 * ft },
+    wallAngle: { ...spec, materialId: 'angle', stockLength: 12 },
     tile: {
       materialId: 'tile',
       thickness: 0.016,
       wastePercent: 10,
-      packageSize: 64 * ft ** 2,
+      packageSize: 64,
     },
   };
 }
@@ -94,10 +93,10 @@ void test('2x2 grid emits independently countable members and 64 SF of actual ti
   assert.equal(count('tee-2'), 8);
   assert.equal(count('angle'), 4);
   assert.equal(result.surfaces.length, 16);
-  for (const surface of result.surfaces) close(surface.area / ft ** 2, 4);
+  for (const surface of result.surfaces) close(surface.area, 4);
   close(
     result.pieces.find((piece) => piece.materialId === 'main')?.cutLength ?? 0,
-    8 * ft,
+    8,
   );
   assert.deepEqual(generateCeilingGrid(fixture()), result);
 });
@@ -116,7 +115,7 @@ void test('2x4 grid changes actual tile footprints and omits 2 ft cross tees', (
     result.pieces.filter((piece) => piece.role === 'ceiling-tee-2ft').length,
     0,
   );
-  for (const surface of result.surfaces) close(surface.area / ft ** 2, 8);
+  for (const surface of result.surfaces) close(surface.area, 8);
 });
 
 void test('ceiling elevation is the rendered finished underside for different member depths and tile thicknesses', () => {
@@ -170,16 +169,16 @@ void test('border tiles and cross tees clip to the room, rather than keeping are
   assert.equal(fourFoot.length, 4);
   assert.equal(twoFoot.length, 6);
   assert.deepEqual(
-    fourFoot.map((piece) => Math.round(piece.cutLength / ft)).sort(),
+    fourFoot.map((piece) => Math.round(piece.cutLength)).sort(),
     [3, 3, 4, 4],
   );
   assert.deepEqual(
-    twoFoot.map((piece) => Math.round(piece.cutLength / ft)).sort(),
+    twoFoot.map((piece) => Math.round(piece.cutLength)).sort(),
     [1, 1, 2, 2, 2, 2],
   );
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
-    35 * ft ** 2,
+    35,
   );
 });
 
@@ -188,14 +187,14 @@ void test('mains and wall angle are segmented into explicit stock-limited pieces
   assert.deepEqual(
     result.pieces
       .filter((piece) => piece.materialId === 'main')
-      .map((piece) => Math.round(piece.cutLength / ft)),
+      .map((piece) => Math.round(piece.cutLength)),
     [12, 12, 2],
   );
   const angles = result.pieces.filter((piece) => piece.materialId === 'angle');
   assert.equal(angles.length, 8);
   close(
     angles.reduce((sum, piece) => sum + piece.cutLength, 0),
-    68 * ft,
+    68,
   );
 });
 
@@ -223,7 +222,7 @@ void test('concave boundaries do not create members or tiles across an excluded 
     result.pieces
       .filter((piece) => piece.materialId === 'main')
       .reduce((sum, piece) => sum + piece.cutLength, 0),
-    4 * ft,
+    4,
   );
   for (const piece of result.pieces)
     assert.ok(
@@ -256,10 +255,10 @@ void test('a notch can split one tile cell into separate material patches withou
   assert.equal(upperCell.length, 2);
   for (const surface of upperCell) {
     assert.ok(
-      surface.points.every((point) => point.x <= 0.75 * ft + 1e-8) ||
-        surface.points.every((point) => point.x >= 1.25 * ft - 1e-8),
+      surface.points.every((point) => point.x <= 0.75 + 1e-8) ||
+        surface.points.every((point) => point.x >= 1.25 - 1e-8),
     );
-    close(surface.area, 1.5 * ft ** 2);
+    close(surface.area, 1.5);
   }
 });
 
@@ -277,7 +276,7 @@ void test('rotation and translated grid origin preserve exact quantities and mov
     rotation,
     origin,
     boundary: original.boundary.map(transform),
-    elevation: 11 * ft,
+    elevation: 11,
   };
   const result = checked(input);
   assert.equal(result.pieces.length, expected.pieces.length);
@@ -290,14 +289,14 @@ void test('rotation and translated grid origin preserve exact quantities and mov
   });
   close(
     reverse.surfaces.reduce((sum, surface) => sum + surface.area, 0),
-    35 * ft ** 2,
+    35,
   );
   assert.equal(reverse.pieces.length, result.pieces.length);
 });
 
 void test('grid origin changes border cuts and quantities while preserving room area', () => {
   const input = fixture();
-  input.origin = { x: ft, y: ft };
+  input.origin = { x: 1, y: 1 };
   const result = checked(input);
   assert.equal(
     result.pieces.filter((piece) => piece.materialId === 'main').length,
@@ -320,7 +319,7 @@ void test('diagonal boundary clips polygons and grid lengths without rectangular
   const result = checked(input);
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
-    32 * ft ** 2,
+    32,
   );
   assert.ok(result.surfaces.some((surface) => surface.points.length === 3));
 });

@@ -37,7 +37,7 @@ function fixture() {
   const system = createSystemAssembly({
     id: 'wall',
     name: 'Two-face wall',
-    inputs: [{ name: 'height', type: 'number', unit: 'mm', minimum: 1 }],
+    inputs: [{ name: 'height', type: 'number', unit: 'in', minimum: 1 }],
     components: [
       { id: 'framing', assembly: framing, bindings: { height: 'height' } },
       {
@@ -57,7 +57,7 @@ function fixture() {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 0.3048 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.wall = {
     id: 'wall',
@@ -75,7 +75,7 @@ function fixture() {
     id: 'a',
     groupId: 'g',
     recipeId: 'wall',
-    inputs: { height: 3048 },
+    inputs: { height: 120 },
     allowances: {},
   };
   project.assignments.a = assignment;
@@ -120,7 +120,7 @@ void test('system combines existing formulas once with converted shared dimensio
   const pieces = pieceSchedule(accepted);
   assert.equal(pieces.length, 1);
   assert.equal(pieces[0]?.quantity, 19);
-  near(pieces[0].cutLength_m ?? undefined, 3.048);
+  near(pieces[0].cutLength_ft ?? undefined, 10);
   assert.equal(pieces[0].outputId, 'framing/studs');
   assert.equal(pieces[0].geometryId, 'wall');
   assert.equal(result.outputs[0]?.recipeId, 'wall');
@@ -130,7 +130,7 @@ void test('system combines existing formulas once with converted shared dimensio
 });
 void test('object shared overrides and independent component allowances retain piece requirements', () => {
   const { project } = fixture();
-  required(project.assignments.a).geometryInputs = { wall: { height: 2438.4 } };
+  required(project.assignments.a).geometryInputs = { wall: { height: 96 } };
   required(project.assignments.a).allowances = {
     'faceA/board-area': { wastePercent: 10 },
     'framing/studs': { wastePercent: 10, packageSize: 20 },
@@ -169,7 +169,7 @@ void test('parent shared required values and unbound component required values r
     required(calculateProject(project).outputs[0]).diagnostics.join(),
     /Required input: height/,
   );
-  required(system.inputs[0]).default = 3048;
+  required(system.inputs[0]).default = 120;
   assert.equal(calculateProject(project).complete, true);
   delete required(
     required(required(system.components)[0]).assembly.inputs.find(
@@ -190,7 +190,7 @@ void test('bindings reject incompatible units, unknown inputs and nesting; boole
   assert.throws(() => {
     validateAssembly(system);
   }, /Incompatible/);
-  required(system.inputs[0]).unit = 'mm';
+  required(system.inputs[0]).unit = 'in';
   required(required(system.components)[0]).bindings.height = 'missing';
   assert.throws(() => {
     validateAssembly(system);

@@ -9,22 +9,22 @@ import {
 import { calibrationFromRatio } from '../../src/core/scale';
 import { ProjectSession } from '../../src/core/session';
 
-void test('printed architectural, metric and full-size scales use paper size', () => {
+void test('printed architectural, custom and full-size scales use paper size', () => {
   const architectural = calibrationFromRatio({
     paper: { value: 0.25, unit: 'in' },
     real: { value: 1, unit: 'ft' },
   });
-  assert.ok(Math.abs((432 * architectural.metresPerUnit) / 0.3048 - 24) < 1e-9);
-  const metric = calibrationFromRatio({
-    paper: { value: 1, unit: 'mm' },
-    real: { value: 100, unit: 'mm' },
+  assert.ok(Math.abs((432 * architectural.feetPerUnit) - 24) < 1e-9);
+  const custom = calibrationFromRatio({
+    paper: { value: 1, unit: 'in' },
+    real: { value: 100, unit: 'in' },
   });
-  assert.ok(Math.abs(72 * metric.metresPerUnit - 2.54) < 1e-9);
+  assert.ok(Math.abs(72 * custom.feetPerUnit - 100 / 12) < 1e-9);
   const full = calibrationFromRatio({
-    paper: { value: 1, unit: 'mm' },
-    real: { value: 1, unit: 'mm' },
+    paper: { value: 1, unit: 'in' },
+    real: { value: 1, unit: 'in' },
   });
-  assert.ok(Math.abs(72 * full.metresPerUnit - 0.0254) < 1e-9);
+  assert.ok(Math.abs(72 * full.feetPerUnit - 1 / 12) < 1e-9);
   for (const value of [0, -1, Infinity, NaN])
     assert.throws(() =>
       calibrationFromRatio({

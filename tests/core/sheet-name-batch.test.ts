@@ -14,7 +14,7 @@ void test('reviewed sheet renames save atomically, preserve sheet data, and undo
       width: 1000,
       height: 800,
       rotation: 90,
-      calibration: { metresPerUnit: 0.1 },
+      calibration: { feetPerUnit: 0.1 },
     };
   }
   let saves = 0;

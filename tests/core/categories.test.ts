@@ -42,7 +42,7 @@ function fixture() {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 0.3048 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.line = {
     id: 'line',
@@ -68,10 +68,10 @@ function fixture() {
   }
   const framing = project.recipes['steel-framing'];
   assert.ok(framing?.wallTemplate);
-  framing.wallTemplate.height = 8 * 0.3048;
+  framing.wallTemplate.height = 8;
   const finish = project.recipes['drywall-wall-surface'];
   assert.ok(finish?.materialTemplate?.kind === 'path-surface');
-  finish.materialTemplate.height = 8 * 0.3048;
+  finish.materialTemplate.height = 8;
   return project;
 }
 

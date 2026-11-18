@@ -34,14 +34,12 @@ const output = (
   formula,
   allowance: { wastePercent: 0 },
 });
-const foot = 0.3048;
-const inch = 0.0254;
 
 function ceilingGrid(square: boolean): Assembly {
   const size = square ? '2x2' : '2x4';
   const section = {
-    width: (15 / 16) * inch,
-    depth: 1.5 * inch,
+    width: (15 / 16) / 12,
+    depth: 1.5 / 12,
     wastePercent: 5,
   };
   return {
@@ -54,7 +52,7 @@ function ceilingGrid(square: boolean): Assembly {
     inputs: [],
     outputs: [],
     ceilingTemplate: {
-      elevation: 9 * foot,
+      elevation: 9,
       materialId: `ceiling-tile-${size}-unspecified`,
       wastePercent: 5,
       layers: 1,
@@ -65,28 +63,28 @@ function ceilingGrid(square: boolean): Assembly {
         main: {
           ...section,
           materialId: 'ceiling-main-12ft-unspecified',
-          stockLength: 12 * foot,
+          stockLength: 12,
         },
         crossTee4: {
           ...section,
           materialId: 'ceiling-tee-4ft-unspecified',
-          stockLength: 4 * foot,
+          stockLength: 4,
         },
         ...(square
           ? {
               crossTee2: {
                 ...section,
                 materialId: 'ceiling-tee-2ft-unspecified',
-                stockLength: 2 * foot,
+                stockLength: 2,
               },
             }
           : {}),
         wallAngle: {
           materialId: 'ceiling-wall-angle-12ft-unspecified',
           wastePercent: 5,
-          width: (7 / 8) * inch,
-          depth: (7 / 8) * inch,
-          stockLength: 12 * foot,
+          width: (7 / 8) / 12,
+          depth: (7 / 8) / 12,
+          stockLength: 12,
         },
       },
     },
@@ -175,20 +173,20 @@ export function starterAssemblies(): Record<string, Assembly> {
       outputs: [],
       wallTemplate: {
         baseElevation: 0,
-        studSpacing: 16 * inch,
+        studSpacing: 16 / 12,
         stud: {
           materialId: 'steel-stud-3-5-8-unspecified',
           wastePercent: 5,
-          width: 1.625 * inch,
-          depth: 3.625 * inch,
-          stockLength: 12 * foot,
+          width: 1.625 / 12,
+          depth: 3.625 / 12,
+          stockLength: 12,
         },
         track: {
           materialId: 'steel-track-3-5-8-unspecified',
           wastePercent: 5,
-          width: 3.625 * inch,
-          depth: 1.25 * inch,
-          stockLength: 10 * foot,
+          width: 3.625 / 12,
+          depth: 1.25 / 12,
+          stockLength: 10,
         },
         bottomAllowance: 0,
         topAllowance: 0,
@@ -198,8 +196,8 @@ export function starterAssemblies(): Record<string, Assembly> {
           wastePercent: 5,
           face: face as 'front' | 'back',
           layers: 1,
-          thickness: 0.625 * inch,
-          packageSize: 32 * foot ** 2,
+          thickness: 0.625 / 12,
+          packageSize: 32,
         })),
         backing: [],
       },
@@ -397,7 +395,7 @@ export function starterAssemblies(): Record<string, Assembly> {
   );
 }
 export function createLibrary(): AssemblyLibrary {
-  return { version: 2, revision: 0, assemblies: starterAssemblies() };
+  return { version: 3, revision: 0, assemblies: starterAssemblies() };
 }
 export function validateLibrary(
   value: unknown,
@@ -406,7 +404,7 @@ export function validateLibrary(
     !value ||
     typeof value !== 'object' ||
     !('version' in value) ||
-    value.version !== 2 ||
+    value.version !== 3 ||
     !('revision' in value) ||
     !Number.isInteger(value.revision) ||
     Number(value.revision) < 0 ||

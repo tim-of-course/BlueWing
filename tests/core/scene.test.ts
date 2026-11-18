@@ -35,7 +35,7 @@ void test('plan corners follow sheet calibration, placement, rotation and level'
     pageIndex: 0,
     width: 100,
     height: 50,
-    calibration: { metresPerUnit: 0.1 },
+    calibration: { feetPerUnit: 0.1 },
   };
   const corners = sheetPlanCorners(
     sheet,
@@ -58,7 +58,7 @@ void test('plan corners follow sheet calibration, placement, rotation and level'
   for (const [index, point] of corners.entries()) {
     assert.ok(Math.abs(point.x - (expected[index]?.[0] ?? 0)) < 1e-9);
     assert.ok(Math.abs(point.y - (expected[index]?.[1] ?? 0)) < 1e-9);
-    assert.ok(Math.abs(point.z - 4.999) < 1e-9);
+    assert.ok(Math.abs(point.z - (5 - 0.00328)) < 1e-9);
   }
   assert.equal(
     sheetPlanCorners({
@@ -168,14 +168,14 @@ void test('multilayer finishes use total thickness centred on their generated pl
         materialId: 'gypsum',
         face: 'front',
         layers: 2,
-        thickness: 0.0254,
+        thickness: 1 / 12,
         area: 24,
         geometricArea: 12,
         points: [
-          { x: 0, y: 0.0627, z: 0 },
-          { x: 4, y: 0.0627, z: 0 },
-          { x: 4, y: 0.0627, z: 3 },
-          { x: 0, y: 0.0627, z: 3 },
+          { x: 0, y: (0.05 + 0.5 / 12), z: 0 },
+          { x: 4, y: (0.05 + 0.5 / 12), z: 0 },
+          { x: 4, y: (0.05 + 0.5 / 12), z: 3 },
+          { x: 0, y: (0.05 + 0.5 / 12), z: 3 },
         ],
       },
     ],
@@ -187,7 +187,7 @@ void test('multilayer finishes use total thickness centred on their generated pl
   assert.ok(finish);
   assert.equal(surfaceFaces(finish).length, 6);
   assert.ok(Math.abs(scene.bounds.min.y - 0.05) < 1e-10);
-  assert.ok(Math.abs(scene.bounds.max.y - 0.0754) < 1e-10);
+  assert.ok(Math.abs(scene.bounds.max.y - (0.05 + 1 / 12)) < 1e-10);
   assert.deepEqual(result, original);
 });
 

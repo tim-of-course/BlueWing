@@ -18,7 +18,7 @@ function fixture() {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.g = {
     id: 'g',
@@ -60,7 +60,7 @@ void test('construction commands save, preview, undo and redo without changing a
   const { session, call, wall, saves } = fixture();
   const points = session.project.geometries.g?.points;
   await call({ name: 'wall.put', payload: wall });
-  assert.equal(session.project.formatVersion, 6);
+  assert.equal(session.project.formatVersion, 7);
   const result = generateConstruction(
     session.project,
     resolveConstruction(session.project),
@@ -349,7 +349,7 @@ void test('duplicating geometry copies its construction and openings as independ
     payload: { format: 'csv', schedule: 'pieces' },
   }).data;
   assert.equal(typeof exported, 'string');
-  assert.match(String(exported), /cutLength_m/);
+  assert.match(String(exported), /cutLength_ft/);
   await call({
     name: 'opening.put',
     payload: { ...copiedOpening, width: 1.5 },
@@ -472,7 +472,7 @@ void test('ordinary quantities, exact piece exports and preview deltas share pos
     Math.abs(
       (before.totals.find((total) => total.materialId === 'board')?.amount ??
         0) -
-        36 / 0.09290304,
+        36,
     ) < 1e-7,
   );
   assert.equal(
@@ -484,7 +484,7 @@ void test('ordinary quantities, exact piece exports and preview deltas share pos
   assert.ok(
     Math.abs(
       (changes.find((change) => change.materialId === 'board')?.delta ?? 0) +
-        6 / 0.09290304,
+        6,
     ) < 1e-7,
   );
 });
@@ -645,7 +645,7 @@ void test('reviewed shared members become changed when their owner moves, change
     { name: 'geometry.move', payload: { ids: ['g'], dx: 1, dy: 0 } },
     {
       name: 'sheet.put',
-      payload: { ...sheet, calibration: { metresPerUnit: 2 } },
+      payload: { ...sheet, calibration: { feetPerUnit: 2 } },
     },
     {
       name: 'level.put',
@@ -709,10 +709,10 @@ void test('construction material CSV includes every displayed surface and preser
     },
   });
   const exported = exportConstruction(session.project, 'csv', 'materials');
-  assert.ok(exported.includes('"board","m2","","36","40","10","true"'));
+  assert.ok(exported.includes('"board","ft2","","36","40","10","true"'));
   assert.ok(
     exportConstruction(session.project, 'csv', 'materials').includes(
-      '"ceiling-tile","m2","","4","4","","true"',
+      '"ceiling-tile","ft2","","4","4","","true"',
     ),
   );
 });

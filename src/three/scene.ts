@@ -11,20 +11,20 @@ import {
 } from '../core/categories';
 import type { CategoryFilter, CategoryContext } from '../core/categories';
 
-/** Metres in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
+/** Feet in plan XY, elevation Z. This module has no Solid or DOM lifecycle state. */
 export interface Point3 {
   x: number;
   y: number;
   z: number;
 }
 
-/** Sheet corners in model metres, ordered from the top-left around the page. */
+/** Sheet corners in model feet, ordered from the top-left around the page. */
 export function sheetPlanCorners(
   sheet: Sheet,
   placement?: SheetPlacement,
   levelElevation = 0,
 ): [Point3, Point3, Point3, Point3] | null {
-  const scale = sheet.calibration?.metresPerUnit;
+  const scale = sheet.calibration?.feetPerUnit;
   if (!scale || !Number.isFinite(scale) || scale <= 0) return null;
   return [
     { x: 0, y: 0 },
@@ -33,7 +33,7 @@ export function sheetPlanCorners(
     { x: 0, y: sheet.height },
   ].map((point) => {
     const mapped = sheetPointToWorld(point, scale, placement);
-    return { ...mapped, z: mapped.z + levelElevation - 0.001 };
+    return { ...mapped, z: mapped.z + levelElevation - 0.00328 };
   }) as [Point3, Point3, Point3, Point3];
 }
 export interface SceneSource {
@@ -209,7 +209,7 @@ export function constructionSceneInput(
   ): Point3 | undefined => {
     if (
       Math.hypot(piece.end.x - piece.start.x, piece.end.y - piece.start.y) >
-      1e-8
+      3.28e-8
     )
       return undefined;
     let nearest = Infinity;
@@ -221,7 +221,7 @@ export function constructionSceneInput(
         z: 0,
       };
       const lengthSquared = dot(delta, delta);
-      if (lengthSquared < 1e-12) continue;
+      if (lengthSquared < 1.0764e-11) continue;
       const offset = sub(piece.start, track.start);
       const station = Math.max(
         0,
@@ -448,7 +448,7 @@ function boundsOf(input: SceneInput): ConstructionScene['bounds'] {
       for (const point of face.points) include(point);
   return Number.isFinite(min.x)
     ? { min, max }
-    : { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } };
+    : { min: { x: 0, y: 0, z: 0 }, max: { x: 3.28, y: 3.28, z: 3.28 } };
 }
 
 /** Filtering retains original records. No renderer-specific object cap or duplicate face graph. */
@@ -511,7 +511,7 @@ export function fitCamera(
     ...camera,
     zoom: 1,
     target: mul(add(bounds.min, bounds.max), 0.5),
-    span: Math.max(0.1, Math.hypot(size.x, size.y, size.z)) * 1.08,
+    span: Math.max(0.328, Math.hypot(size.x, size.y, size.z)) * 1.08,
   };
 }
 export function resolveCamera(

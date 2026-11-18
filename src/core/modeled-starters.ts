@@ -2,9 +2,7 @@ import type { Assembly, CeilingTemplate, WallTemplate } from './types';
 import type { HeaderComponent, MemberSpec } from './construction-types';
 import type { MaterialTemplate } from './material-layout';
 
-const ft = 0.3048;
-const inch = 0.0254;
-const sheet = 32 * ft ** 2;
+const sheet = 32;
 
 const member = (
   materialId: string,
@@ -13,9 +11,9 @@ const member = (
   stockFeet: number,
 ): MemberSpec => ({
   materialId,
-  width: width * inch,
-  depth: depth * inch,
-  stockLength: stockFeet * ft,
+  width: width / 12,
+  depth: depth / 12,
+  stockLength: stockFeet,
   wastePercent: 5,
 });
 const component = (
@@ -30,8 +28,8 @@ const component = (
   member: spec,
   startExtension: 0,
   endExtension: 0,
-  verticalOffset: verticalOffset * inch,
-  faceOffset: faceOffset * inch,
+  verticalOffset: verticalOffset / 12,
+  faceOffset: faceOffset / 12,
 });
 const layout = (
   id: string,
@@ -70,8 +68,8 @@ function surface(
       materialId,
       wastePercent: 5,
       layers: 1,
-      thickness: thickness * inch,
-      ...(height === undefined ? {} : { height: height * inch }),
+      thickness: thickness / 12,
+      ...(height === undefined ? {} : { height: height / 12 }),
       ...(category === 'Acoustical ceilings/acoustical work'
         ? {}
         : { packageSize: sheet }),
@@ -90,11 +88,11 @@ function horizontal(
   description: string,
 ): Assembly {
   const ceilingTemplate: CeilingTemplate = {
-    elevation: elevation * ft,
+    elevation,
     materialId,
     wastePercent: 5,
     layers: 1,
-    thickness: thickness * inch,
+    thickness: thickness / 12,
     packageSize: sheet,
   };
   return {
@@ -156,7 +154,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Modeled example with two 6 in stud sections and top/bottom track in a 3-5/8 in wide envelope. Starter bottom elevation is 7 ft, with zero end extensions. Enter the actual detail: section sizes, orientation, offsets, stock and bearing extensions. This is not a load-rated header design. For a wall opening, copy its components into a project Header detail and assign that detail to the opening; do not also apply a separate header trace for that same material.',
       {
         kind: 'path-members',
-        elevation: 7 * ft,
+        elevation: 7,
         components: [
           component('left-stud', 'header-stud', stud, 3, -1),
           component('right-stud', 'header-stud', structuredClone(stud), 3, 1),
@@ -177,8 +175,8 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Modeled parallel joists clipped to the traced area, including separate spans at concave boundaries. Starter centrelines are 9 ft high at 16 in spacing, parallel to world X with origin 0,0; sections are 6 by 1-5/8 in with 20 ft stock. Set actual direction, origin, spacing, elevation and specified sections. Border/rim members, bridging, bearing extensions and connections must be entered separately. Members are not silently spliced.',
       {
         kind: 'area-members',
-        elevation: 9 * ft,
-        spacing: 16 * inch,
+        elevation: 9,
+        spacing: 16 / 12,
         origin: { x: 0, y: 0 },
         rotation: 0,
         role: 'joist',
@@ -192,8 +190,8 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Modeled diagonal brace following a traced plan path. Starter centreline elevations rise from 9 ft to 12 ft; enter the actual attachment elevations and horizontal run. Cut length is the true 3D distance plus entered end extensions. Starter section is 3-5/8 by 1-5/8 in with 10 ft stock. Each path segment is a separate piece; connections and fastening are separate scope.',
       {
         kind: 'path-members',
-        elevation: 9 * ft,
-        endElevation: 12 * ft,
+        elevation: 9,
+        endElevation: 12,
         components: [
           component(
             'kick',
@@ -210,8 +208,8 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Modeled parallel furring clipped to a traced ceiling area. Starter centrelines are 9 ft high at 24 in spacing, parallel to world X with origin 0,0; envelopes are 2-5/8 in wide by 7/8 in deep with 12 ft stock. Replace these example dimensions, spacing and orientation with the specified system. Carrier channels, hangers and connections are separate scope. Trace joints where required; no automatic splicing.',
       {
         kind: 'area-members',
-        elevation: 9 * ft,
-        spacing: 24 * inch,
+        elevation: 9,
+        spacing: 24 / 12,
         origin: { x: 0, y: 0 },
         rotation: 0,
         role: 'furring',
@@ -225,7 +223,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Modeled blocks measured from individual path segments. Trace the actual ends of each block and enter its centreline elevation. Starter 2x6 uses actual 1-1/2 by 5-1/2 in dimensions and 8 ft stock. Set the specified size, orientation and product. Between-stud cuts and fasteners require project details.',
       {
         kind: 'path-members',
-        elevation: 4 * ft,
+        elevation: 4,
         components: [
           component(
             'block',

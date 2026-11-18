@@ -29,7 +29,6 @@ import type {
   Project,
 } from '../../src/core/types';
 
-const ft = 0.3048;
 const surfaceStarters = [
   'drywall-wall-surface',
   'frp-wall',
@@ -60,7 +59,7 @@ function fixture(id: string, kind: GeometryKind = 'path', length = 24) {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: ft },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.trace = {
     id: 'trace',
@@ -108,7 +107,7 @@ function twoWallTypes() {
   const first = project.recipes['steel-framing'];
   const trace = project.geometries.trace;
   assert.ok(first?.wallTemplate && trace);
-  first.wallTemplate.height = 8 * ft;
+  first.wallTemplate.height = 8;
   const second = structuredClone(first);
   second.id = 'four-foot-wall';
   project.recipes[second.id] = second;
@@ -168,7 +167,7 @@ void test('two wall types share one track order and retain their own installed q
     order.installedByAssignment?.map((item) => [
       item.assignmentId,
       item.pieceCount,
-      Math.round(item.cutLength.value / ft),
+      Math.round(item.cutLength.value),
     ]),
     [
       ['a', 2, 12],
@@ -208,7 +207,7 @@ void test('two wall types share one track order and retain their own installed q
   near(row.quantity, 30);
   assert.equal(row.source.assignmentId, null);
   assert.equal(row.pieceCount, 3);
-  near(row.pieceLength?.value, 10 * ft);
+  near(row.pieceLength?.value, 10);
   assert.equal(row.provenance.packedCount, 2);
   assert.equal(row.provenance.sourceRefs.length, 4);
   assert.deepEqual(
@@ -229,8 +228,8 @@ void test('two wall types share one track order and retain their own installed q
         ? lines
         : lines.filter((line) => line.includes('"stock-purchase"'));
     assert.equal(purchaseRows.length, 1, schedule);
-    // The three 10 ft sticks cover 9.144 m in the construction schedule.
-    assert.match(purchaseRows[0] ?? '', /"9\.144"/);
+    // The three 10 ft sticks cover 30 ft in the construction schedule.
+    assert.match(purchaseRows[0] ?? '', /"30"/);
   }
 });
 
@@ -238,7 +237,7 @@ void test('stock length, waste, package, scope category and material breakouts h
   for (const split of ['stock', 'waste', 'package', 'category', 'material']) {
     const { project, second, track } = twoWallTypes();
     const materialId = track.materialId;
-    if (split === 'stock') track.stockLength = 8 * ft;
+    if (split === 'stock') track.stockLength = 8;
     if (split === 'waste') track.wastePercent = 0;
     if (split === 'package') track.packageSize = 4;
     if (split === 'category') second.category = 'High work';
@@ -351,7 +350,7 @@ function linked(result: CalculationResult) {
       (source) => source.surfaceId === surface.id,
     );
     assert.equal(matching.length, 1, surface.id);
-    near(matching[0]?.value ?? undefined, surface.area / ft ** 2);
+    near(matching[0]?.value ?? undefined, surface.area);
   }
 }
 
@@ -361,16 +360,16 @@ void test('new finish starters model measured surfaces and positioned deductions
     project = command(project, 'assignment.put', {
       ...applied(project),
       materialOverrides: {
-        height: 8 * ft,
-        elevation: 2 * ft,
+        height: 8,
+        elevation: 2,
         layers: 1,
         openings: [
           {
             id: 'door',
-            distance: 8 * ft,
-            width: 3 * ft,
+            distance: 8,
+            width: 3,
             sill: 0,
-            height: 7 * ft,
+            height: 7,
           },
         ],
       },
@@ -387,7 +386,7 @@ void test('new finish starters model measured surfaces and positioned deductions
     assert.ok(
       result.model.surfaces.every((surface) =>
         surface.points.every(
-          (point) => point.z >= 2 * ft - 1e-9 && point.z <= 10 * ft + 1e-9,
+          (point) => point.z >= 2 - 1e-9 && point.z <= 10 + 1e-9,
         ),
       ),
     );
@@ -398,7 +397,7 @@ function framedTrace() {
   let project = fixture('steel-framing', 'path', 10);
   project = command(project, 'assignment.put', {
     ...applied(project),
-    wallOverrides: { height: 8 * ft },
+    wallOverrides: { height: 8 },
   });
   project = command(
     project,
@@ -419,10 +418,10 @@ function framedTrace() {
 const door = {
   id: 'door',
   wallId: 'a/trace',
-  distance: 3 * ft,
-  width: 3 * ft,
+  distance: 3,
+  width: 3,
   sill: 0,
-  height: 7 * ft,
+  height: 7,
   jambCount: 1,
   headerId: 'header',
 };
@@ -443,8 +442,8 @@ function addSurface(
     materialTemplate: {
       kind: 'path-surface',
       materialId,
-      height: height * ft,
-      elevation: elevation * ft,
+      height: height,
+      elevation: elevation,
       layers: 1,
       wastePercent: 0,
     },
@@ -527,7 +526,7 @@ void test('high drywall on the same face has its own modeled quantity, purchase 
     materialId: 'board-A',
     face: 'front' as const,
     layers: 1,
-    height: 10 * ft,
+    height: 10,
     wastePercent: 0,
   };
   const upper = {
@@ -535,7 +534,7 @@ void test('high drywall on the same face has its own modeled quantity, purchase 
     materialId: 'board-B',
     face: 'front' as const,
     layers: 1,
-    startHeight: 10 * ft,
+    startHeight: 10,
     wastePercent: 0,
   };
   const framing = project.recipes['steel-framing'];
@@ -546,7 +545,7 @@ void test('high drywall on the same face has its own modeled quantity, purchase 
   });
   project = command(project, 'assignment.put', {
     ...applied(project),
-    wallOverrides: { height: 14 * ft, stud: { stockLength: 16 * ft } },
+    wallOverrides: { height: 14, stud: { stockLength: 16 } },
   });
   for (const hasDoor of [false, true]) {
     if (hasDoor) project = command(project, 'opening.put', door);
@@ -565,8 +564,8 @@ void test('high drywall on the same face has its own modeled quantity, purchase 
       ['board-B', 40],
     ] as const) {
       const purchase = purchases.find((p) => p.materialId === material);
-      near(purchase?.requiredArea, area * ft ** 2);
-      near(purchase?.purchasedArea, area * ft ** 2);
+      near(purchase?.requiredArea, area);
+      near(purchase?.purchasedArea, area);
       near(
         outputs.find((row) => row.materialId === material)?.baseAmount,
         area,
@@ -580,7 +579,7 @@ void test('high drywall on the same face has its own modeled quantity, purchase 
       (s) => s.materialId === 'board-B',
     );
     assert.equal(high.length, 1);
-    assert.ok(high[0]?.points.every((p) => p.z >= 10 * ft && p.z <= 14 * ft));
+    assert.ok(high[0]?.points.every((p) => p.z >= 10 && p.z <= 14));
   }
 });
 
@@ -593,7 +592,7 @@ void test('both faces of a second wall application lose the door once, including
     recipeId: 'steel-wall',
     inputs: {},
     allowances: {},
-    wallOverrides: { height: 8 * ft },
+    wallOverrides: { height: 8 },
   });
   project = addSurface(project, 'drywall', 8);
   const initial = calculateProject(project);
@@ -628,7 +627,7 @@ void test('both faces of a second wall application lose the door once, including
       near(
         result.model.surfaces
           .filter((s) => s.wallId === 'both-faces/trace' && s.face === face)
-          .reduce((sum, s) => sum + s.area / ft ** 2, 0),
+          .reduce((sum, s) => sum + s.area, 0),
         59,
       );
     }
@@ -644,11 +643,11 @@ void test('a raised window intersects each finish at its own elevation', () => {
   project = command(project, 'level.put', {
     id: 'floor',
     name: 'Floor',
-    elevation: 10 * ft,
+    elevation: 10,
   });
   project = command(project, 'assignment.put', {
     ...applied(project),
-    wallOverrides: { height: 8 * ft, levelId: 'floor', baseElevation: 2 * ft },
+    wallOverrides: { height: 8, levelId: 'floor', baseElevation: 2 },
   });
   // The window occupies elevations 15–18 ft. These finishes start at 12, 16 and 18 ft.
   project = addSurface(project, 'full-height', 8, 12);
@@ -659,15 +658,15 @@ void test('a raised window intersects each finish at its own elevation', () => {
     id: 'low-wall',
     groupId: 'finishes',
     wallOverrides: {
-      height: 8 * ft,
-      baseElevation: 14 * ft,
+      height: 8,
+      baseElevation: 14,
       finishes: [
         {
           id: 'low',
           materialId: 'low-board',
           face: 'front',
           layers: 1,
-          height: ft,
+          height: 1,
         },
         { id: 'back', materialId: 'back-board', face: 'back', layers: 1 },
       ],
@@ -676,9 +675,9 @@ void test('a raised window intersects each finish at its own elevation', () => {
   const before = calculateProject(project);
   project = command(project, 'opening.put', {
     ...door,
-    width: 2 * ft,
-    sill: 3 * ft,
-    height: 3 * ft,
+    width: 2,
+    sill: 3,
+    height: 3,
   });
   const result = calculateProject(project);
   linked(result);
@@ -722,12 +721,12 @@ void test('finish assignment defaults, local heights and live project edits have
   });
   project = command(project, 'assignment.put', {
     ...applied(project),
-    materialOverrides: { height: 9 * ft },
-    geometryDetails: { second: { material: { height: 10 * ft } } },
+    materialOverrides: { height: 9 },
+    geometryDetails: { second: { material: { height: 10 } } },
   });
   const definition = structuredClone(project.recipes['frp-wall']);
   assert.ok(definition?.materialTemplate?.kind === 'path-surface');
-  definition.materialTemplate.height = 12 * ft;
+  definition.materialTemplate.height = 12;
   definition.materialTemplate.materialId = 'specified-frp-product';
   project = command(project, 'assembly.put', definition);
   const result = calculateProject(project);
@@ -773,10 +772,10 @@ void test('surface purchases round after traces and waste while visible material
   project = command(project, 'assignment.put', {
     ...applied(project),
     materialOverrides: {
-      height: 6 * ft,
+      height: 6,
       layers: 1,
       wastePercent: 10,
-      packageSize: 32 * ft ** 2,
+      packageSize: 32,
     },
   });
   const result = calculateProject(project);
@@ -787,7 +786,7 @@ void test('surface purchases round after traces and waste while visible material
   near(result.outputs[0].purchasedAmount, 96);
   near(
     result.model.surfaces.reduce((sum, surface) => sum + surface.area, 0),
-    60 * ft ** 2,
+    60,
   );
 });
 
@@ -795,25 +794,25 @@ void test('joist layout and sloped kick quantities use the lengths of their disp
   let joists = fixture('steel-joists', 'area');
   joists = command(joists, 'assignment.put', {
     ...applied(joists),
-    materialOverrides: { spacing: 2 * ft, origin: { x: 0, y: 0 }, rotation: 0 },
+    materialOverrides: { spacing: 2, origin: { x: 0, y: 0 }, rotation: 0 },
   });
   const layout = calculateProject(joists);
   linked(layout);
   assert.equal(layout.model.pieces.length, 5);
   assert.equal(layout.model.surfaces.length, 0);
-  for (const piece of layout.model.pieces) near(piece.cutLength, 8 * ft);
+  for (const piece of layout.model.pieces) near(piece.cutLength, 8);
 
   let kick = fixture('steel-kick', 'path', 3);
   kick = command(kick, 'assignment.put', {
     ...applied(kick),
-    materialOverrides: { elevation: 8 * ft, endElevation: 12 * ft },
+    materialOverrides: { elevation: 8, endElevation: 12 },
   });
   const brace = calculateProject(kick);
   linked(brace);
   assert.equal(brace.model.pieces.length, 1);
-  near(brace.model.pieces[0]?.cutLength, 5 * ft);
-  near(brace.model.pieces[0]?.start.z, 8 * ft);
-  near(brace.model.pieces[0]?.end.z, 12 * ft);
+  near(brace.model.pieces[0]?.cutLength, 5);
+  near(brace.model.pieces[0]?.start.z, 8);
+  near(brace.model.pieces[0]?.end.z, 12);
 });
 
 void test('track joints and individual blocking segments preserve specified stock without silent splices', () => {
@@ -833,19 +832,19 @@ void test('track joints and individual blocking segments preserve specified stoc
   linked(track);
   assert.equal(track.model.pieces.length, 3);
   assert.deepEqual(
-    track.model.pieces.map((piece) => Math.round(piece.cutLength / ft)),
+    track.model.pieces.map((piece) => Math.round(piece.cutLength)),
     [10, 10, 4],
   );
-  for (const piece of track.model.pieces) near(piece.stockLength, 10 * ft);
+  for (const piece of track.model.pieces) near(piece.stockLength, 10);
   const block = calculateProject(fixture('wood-blocking', 'path', 2));
   linked(block);
   assert.equal(block.model.pieces.length, 1);
-  near(block.model.pieces[0]?.cutLength, 2 * ft);
-  near(block.model.pieces[0]?.stockLength, 8 * ft);
+  near(block.model.pieces[0]?.cutLength, 2);
+  near(block.model.pieces[0]?.stockLength, 8);
   const tooLong = calculateProject(fixture('wood-blocking', 'path', 10));
   assert.equal(tooLong.complete, false);
   assert.equal(tooLong.model.pieces.length, 1);
-  near(tooLong.model.pieces[0]?.cutLength, 10 * ft);
+  near(tooLong.model.pieces[0]?.cutLength, 10);
   assert.ok(
     tooLong.model.diagnostics.some((diagnostic) =>
       /stock/i.test(diagnostic.message),
@@ -857,12 +856,12 @@ void test('box header components can be traced or copied to an opening without d
   const standalone = calculateProject(fixture('steel-box-header', 'path', 6));
   linked(standalone);
   assert.equal(standalone.model.pieces.length, 4);
-  for (const piece of standalone.model.pieces) near(piece.cutLength, 6 * ft);
+  for (const piece of standalone.model.pieces) near(piece.cutLength, 6);
 
   let project = fixture('steel-framing');
   project = command(project, 'assignment.put', {
     ...applied(project),
-    wallOverrides: { height: 8 * ft },
+    wallOverrides: { height: 8 },
   });
   const headerAssembly = starterAssemblies()['steel-box-header'];
   assert.ok(headerAssembly?.materialTemplate);
@@ -875,10 +874,10 @@ void test('box header components can be traced or copied to an opening without d
   project = command(project, 'opening.put', {
     id: 'door',
     wallId: 'a/trace',
-    distance: 8 * ft,
-    width: 3 * ft,
+    distance: 8,
+    width: 3,
     sill: 0,
-    height: 7 * ft,
+    height: 7,
     jambCount: 1,
     headerId: 'door-header',
   });
@@ -888,7 +887,7 @@ void test('box header components can be traced or copied to an opening without d
     piece.role.startsWith('header-'),
   );
   assert.equal(headers.length, 4);
-  for (const piece of headers) near(piece.cutLength, 3 * ft);
+  for (const piece of headers) near(piece.cutLength, 3);
   assert.equal(Object.keys(project.assignments).length, 1);
   assert.equal(installed.model.surfaces.length, 0);
 
@@ -931,7 +930,7 @@ void test('horizontal finishes report their measured surfaces and furring report
   linked(furring);
   assert.equal(furring.model.pieces.length, 5);
   assert.equal(furring.model.surfaces.length, 0);
-  for (const piece of furring.model.pieces) near(piece.cutLength, 8 * ft);
+  for (const piece of furring.model.pieces) near(piece.cutLength, 8);
 });
 
 void test('missing required finish dimensions are unresolved and incompatible overrides are rejected', () => {
@@ -1011,7 +1010,7 @@ void test('copying a trace twice adds equal formula and modeled contributions in
   });
   project = command(project, 'assignment.put', {
     ...applied(project),
-    geometryDetails: { trace: { material: { height: 7 * ft } } },
+    geometryDetails: { trace: { material: { height: 7 } } },
   });
 
   const members = ['trace'];
@@ -1064,7 +1063,7 @@ void test('offset duplicates keep ceiling grids and joist rows aligned with the 
       sheetId: 's',
       rotation: Math.PI / 2,
       pageOrigin: { x: 1, y: 2 },
-      worldOffset: { x: ft, y: ft, z: 0 },
+      worldOffset: { x: 1, y: 1, z: 0 },
     });
     const before = calculateProject(project).model;
     assert.ok(before.pieces.length);
@@ -1083,8 +1082,8 @@ void test('offset duplicates keep ceiling grids and joist rows aligned with the 
       assert.ok(duplicate);
       assert.equal(duplicate.role, piece.role);
       near(duplicate.cutLength, piece.cutLength);
-      near(duplicate.start.x, piece.start.x + 1.5 * ft);
-      near(duplicate.start.y, piece.start.y + 7.5 * ft);
+      near(duplicate.start.x, piece.start.x + 1.5);
+      near(duplicate.start.y, piece.start.y + 7.5);
     }
   }
 });
@@ -1112,17 +1111,17 @@ void test('copying and deleting a traced finish preserves independent applicatio
   let project = fixture('frp-wall');
   project = command(project, 'assignment.put', {
     ...applied(project),
-    materialOverrides: { height: 8 * ft },
+    materialOverrides: { height: 8 },
     geometryDetails: {
       trace: {
         material: {
           openings: [
             {
               id: 'door',
-              distance: 8 * ft,
-              width: 3 * ft,
+              distance: 8,
+              width: 3,
               sill: 0,
-              height: 7 * ft,
+              height: 7,
             },
           ],
         },
@@ -1165,7 +1164,7 @@ void test('copying and deleting a traced finish preserves independent applicatio
     copied.model.surfaces
       .filter((surface) => surface.geometryId === 'second')
       .reduce((sum, surface) => sum + surface.area, 0),
-    171 * ft ** 2,
+    171,
   );
 
   const session = new ProjectSession(project, {
@@ -1213,11 +1212,11 @@ void test('level changes move finish geometry and invalidate its review without 
   project = command(project, 'level.put', {
     id: 'floor',
     name: 'Floor',
-    elevation: 10 * ft,
+    elevation: 10,
   });
   project = command(project, 'assignment.put', {
     ...applied(project),
-    materialOverrides: { height: 8 * ft, elevation: 2 * ft, levelId: 'floor' },
+    materialOverrides: { height: 8, elevation: 2, levelId: 'floor' },
   });
   project = command(project, 'review.mark', {
     id: 'checked',
@@ -1229,13 +1228,13 @@ void test('level changes move finish geometry and invalidate its review without 
   project = command(project, 'level.put', {
     id: 'unused',
     name: 'Unused level',
-    elevation: 4 * ft,
+    elevation: 4,
   });
   assert.equal(inspectReview(project).marks[0]?.effectiveStatus, 'reviewed');
   project = command(project, 'level.put', {
     id: 'floor',
     name: 'Floor',
-    elevation: 11 * ft,
+    elevation: 11,
   });
   assert.equal(inspectReview(project).marks[0]?.effectiveStatus, 'changed');
   const moved = calculateProject(project);
@@ -1246,7 +1245,7 @@ void test('level changes move finish geometry and invalidate its review without 
         surface.points.map((point) => point.z),
       ),
     ),
-    13 * ft,
+    13,
   );
   near(moved.outputs[0]?.baseAmount, 192);
   assert.throws(() => command(project, 'level.delete', { id: 'floor' }));

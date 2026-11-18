@@ -10,7 +10,7 @@ export function fixture(): Project {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 0.3048 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.g = {
     id: 'g',

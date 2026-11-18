@@ -131,7 +131,7 @@ void test('SQLite stores independent takeoff ownership, shared page calibration 
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   initial.geometries.g = {
     id: 'g',
@@ -178,9 +178,9 @@ void test('SQLite stores independent takeoff ownership, shared page calibration 
   assert.equal(Object.keys(takeoffProject(loaded, 'co').geometries).length, 1);
   assert.equal(loaded.takeoffs.co?.copies?.[0]?.sourceRevision, 1);
   assert.ok(loaded.takeoffs.co);
-  assert.equal(loaded.sheets.s?.calibration?.metresPerUnit, 1);
+  assert.equal(loaded.sheets.s?.calibration?.feetPerUnit, 1);
   assert.equal(
-    takeoffProject(loaded, 'co').sheets.s?.calibration?.metresPerUnit,
+    takeoffProject(loaded, 'co').sheets.s?.calibration?.feetPerUnit,
     1,
   );
   await session.dispatch({
@@ -204,7 +204,7 @@ const project = (): Project => ({
       owned: {},
     },
   },
-  formatVersion: 6,
+  formatVersion: 7,
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -328,7 +328,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 6);
+  assert.equal((await storage.load()).formatVersion, 7);
   const next: Project = {
     ...initial,
     revision: 1,

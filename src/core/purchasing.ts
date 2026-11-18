@@ -7,7 +7,7 @@ export function packedStickCount(cuts: number[], stockLength: number): number {
   // the first fit stays logarithmic even at the 50,000-piece generation limit.
   const leaves = 2 ** Math.ceil(Math.log2(Math.max(1, lengths.length)));
   const remaining = new Float64Array(2 * leaves);
-  const tolerance = Math.min(1e-8, stockLength * 1e-9);
+  const tolerance = Math.min(3.28e-8, stockLength * 1e-9);
   let count = 0;
   for (const length of lengths) {
     // Endpoints are in world coordinates. Allow roundoff at a tight joint,

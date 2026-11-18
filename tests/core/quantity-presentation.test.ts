@@ -85,10 +85,10 @@ void test('direct lengths/areas convert purchased quantities once and generic ex
   for (const [unit, value, expected, target] of [
     ['ft', 10, 10, 'LF'],
     ['in', 120, 10, 'LF'],
-    ['m', 3.048, 10, 'LF'],
-    ['mm', 3048, 10, 'LF'],
+
+
     ['ft2', 100, 100, 'SF'],
-    ['m2', 9.290304, 100, 'SF'],
+
   ] as const) {
     const project = fixture();
     const output = definition(project);
@@ -138,11 +138,11 @@ void test('stock differs from net cuts; waste/packages apply once; invalid stock
   near(row.quantity, 80);
   assert.equal(row.pieceCount, 8);
   assert.equal(row.provenance.physicalLengthSource, 'stock');
-  near(row.cutSchedule?.[0]?.length.value, 0.6096);
-  near(row.pieceLength?.value, 3.048);
+  near(row.cutSchedule?.[0]?.length.value, 2);
+  near(row.pieceLength?.value, 10);
   for (const value of [0, -1, NaN, Infinity]) {
     const changed = structuredClone(result);
-    present(changed.outputs[0]).stockLength = { value, unit: 'm' };
+    present(changed.outputs[0]).stockLength = { value, unit: 'ft' };
     assert.equal(
       presentQuantities(project, changed)[0]?.issue?.code,
       'invalid-stock-length',
@@ -239,9 +239,9 @@ function modeledFixture() {
       materialId: 'tee',
       role: 'tee',
       start: { x: 0, y: 0, z: 0 },
-      end: { x: feet * 0.3048, y: 0, z: 0 },
+      end: { x: feet, y: 0, z: 0 },
       cutLength: 0,
-      stockLength: 3.048,
+      stockLength: 10,
       wastePercent: 10,
       packageSize: 4,
       width: 0.01,
@@ -261,9 +261,9 @@ function modeledFixture() {
         layers: 1,
         points: [
           { x: 0, y: 0, z: 0 },
-          { x: 3.048, y: 0, z: 0 },
-          { x: 3.048, y: 3.048, z: 0 },
-          { x: 0, y: 3.048, z: 0 },
+          { x: 10, y: 0, z: 0 },
+          { x: 10, y: 10, z: 0 },
+          { x: 0, y: 10, z: 0 },
         ],
         geometricArea: 0,
         area: 0,
