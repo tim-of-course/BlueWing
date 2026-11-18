@@ -259,13 +259,38 @@ export default function Quantities(props: {
                           </small>
                         </Show>
                       </td>
-                      <td>{entry.category || '—'}</td>
                       <td>
-                        {entry.output.packedCount !== undefined
-                          ? `${number(entry.output.purchasedAmount)} sticks × `
-                          : entry.row?.pieceCount !== undefined
-                            ? `${number(entry.row.pieceCount)} pc × `
-                            : ''}
+                        {entry.category || '—'}
+                        <details>
+                          <summary>Order breakdown</summary>
+                          <ul>
+                            <For each={entry.subItems}>
+                              {(line) => (
+                                <li>
+                                  {line.subItem.label} ·{' '}
+                                  {quantityLabel(line.quantity, line.unit)}
+                                  {line.packageQuantity === undefined
+                                    ? ''
+                                    : ' · ' +
+                                      number(line.packageQuantity) +
+                                      ' ' +
+                                      (entry.output.packageKind ?? 'packages')}
+                                </li>
+                              )}
+                            </For>
+                          </ul>
+                        </details>
+                      </td>
+                      <td>
+                        {entry.output.packageKind
+                          ? number(entry.output.packageCount ?? 0) +
+                            ' ' +
+                            entry.output.packageKind
+                          : entry.output.packedCount !== undefined
+                            ? `${number(entry.output.purchasedAmount)} sticks × `
+                            : entry.row?.pieceCount !== undefined
+                              ? `${number(entry.row.pieceCount)} pc × `
+                              : ''}
                         {displayLength(
                           entry.output.stockLength ?? entry.output.cutLength,
                         )}
@@ -311,7 +336,9 @@ export default function Quantities(props: {
                     {(total) => (
                       <tr>
                         <td>
-                          {total.materialId} ({total.unit})
+                          {total.materialId}
+                          {total.orderDetail && ', ' + total.orderDetail} (
+                          {total.unit})
                           {total.category && ` · ${total.category}`}
                         </td>
                         <For

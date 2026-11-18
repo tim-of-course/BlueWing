@@ -169,12 +169,20 @@ void test('steel wall starters use company framing and drywall purchasing defaul
     );
     assert.equal(stud?.pieceCount, 20);
     near(stud.pieceLength?.value, 10);
-    near(stud.quantity, 200);
+    near(stud.orderQuantity, 200);
+    near(stud.quantity, 190);
     for (const finish of wall.finishes ?? [])
       assert.equal(finish.board?.hangDirection, 'vertical');
     const board = rows.filter((row) => row.unit === 'SF');
     assert.equal(board.length, id === 'steel-wall' ? 2 : 0);
-    for (const row of board) near(row.quantity, 240);
+    if (board.length)
+      assert.deepEqual(
+        board.map((row) => [row.subItem.kind, row.quantity, row.orderQuantity]),
+        [
+          ['group', 480, 480],
+          ['rounding', 0, 480],
+        ],
+      );
   }
 });
 

@@ -77,7 +77,7 @@ void test('registry CLI command saves exact shared JSON text with no save/revisi
     );
     assert.deepEqual(result.data, {
       path: 'C:/exports/estimate.json',
-      rowCount: 3,
+      rowCount: 4,
       missingQuantityRowCount: 1,
     });
     assert.deepEqual(result.takeoff, {

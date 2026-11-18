@@ -160,8 +160,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         return sum(surface['area'] for surface in result['surfaces'] if surface['materialId'] == material)
 
     def system_amounts():
-        return {row['outputId']: row['baseAmount'] for row in call('quantities.inspect')['outputs']
-                if row['assignmentId'] == 'system-assignment'}
+        return {source['outputId']: source['value'] for order in call('quantities.inspect')['outputs']
+                for source in order['sources'] if source.get('assignmentId') == 'system-assignment'}
 
     try:
         start()
@@ -246,7 +246,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
             near(source['cutLength']['value'], math.dist([piece['start'][axis] for axis in ('x', 'y', 'z')],
                                                         [piece['end'][axis] for axis in ('x', 'y', 'z')]))
             assert source['value'] == 1
-        for material, area in [('front-board', 28), ('back-board', 14)]:
+        for material, area in [('front-board', 36), ('back-board', 18)]:
             near(sum(row['amount'] for row in quantities['totals'] if row['materialId'] == material), area)
 
         # An absent project header is unresolved, never silently treated as complete.

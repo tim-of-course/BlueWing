@@ -167,14 +167,14 @@ void test('a calculation measures each trace once, prepares inputs per source an
   assert.equal(parses, 1);
   assert.deepEqual(
     result.outputs.map((output) => output.baseAmount),
-    [804, 804, 804, 804, 800, 800, 800, 800],
+    [6416],
   );
   const first = required(result.outputs[0]?.sources[0]);
   first.inputs.multiplier = 99;
-  assert.equal(result.outputs[1]?.sources[0]?.inputs.multiplier, 3);
-  assert.equal(result.outputs[4]?.sources[0]?.inputs.multiplier, 2);
+  assert.equal(result.outputs[0]?.sources[100]?.inputs.multiplier, 3);
+  assert.equal(result.outputs[0].sources[400]?.inputs.multiplier, 2);
   Object.defineProperty(sheet, 'calibration', { value: { feetPerUnit: 2 } });
-  assert.equal(calculateProject(project).outputs[0]?.baseAmount, 1608);
+  assert.equal(calculateProject(project).outputs[0]?.baseAmount, 12832);
 });
 
 void test('prepared formulas retain lazy branches, units, errors and fresh evaluation variables', () => {
@@ -297,15 +297,19 @@ void test('component preparation retains converted shared inputs and independent
     ],
   });
   const result = calculateProject(project);
-  assert.equal(result.outputs.length, 8);
+  assert.equal(result.outputs.length, 1);
   assert.equal(result.outputs[0]?.sources[0]?.inputs.height, 10);
-  assert.equal(result.outputs[4]?.sources[0]?.inputs.height, 5);
+  assert.equal(result.outputs[0].sources[8]?.inputs.height, 5);
   assert.equal(
-    required(result.outputs[0]).baseAmount,
-    required(result.outputs[4]).baseAmount * 2,
+    required(result.outputs[0])
+      .sources.slice(0, 8)
+      .reduce((n, s) => n + (s.value ?? 0), 0),
+    required(result.outputs[0])
+      .sources.slice(8)
+      .reduce((n, s) => n + (s.value ?? 0), 0) * 2,
   );
   required(result.outputs[0].sources[0]).inputs.height = 100;
-  assert.equal(result.outputs[1]?.sources[0]?.inputs.height, 10);
+  assert.equal(result.outputs[0].sources[2]?.inputs.height, 10);
 });
 
 void test('assignment merges preserve sparse overrides and independently owned nested records', () => {

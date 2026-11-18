@@ -283,17 +283,25 @@ void test('two wall types share one track order and retain their own installed q
   const rows = estiMakerTakeoff(project, result).rows.filter(
     (row) => row.source.materialId === track.materialId,
   );
-  assert.equal(rows.length, 1);
+  assert.equal(rows.length, 3);
+  assert.deepEqual(
+    rows.map((r) => [r.subItem.label, r.quantity]),
+    [
+      ['Work', 12],
+      ['Returns', 8],
+      ['Offcuts, waste and rounding', 10],
+    ],
+  );
   const row = rows[0];
   assert.ok(row);
-  near(row.quantity, 30);
-  assert.equal(row.source.assignmentId, null);
+  near(row.orderQuantity, 30);
+  assert.equal(row.source.assignmentId, 'a');
   assert.equal(row.pieceCount, 3);
   near(row.pieceLength?.value, 10);
   assert.equal(row.provenance.packedCount, 2);
-  assert.equal(row.provenance.sourceRefs.length, 4);
+  assert.equal(row.provenance.sourceRefs.length, 2);
   assert.deepEqual(
-    row.provenance.sourceRefs.map((source) => source.assignmentId),
+    rows.flatMap((r) => r.provenance.sourceRefs.map((s) => s.assignmentId)),
     ['a', 'a', 'b', 'b'],
   );
   assert.match(
@@ -330,16 +338,17 @@ void test('stock length, waste, package, scope category and material breakouts h
         row.source.materialId === materialId ||
         row.source.materialId === track.materialId,
     );
-    assert.equal(orders.length, 2, split);
-    const [base, breakout] = orders;
+    assert.equal(orders.length, 4, split);
+    const [base, breakout] = orders.filter((r) => r.subItem.kind === 'group');
     assert.ok(base && breakout);
     assert.notEqual(base.lineId, breakout.lineId);
     assert.equal(base.provenance.packedCount, 2);
-    near(base.quantity, 30);
+    near(base.orderQuantity, 30);
+    near(base.quantity, 12);
     // Two 4 ft cuts use one stick. 5% rounds to two unless waste is zero or the package has four.
     assert.equal(breakout.provenance.packedCount, 1);
     near(
-      breakout.quantity,
+      breakout.orderQuantity,
       split === 'stock'
         ? 16
         : split === 'waste'
@@ -379,12 +388,14 @@ void test('change order packs additions and deductions before applying their sig
   const rows = estiMakerTakeoff(view, result).rows.filter(
     (row) => row.source.materialId === track.materialId,
   );
-  assert.equal(rows.length, 2);
+  assert.equal(rows.length, 4);
   assert.deepEqual(
     rows.map((row) => [row.direction, Math.round(row.quantity)]).sort(),
     [
-      ['add', 30],
-      ['deduct', -20],
+      ['add', 12],
+      ['add', 18],
+      ['deduct', -12],
+      ['deduct', -8],
     ],
   );
   const total = result.totals.find(

@@ -1,3 +1,4 @@
+import { poolOrders } from './material-orders';
 import { modeledOutputs } from './material-results';
 import { takeoffProject, takeoffContext } from './takeoffs';
 import type { CalculationSnapshot } from './calculation-state';
@@ -280,7 +281,7 @@ function sourceCoverage(
 export function calculateProject(project: Project): CalculationResult {
   project = takeoffProject(project);
   const takeoff = takeoffContext(project);
-  const outputs: CalculationOutput[] = [];
+  const contributions: CalculationOutput[] = [];
   const measured = new Map<string, Record<string, FormulaValue>>();
   const metrics = (geometry: Geometry) => {
     let variables = measured.get(geometry.id);
@@ -415,6 +416,11 @@ export function calculateProject(project: Project): CalculationResult {
           : undefined;
         const result: CalculationOutput = {
           ...amounts,
+          category: component?.assembly.category ?? recipe.category ?? '',
+          direction: assignment.direction ?? 'add',
+          ...(allowance.packageSize === undefined
+            ? {}
+            : { packageSize: allowance.packageSize }),
           quantityKey: JSON.stringify([
             'formula',
             assignment.id,
@@ -429,7 +435,13 @@ export function calculateProject(project: Project): CalculationResult {
           materialId: output.materialId,
           name: output.name,
           unit: output.unit,
-          sources,
+          sources: sources.map((source) => ({
+            ...source,
+            outputId: output.id,
+            assignmentId: assignment.id,
+            recipeId: recipe.id,
+            groupId: assignment.groupId,
+          })),
           ...(output.piece ? { role: output.piece.role } : {}),
           ...(commonCutLength ? { cutLength: commonCutLength } : {}),
           ...(sources[0]?.stockLength
@@ -439,16 +451,15 @@ export function calculateProject(project: Project): CalculationResult {
           complete: diagnostics.length === 0,
           diagnostics,
         };
-        outputs.push(result);
+        contributions.push(result);
         complete &&= result.complete;
       }
     }
   }
   const model = generateConstruction(project, resolveConstruction(project));
-  for (const collection of [model.surfaces, model.surfacePurchases ?? []])
-    for (const item of collection)
-      item.direction =
-        project.assignments[item.assignmentId ?? '']?.direction ?? 'add';
+  for (const item of model.surfaces)
+    item.direction =
+      project.assignments[item.assignmentId ?? '']?.direction ?? 'add';
   for (const assignment of Object.values(project.assignments)) {
     const recipe = project.recipes[assignment.recipeId];
     const group = project.groups[assignment.groupId];
@@ -472,7 +483,7 @@ export function calculateProject(project: Project): CalculationResult {
     }
   }
   const positioned = modeledOutputs(project, model);
-  outputs.push(...positioned);
+  const outputs = poolOrders([...contributions, ...positioned]);
   complete &&= model.complete;
   const totals = new Map<string, QuantityTotal>();
   const accounted = new Set<string>();
@@ -487,6 +498,9 @@ export function calculateProject(project: Project): CalculationResult {
     }
     const key = JSON.stringify([
       output.materialId,
+      output.orderDetail,
+      output.packageSize,
+      output.wastePercent,
       output.category,
       output.unit,
       output.stockLength ? null : output.cutLength?.value.toPrecision(12),
@@ -494,6 +508,11 @@ export function calculateProject(project: Project): CalculationResult {
     ]);
     const total = totals.get(key) ?? {
       materialId: output.materialId,
+      ...(output.orderDetail ? { orderDetail: output.orderDetail } : {}),
+      ...(output.packageSize === undefined
+        ? {}
+        : { packageSize: output.packageSize }),
+      wastePercent: output.wastePercent,
       ...(output.category === undefined ? {} : { category: output.category }),
       unit: output.unit,
       ...(!output.stockLength && output.cutLength
@@ -626,6 +645,7 @@ export function exportQuantities(
       'packageSize',
       'quantityKey',
       'installedByAssignment',
+      'sourceOutputIds',
     ],
   ];
   for (const output of result.outputs)
@@ -664,6 +684,11 @@ export function exportQuantities(
       output.installedByAssignment
         ? JSON.stringify(output.installedByAssignment)
         : '',
+      JSON.stringify([
+        ...new Set(
+          output.sources.flatMap((s) => (s.outputId ? [s.outputId] : [])),
+        ),
+      ]),
     ]);
   return rows
     .map((row) =>

@@ -214,6 +214,7 @@ export interface Measurement {
   diagnostic?: string;
 }
 export interface CalculationSource {
+  outputId?: string;
   assignmentId?: string;
   groupId?: string;
   recipeId?: string;
@@ -229,6 +230,7 @@ export interface CalculationSource {
   stockLength?: Quantity;
 }
 export interface CalculationOutput extends OrderCoverage {
+  groupRequirements?: { groupId: string; amount: number }[];
   /** Semantic formula/purchase bucket identity; independent of public output indexes. */
   quantityKey?: string;
   direction?: 'add' | 'deduct';
@@ -269,6 +271,9 @@ export interface CalculationOutput extends OrderCoverage {
   diagnostics: string[];
 }
 export interface QuantityTotal {
+  orderDetail?: string;
+  packageSize?: number;
+  wastePercent?: number;
   category?: string;
   purchasedLength?: Quantity;
   additions: number;

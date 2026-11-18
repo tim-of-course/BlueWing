@@ -69,18 +69,8 @@ export function changesCalculation(
     case 'group.put':
       return !sameExcept(project.groups[id], payload, ['name', 'color']);
     case 'recipe.put':
-    case 'assembly.put': {
-      const recipe = project.recipes[id];
-      // Wall and ceiling overrides can introduce stock members on individual traces.
-      if (
-        recipe?.wallTemplate ||
-        recipe?.ceilingTemplate ||
-        (recipe?.materialTemplate &&
-          recipe.materialTemplate.kind !== 'path-surface')
-      )
-        return !sameExcept(recipe, payload, []);
-      return !sameExcept(recipe, payload, ['category']);
-    }
+    case 'assembly.put':
+      return !sameExcept(project.recipes[id], payload, []);
     default:
       return true;
   }

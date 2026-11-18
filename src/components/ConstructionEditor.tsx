@@ -1042,7 +1042,14 @@ export default function ConstructionEditor(props: {
                           >
                             {(change) => (
                               <tr>
-                                <td>{scalarText(change.materialId)}</td>
+                                <td>
+                                  {[
+                                    scalarText(change.materialId),
+                                    scalarText(change.orderDetail),
+                                  ]
+                                    .filter(Boolean)
+                                    .join(', ')}
+                                </td>
                                 <td>
                                   {quantityLabel(
                                     Number(change.before),

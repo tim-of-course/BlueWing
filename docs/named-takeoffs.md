@@ -43,7 +43,7 @@ Only change-order assignments accept `direction: "deduct"`; other assignments us
 
 Each takeoff's downstream HTML handoff is independent. Consumers should use `takeoff.inspect` and `quantities.inspect` with the same explicit ID and revision, retain the project ID, takeoff ID/name/kind and contribution directions, and use filenames such as `<project>-<takeoffId>-handoff.html`. This feature exposes the data contract only; document generation and registries are owned separately.
 
-The EstiMaker projection from PR #6 is the shared purchasing presentation path. Its version-2 envelope adds takeoff identity, signed quantity, positive gross quantity and contribution direction after the existing purchasing/conversion steps. See [the export contract](estimaker-export.md). Piece JSON uses `{context, rows}` so an empty schedule still identifies its takeoff.
+The EstiMaker projection from PR #6 is the shared purchasing presentation path. Its version-3 envelope groups signed contribution and rounding rows under a stable order ID within the selected takeoff. See [the export contract](estimaker-export.md). Piece JSON uses `{context, rows}` so an empty schedule still identifies its takeoff.
 
 The merged category painter retains the independent `deductionIds` option before category dispatch (parallel strokes, area outlines, count rings and selection). Source `direction` survives the category/color scene projection, and 3D hatching applies to category-colored materials without a deduction color override. Project scratchpad notes and category palette edits remain project-wide; page alignment uses the shared page scale.
 

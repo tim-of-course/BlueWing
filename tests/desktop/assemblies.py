@@ -154,9 +154,12 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         for size in ['2x2', '2x4']:
             call('assembly.import', {'libraryId': 'ceiling-grid-' + size + '-estimate', 'id': size}, True)
             call('assignment.put', {'id': size, 'groupId': 'ceilings', 'recipeId': size, 'inputs': {'tileDeduction': 40}, 'allowances': {}}, True)
-            rows = {row['outputId']: row['purchasedAmount'] for row in quantities()['outputs'] if row['assignmentId'] == size}
+            rows = {row['outputId']: row['purchasedAmount'] for row in quantities()['outputs']
+                    if any(source.get('assignmentId') == size for source in row['sources'])}
             assert abs(rows.pop('ceiling-area') - 320) < 1e-8
-            assert rows == {'tee-2ft': 45 if size == '2x2' else 0, 'tee-4ft': 45, 'mains': 8, 'wall-angle': 7, 'hanger-wire': 23}, rows
+            expected = ({'tee-2ft': 45, 'tee-4ft': 45, 'mains': 8, 'wall-angle': 7, 'hanger-wire': 23}
+                        if size == '2x2' else {'tee-2ft': 45, 'tee-4ft': 90, 'mains': 15, 'wall-angle': 13, 'hanger-wire': 46})
+            assert rows == expected, rows
         csv = call('quantities.export', {'format': 'csv'})
         for name in ['2 ft cross tees', '4 ft cross tees', 'Main runner stock lengths', 'Wall angle stock lengths']:
             assert name in csv
@@ -193,9 +196,11 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
                 assert all(math.isclose(piece['cutLength'], feet, abs_tol=1e-8) for piece in members)
             assert len(model['surfaces']) == (16 if size == '2x2' else 8)
             assert math.isclose(sum(surface['area'] for surface in model['surfaces']), 64, abs_tol=1e-8)
-            outputs = [row for row in quantities()['outputs'] if row['assignmentId'] == assignment['id']]
+            outputs = [row for row in quantities()['outputs'] if any(
+                source.get('assignmentId') == assignment['id'] for source in row['sources'])]
             wire, = [row for row in outputs if row['outputId'] == 'hanger-wire']
-            assert wire['modeling'] == 'estimate' and wire['purchasedAmount'] == 4
+            assert wire['modeling'] == 'estimate' and wire['purchasedAmount'] == 50
+            assert next(g['amount'] for g in wire['groupRequirements'] if g['groupId'] == 'layout-group') == 4
             assert all(row['modeling'] == 'modeled' for row in outputs if row is not wire)
             sources = [source for row in outputs for source in row['sources']]
             assert {source['pieceId'] for source in sources if 'pieceId' in source} == {p['id'] for p in model['pieces']}

@@ -101,17 +101,18 @@ void test('quantity diagnostics keep the most specific source scope and preserve
   const rows = modeledOutputs(project, model);
   const modeled = rows.filter((row) => row.modeling === 'modeled');
   assert.deepEqual(
-    Object.fromEntries(
-      modeled.map((row) => [row.assignmentId, row.diagnostics]),
-    ),
+    Object.fromEntries(modeled.map((row) => [row.materialId, row.diagnostics])),
     {
-      a: ['Global issue', 'Wall issue'],
-      b: ['Global issue', 'Geometry issue'],
-      c: ['Global issue', 'Ceiling issue'],
-      d: ['Global issue', 'Assignment issue'],
+      stud: ['Global issue', 'Wall issue', 'Geometry issue'],
+      board: ['Global issue', 'Ceiling issue', 'Assignment issue'],
     },
   );
-  assert.equal(modeled.find((row) => row.assignmentId === 'a')?.baseAmount, 2);
+  assert.equal(
+    modeled
+      .find((row) => row.materialId === 'stud')
+      ?.sources.filter((s) => s.assignmentId === 'a').length,
+    2,
+  );
   assert.ok(modeled.every((row) => !row.complete));
   const unresolved = rows.filter((row) => row.modeling === 'unresolved');
   assert.equal(unresolved.length, 1);

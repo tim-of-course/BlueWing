@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import contract from '../fixtures/estimaker-takeoff-v2.json';
-import countsContract from '../fixtures/estimaker-counts-and-missing-v2.json';
+import contract from '../fixtures/estimaker-takeoff-v3.json';
+import countsContract from '../fixtures/estimaker-counts-and-missing-v3.json';
 import {
   calculateProject,
   exportQuantities,
@@ -49,7 +49,7 @@ void test('75 explicit 2ft pieces export 150 LF with quantity-only provenance an
   const result = takeoff(fixture());
   assert.deepEqual(result, contract);
   assert.equal(result.kind, 'bluewing.takeoff');
-  assert.equal(result.version, 2);
+  assert.equal(result.version, 3);
   assert.equal(result.project.revision, '0');
   assert.equal(result.calculationComplete, true);
   assert.equal(result.coverage.complete, false);
@@ -110,7 +110,17 @@ void test('direct lengths/areas convert purchased quantities once and generic ex
     formula: 'q',
     allowance: { wastePercent: 10, packageSize: 32 },
   });
-  near(present(takeoff(project).rows[0]).quantity, 128);
+  assert.deepEqual(
+    takeoff(project).rows.map((r) => [
+      r.subItem.label,
+      r.quantity,
+      r.orderQuantity,
+    ]),
+    [
+      ['Ceiling', 110, 128],
+      ['Rounding', 18, 128],
+    ],
+  );
   const result = calculateProject(project);
   near(result.outputs[0]?.adjustedAmount, 110);
   assert.equal(result.outputs[0]?.packageCount, 4);
@@ -133,7 +143,9 @@ void test('stock differs from net cuts; waste/packages apply once; invalid stock
   output.allowance = { wastePercent: 10, packageSize: 4 };
   const result = calculateProject(project);
   const row = present(estiMakerTakeoff(project, result).rows[0]);
-  near(row.quantity, 80);
+  near(row.orderQuantity, 80);
+  near(row.quantity, 10);
+  near(estiMakerTakeoff(project, result).rows[1]?.quantity, 70);
   assert.equal(row.pieceCount, 8);
   assert.equal(row.provenance.physicalLengthSource, 'stock');
   near(row.cutSchedule?.[0]?.length.value, 2);
@@ -154,11 +166,11 @@ void test('stock differs from net cuts; waste/packages apply once; invalid stock
   // Runtime compatibility: nullish missing stock has no artificial separate policy.
   Object.assign(present(noStock.outputs[0]), { stockLength: null });
   const cut = present(estiMakerTakeoff(project, noStock).rows[0]);
-  near(cut.quantity, 16);
+  near(cut.orderQuantity, 16);
   assert.equal(cut.provenance.physicalLengthSource, 'cut');
   output.allowance = { wastePercent: 0, packageSize: 2.5 };
   output.formula = '6';
-  near(present(takeoff(project).rows[0]).quantity, 75);
+  near(present(takeoff(project).rows[0]).orderQuantity, 75);
 });
 
 void test('count-only materials export ordinary descriptions and purchased numbers', () => {
@@ -177,9 +189,9 @@ void test('producer prepares count and named zero area rows without a skipped im
   const result = takeoff(importFixture());
   assert.deepEqual(result, countsContract);
   assert.equal(result.calculationComplete, false);
-  assert.equal(result.rows.length, 3);
-  const count = present(result.rows[1]);
-  const missing = present(result.rows[2]);
+  assert.equal(result.rows.length, 4);
+  const count = present(result.rows[2]);
+  const missing = present(result.rows[3]);
   assert.equal(count.description, 'Door Frames (count)');
   assert.equal(count.quantity, 75);
   assert.equal(count.unit, 'count');
@@ -223,6 +235,46 @@ void test('missing required dimensions export named zero rows; scalar and broken
     () => estiMakerTakeoff(project, result),
     /semantic purchase bucket identity/,
   );
+});
+
+void test('three wall types share one 388-sheet order with fractional group requirements', () => {
+  const project = fixture();
+  const def = definition(project);
+  delete def.piece;
+  Object.assign(def, {
+    unit: 'ft2',
+    formula: 'areaPerSheet * sheets',
+    allowance: { wastePercent: 0, packageSize: 40 },
+  });
+  const recipe = present(project.recipes.tee);
+  recipe.inputs = [
+    { name: 'areaPerSheet', type: 'number', unit: 'ft2', default: 40 },
+    { name: 'sheets', type: 'number', unit: 'scalar' },
+  ];
+  const original = present(project.assignments.a);
+  project.assignments = {};
+  for (const [i, sheets] of [292.3, 82.4, 12.7].entries()) {
+    const id = String(i);
+    project.groups[id] = { id, name: 'Type ' + id, geometryIds: ['g'] };
+    project.assignments[id] = {
+      ...original,
+      id,
+      groupId: id,
+      inputs: { sheets },
+    };
+  }
+  const result = takeoff(project);
+  assert.equal(new Set(result.rows.map((r) => r.orderId)).size, 1);
+  assert.deepEqual(
+    result.rows.map((r) => r.subItem.label),
+    ['Type 0', 'Type 1', 'Type 2', 'Rounding'],
+  );
+  for (const [i, n] of [292.3, 82.4, 12.7, 0.6].entries()) {
+    near(result.rows[i]?.packageQuantity, n);
+    near(result.rows[i]?.quantity, n * 40);
+    assert.equal(result.rows[i]?.pieceCount, 388);
+    near(result.rows[i].orderQuantity, 15520);
+  }
 });
 
 function modeledFixture() {
@@ -288,8 +340,10 @@ function modeledFixture() {
 void test('mixed modeled cuts/common stock preserve one purchase bucket and required cut schedule', () => {
   const { project, calculate, model } = modeledFixture();
   const rows = estiMakerTakeoff(project, calculate()).rows;
-  assert.equal(rows.length, 2);
-  near(present(rows[0]).quantity, 40);
+  assert.equal(rows.length, 3);
+  near(present(rows[0]).orderQuantity, 40);
+  near(present(rows[0]).quantity, 6);
+  near(present(rows[1]).quantity, 34);
   assert.equal(present(rows[0]).pieceCount, 4);
   // 2 ft + 4 ft share one stick. With 10% waste, 1.1 sticks require a single four-stick package.
   assert.equal(present(rows[0]).provenance.packedCount, 1);
@@ -300,14 +354,14 @@ void test('mixed modeled cuts/common stock preserve one purchase bucket and requ
     present(present(rows[0]).cutSchedule).reduce((n, cut) => n + cut.count, 0),
     2,
   );
-  near(present(rows[1]).quantity, 100);
+  near(present(rows[2]).quantity, 100);
   assert.equal(present(rows[0]).source.outputId, null);
   delete present(model.pieces[0]).stockLength;
   delete present(model.pieces[1]).stockLength;
   const cuts = estiMakerTakeoff(project, calculate()).rows.filter(
     (row) => row.unit === 'LF',
   );
-  assert.equal(cuts.length, 2);
+  assert.equal(cuts.length, 4);
   assert.ok(cuts.every((row) => row.provenance.physicalLengthSource === 'cut'));
 });
 
@@ -358,7 +412,7 @@ void test('semantic IDs survive quantity/name/source changes, reorder and unrela
   assert.ok(changed.some((row) => row.lineId === present(before[0]).lineId));
 });
 
-void test('component-qualified formula identities and existing categories stay distinct', () => {
+void test('component output IDs remain traceable within a shared material order', () => {
   const project = fixture();
   const child = structuredClone(present(project.recipes.tee));
   project.recipes.tee = {
@@ -372,11 +426,13 @@ void test('component-qualified formula identities and existing categories stay d
   };
   const rows = takeoff(project).rows;
   assert.equal(rows.length, 2);
-  assert.notEqual(present(rows[0]).lineId, present(rows[1]).lineId);
-  assert.equal(
-    present(rows[0]).source.outputId,
-    componentOutputId('a/b', 'tee'),
+  assert.equal(present(rows[0]).orderId, present(rows[1]).orderId);
+  assert.deepEqual(
+    rows[0]?.provenance.sourceRefs.map((r) => r.outputId),
+    [componentOutputId('a/b', 'tee'), componentOutputId('c', 'tee')],
   );
+  near(rows[0].quantity, 300);
+  near(rows[1]?.quantity, 0);
   assert.equal(present(rows[0]).category, child.category);
 });
 

@@ -243,6 +243,8 @@ export interface FaceRequirement extends ConstructionSource, OrderCoverage {
 }
 export interface ConstructionSurfacePurchase
   extends ConstructionSource, OrderCoverage {
+  groupRequirements?: { groupId: string; amount: number }[];
+  category?: string;
   grossArea?: number;
   openingArea?: number;
   quantityKey?: string;

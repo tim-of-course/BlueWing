@@ -155,14 +155,25 @@ export async function namedTakeoffs(page: Page) {
   if (!exportPath) throw new Error('Missing EstiMaker download');
   expect(purchased.response.data).toEqual({
     path: file.suggestedFilename(),
-    rowCount: 1,
+    rowCount: 2,
     missingQuantityRowCount: 0,
   });
   expect(JSON.parse(await readFile(exportPath, 'utf8'))).toMatchObject({
-    version: 2,
+    version: 3,
     takeoff: { id: co, name: 'CO renamed', kind: 'change-order' },
     rows: [
-      { quantity: -8, grossQuantity: 8, direction: 'deduct', pieceCount: 4 },
+      {
+        quantity: expect.closeTo(-6.6, 10),
+        grossQuantity: expect.closeTo(6.6, 10),
+        direction: 'deduct',
+        pieceCount: 4,
+        orderQuantity: 8,
+      },
+      {
+        quantity: expect.closeTo(-1.4, 10),
+        subItem: { kind: 'rounding', label: 'Rounding' },
+        orderQuantity: 8,
+      },
     ],
   });
   expect(file.suggestedFilename()).toContain(co);

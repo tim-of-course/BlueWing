@@ -96,15 +96,17 @@ void test('system combines existing formulas once with converted shared dimensio
   }).project;
   const result = calculateProject(accepted);
   assert.equal(result.complete, true);
-  assert.equal(result.outputs.length, 4);
+  assert.equal(result.outputs.length, 3);
   near(
-    result.outputs.find((output) => output.outputId === 'faceA/board-area')
-      ?.baseAmount,
+    result.outputs
+      .flatMap((o) => o.sources)
+      .find((s) => s.outputId === 'faceA/board-area')?.value ?? undefined,
     240,
   );
   near(
-    result.outputs.find((output) => output.outputId === 'faceB/board-area')
-      ?.baseAmount,
+    result.outputs
+      .flatMap((o) => o.sources)
+      .find((s) => s.outputId === 'faceB/board-area')?.value ?? undefined,
     480,
   );
   near(
@@ -219,7 +221,7 @@ void test('bindings reject incompatible units, unknown inputs and nesting; boole
   required(face.assembly.outputs[0]).formula =
     'if(double, length * height * 2, length * height)';
   validateProject(project);
-  near(calculateProject(project).outputs[1]?.baseAmount, 480);
+  near(calculateProject(project).outputs[1]?.baseAmount, 960);
   required(valid.inputs.find((input) => input.name === 'double')).type =
     'number';
   assert.throws(() => {

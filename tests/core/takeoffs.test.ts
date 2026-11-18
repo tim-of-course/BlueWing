@@ -213,10 +213,11 @@ void test('takeoffs start empty; independent copies round positive purchases bef
     result,
   );
   assert.equal(purchase.takeoff.id, 'co');
-  assert.equal(purchase.rows.length, 2);
+  assert.equal(purchase.rows.length, 4);
   assert.equal(purchase.rows[0]?.direction, 'deduct');
-  assert.equal(purchase.rows[0].quantity, -4);
-  assert.equal(purchase.rows[0].grossQuantity, 4);
+  assert.ok(Math.abs(purchase.rows[0].quantity + 3.3) < 1e-12);
+  assert.equal(purchase.rows[0].orderQuantity, 4);
+  assert.equal(purchase.rows[0].grossQuantity, -purchase.rows[0].quantity);
   const target = takeoffProject(f.session.project, 'co');
   assert.match(exportQuantities(target, 'csv'), /"co","co","deduct"/);
   const g = required(Object.values(target.geometries)[0]);
@@ -579,11 +580,16 @@ void test('copied wall deductions retain signed exports and openings when reappl
       row.source.materialId,
       row.unit,
       row.quantity,
+      row.subItem.kind,
     ]);
   };
   const before = signedRows();
   assert.ok(before.some(([material]) => material === 'channel'));
-  assert.ok(before.every(([, , quantity]) => Number(quantity) < 0));
+  assert.ok(
+    before.every(([, , quantity, kind]) =>
+      kind === 'rounding' ? Number(quantity) <= 0 : Number(quantity) < 0,
+    ),
+  );
   const reapply = (geometryId: string) =>
     f.call({
       name: 'wall.fromAssembly',
