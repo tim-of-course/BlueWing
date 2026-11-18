@@ -104,8 +104,8 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
     name: 'Selected construction item',
   });
   await expect(selected).toContainText('frp-unspecified');
-  await expect(selected).toContainText('Installed finish area: 26.756 m²');
-  await expect(selected).toContainText('Total thickness 3.0 mm');
+  await expect(selected).toContainText('Installed finish area: 288.0 ft²');
+  await expect(selected).toContainText('Total thickness 0.12 in');
 
   await page.getByRole('button', { name: 'Construction', exact: true }).click();
   const construction = page.getByRole('dialog', {

@@ -681,12 +681,12 @@ export default function RecipeEditor(props: {
                     Assign this assembly to a group of wall paths. Changes here
                     update its walls, quantities and 3D together. Group and wall
                     overrides keep their entered values. Dimensions below use
-                    metres.
+                    feet.
                   </p>
                   <ConstructionFields
                     schema={wallTemplateSchema}
                     value={template()}
-                    unit="m"
+                    unit="ft"
                     controller={props.controller}
                     parent="walls"
                     onChange={(next) => {
@@ -706,12 +706,12 @@ export default function RecipeEditor(props: {
                   <p class="muted">
                     Assign this assembly to ceiling areas. Its measured surfaces
                     and grid pieces supply both quantities and 3D. Dimensions
-                    below use metres.
+                    below use feet.
                   </p>
                   <ConstructionFields
                     schema={ceilingTemplateSchema}
                     value={template()}
-                    unit="m"
+                    unit="ft"
                     parent="ceilings"
                     controller={props.controller}
                     onChange={(next) => {

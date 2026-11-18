@@ -251,8 +251,8 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByLabel('Choose assembly', { exact: true })
     .selectOption({ label: 'W1 steel and board' });
   await assemblies
-    .getByLabel('Wall height (m) (optional)', { exact: true })
-    .fill('3.6576');
+    .getByLabel('Wall height (ft) (optional)', { exact: true })
+    .fill('12');
   await assemblies
     .getByRole('button', { name: 'Save assembly', exact: true })
     .click();

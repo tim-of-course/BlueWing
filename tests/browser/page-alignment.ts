@@ -215,7 +215,7 @@ export async function alignmentDesktopWorkflow(
     name: 'Align pages in combined 3D',
     exact: true,
   });
-  await editor.getByLabel('X offset (m)', { exact: true }).fill('7');
+  await editor.getByLabel('X offset (ft)', { exact: true }).fill('7');
   await editor.getByLabel('Rotation (degrees)', { exact: true }).fill('90');
   expect((await cli<Project>(page, 'project.inspect')).response.revision).toBe(
     before.revision,
@@ -280,7 +280,7 @@ export async function alignmentDesktopWorkflow(
   await expect(
     editor.getByRole('button', { name: 'Pick reference points', exact: true }),
   ).toBeDisabled();
-  await editor.getByLabel('X offset (m)', { exact: true }).fill('12');
+  await editor.getByLabel('X offset (ft)', { exact: true }).fill('12');
   await editor
     .getByRole('button', { name: 'Apply alignment', exact: true })
     .click();
@@ -289,7 +289,7 @@ export async function alignmentDesktopWorkflow(
     (await cli<Project>(page, 'project.inspect')).response.data.sheets[
       second.id
     ]?.combined3dAlignment?.offset.x,
-  ).toBe(12);
+  ).toBeCloseTo(12 * 0.3048);
   await viewer
     .getByRole('button', { name: 'Align pages', exact: true })
     .click();

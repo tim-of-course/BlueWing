@@ -73,10 +73,12 @@ export interface ConstructionViewProps {
   class?: string;
 }
 
+const inchLabel = (metres: number) =>
+  String(Number((metres / 0.0254).toFixed(3)));
 function lengthLabel(metres: number): string {
   const inches = Math.round((metres / 0.0254) * 16) / 16;
   const feet = Math.floor(inches / 12);
-  return `${String(feet)} ft ${String(inches - feet * 12)} in (${metres.toFixed(3)} m)`;
+  return `${String(feet)} ft ${String(inches - feet * 12)} in`;
 }
 
 export default function ConstructionView(props: ConstructionViewProps) {
@@ -871,8 +873,8 @@ export default function ConstructionView(props: ConstructionViewProps) {
               {(() => {
                 const value = item();
                 return 'cutLength' in value
-                  ? `Cut length: ${lengthLabel(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : lengthLabel(value.stockLength)} · Section ${(value.width * 1000).toFixed(1)} × ${(value.depth * 1000).toFixed(1)} mm. Purchase totals include waste and rounding.`
-                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${value.area.toFixed(3)} m² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${(value.thickness * 1000).toFixed(1)} mm`}`;
+                  ? `Cut length: ${lengthLabel(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : lengthLabel(value.stockLength)} · Section ${inchLabel(value.width)} × ${inchLabel(value.depth)} in. Purchase totals include waste and rounding.`
+                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${(value.area / 0.09290304).toFixed(1)} ft² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${inchLabel(value.thickness)} in`}`;
               })()}
             </span>
           </aside>

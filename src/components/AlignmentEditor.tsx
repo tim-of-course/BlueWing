@@ -13,6 +13,11 @@ import type { Combined3dAlignment, Point } from '../core/types';
 import { matchSheetAlignment } from '../core/alignment';
 import DrawingCanvas from './canvas/DrawingCanvas';
 
+const FOOT = 0.3048;
+/** Stored metres as the feet a person reads and types. */
+const feet = (metres: number) =>
+  String(Number((metres / FOOT).toPrecision(12)));
+
 export default function AlignmentEditor(props: {
   controller: WorkspaceController;
   sheetIds: readonly string[];
@@ -42,10 +47,10 @@ export default function AlignmentEditor(props: {
       '',
   );
   const [x, setX] = createSignal(
-    String(initial.project.sheets[first]?.combined3dAlignment?.offset.x ?? 0),
+    feet(initial.project.sheets[first]?.combined3dAlignment?.offset.x ?? 0),
   );
   const [y, setY] = createSignal(
-    String(initial.project.sheets[first]?.combined3dAlignment?.offset.y ?? 0),
+    feet(initial.project.sheets[first]?.combined3dAlignment?.offset.y ?? 0),
   );
   const [angle, setAngle] = createSignal(
     String(
@@ -76,7 +81,7 @@ export default function AlignmentEditor(props: {
     )
       return null;
     return {
-      offset: { x: Number(x()), y: Number(y()) },
+      offset: { x: Number(x()) * FOOT, y: Number(y()) * FOOT },
       rotation: (Number(angle()) * Math.PI) / 180,
     };
   });
@@ -123,8 +128,8 @@ export default function AlignmentEditor(props: {
     { name: 'construction.alignmentPreview' },
   );
   function setValues(value: Combined3dAlignment) {
-    setX(String(value.offset.x));
-    setY(String(value.offset.y));
+    setX(feet(value.offset.x));
+    setY(feet(value.offset.y));
     setAngle(String((value.rotation * 180) / Math.PI));
   }
   function changeSource(id: string) {
@@ -262,7 +267,7 @@ export default function AlignmentEditor(props: {
       >
         <h2 id="alignment-title">Align pages in combined 3D</h2>
         <p>
-          Offsets use metres; rotation uses degrees. Construction placement and
+          Offsets use feet; rotation uses degrees. Construction placement and
           takeoff points stay in their original page coordinates.
         </p>
         <fieldset disabled={saving()} class="alignment-fields">
@@ -294,7 +299,7 @@ export default function AlignmentEditor(props: {
             </select>
           </label>
           <label>
-            X offset (m)
+            X offset (ft)
             <input
               type="number"
               step="any"
@@ -306,7 +311,7 @@ export default function AlignmentEditor(props: {
             />
           </label>
           <label>
-            Y offset (m)
+            Y offset (ft)
             <input
               type="number"
               step="any"
