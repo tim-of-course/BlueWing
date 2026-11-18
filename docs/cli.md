@@ -47,6 +47,8 @@ Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ 
 
 `quantities.inspect` returns source contributions, diagnostics, allowance details, purchased quantities, and totals. `quantities.export` returns CSV or JSON text in `data`; the UI export buttons save that same calculation. Invalid calculations mark affected totals incomplete.
 
+For the selected takeoff, inspection also returns `data.sourceCoverage` with five lists, each with a `count` and `items`. The four drawing lists are `ungroupedGeometry`, `geometryInUnassignedGroups`, `geometryWithIncompatibleRecipes`, and `geometryWithoutOutputOrDiagnostic`. Each item includes its geometry ID, current name, sheet ID, and kind. The separate `assignmentsWithEmptyGroups` list identifies each assignment, group, and recipe. These advisories are for inspection only and leave totals, completeness, and exports unchanged.
+
 `quantities.exportEstiMaker` saves purchased LF/SF/count lines as versioned `bluewing.takeoff` JSON using the same projection as Quantities. CLI calls require `payload.path`; UI calls can choose a destination. The result is `{path,text}`, with text identical to the saved file. Counts are normal import rows; missing physical dimensions produce descriptions marked `(missing quantity)` and actual numeric zero. Coverage is informational; unresolved sources and invalid import identity are producer errors that prevent saving. It does not change the project or revision. See [the contract and checked fixtures](estimaker-export.md).
 
 ```sh

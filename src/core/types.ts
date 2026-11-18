@@ -257,6 +257,28 @@ export interface QuantityTotal {
   amount: number;
   complete: boolean;
 }
+export interface UncoveredGeometry {
+  geometryId: string;
+  sheetId: string;
+  kind: GeometryKind;
+  /** A group to reveal when navigating to this source. */
+  groupId?: string;
+}
+interface CoverageList<T> {
+  count: number;
+  items: T[];
+}
+export interface SourceCoverage {
+  ungroupedGeometry: CoverageList<UncoveredGeometry>;
+  geometryInUnassignedGroups: CoverageList<UncoveredGeometry>;
+  geometryWithIncompatibleRecipes: CoverageList<UncoveredGeometry>;
+  geometryWithoutOutputOrDiagnostic: CoverageList<UncoveredGeometry>;
+  assignmentsWithEmptyGroups: CoverageList<{
+    assignmentId: string;
+    groupId: string;
+    recipeId: string;
+  }>;
+}
 export interface CalculationResult {
   context?: {
     projectId: string;
@@ -265,6 +287,7 @@ export interface CalculationResult {
     kind: Takeoff['kind'];
   };
   model: ConstructionResult;
+  sourceCoverage: SourceCoverage;
   coverage: {
     modeledOutputs: number;
     estimateOutputs: number;

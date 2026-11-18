@@ -25,7 +25,7 @@ import type { Combined3dAlignment } from './types';
 import { calibrationFromDistance, newId, validateGeometry } from './geometry';
 import {
   calculateProject,
-  quantityReport,
+  inspectQuantities,
   exportQuantities,
   pieceSchedule,
   exportPieces,
@@ -503,7 +503,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'quantities.inspect',
-    'Calculate quantities with geometry sources and incomplete totals.',
+    'Calculate quantities with geometry sources and incomplete totals, and report uncovered drawing objects and assignments to empty groups.',
     object({}),
     false,
     {},
@@ -1134,7 +1134,7 @@ export function executeCommandOnDraft(
       );
       break;
     case 'quantities.inspect':
-      data = quantityReport(calculation(), next);
+      data = inspectQuantities(calculation(), next);
       break;
     case 'quantities.export':
       data = exportQuantities(

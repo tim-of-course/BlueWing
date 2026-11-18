@@ -83,6 +83,26 @@ export async function drawWall(page: Page): Promise<void> {
 }
 
 export async function calculateAndReopen(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Select (V)', exact: true }).click();
+  await pagePoint(page, 180, 210);
+  await expect(page.getByText('0 selected', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Quantities', exact: true }).click();
+  const advisory = page.getByText('1 drawn item is not in any quantity', {
+    exact: true,
+  });
+  const source = page
+    .locator('.quantities')
+    .getByRole('button', { name: 'Path 1', exact: true });
+  await expect(source).toBeHidden();
+  await advisory.click();
+  await expect(page.getByText('No group (1)', { exact: true })).toBeVisible();
+  await source.click();
+  await expect(
+    page.getByLabel('Drawing canvas', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Object name', { exact: true })).toHaveValue(
+    'Path 1',
+  );
   await page.getByLabel('New group name', { exact: true }).fill('Walls');
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page
@@ -98,6 +118,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
+  await expect(advisory).toBeHidden();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
   ).toContainText('384 ft2');
