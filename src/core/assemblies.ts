@@ -39,19 +39,24 @@ const inch = 0.0254;
 
 function ceilingGrid(square: boolean): Assembly {
   const size = square ? '2x2' : '2x4';
-  const section = { width: (15 / 16) * inch, depth: 1.5 * inch };
+  const section = {
+    width: (15 / 16) * inch,
+    depth: 1.5 * inch,
+    wastePercent: 5,
+  };
   return {
     id: `ceiling-grid-${size}`,
     name: `Acoustical ceiling ${size} layout`,
     category: 'Acoustical ceilings/acoustical work',
     description:
-      'Modeled grid and tile area clipped to the traced room. Starter elevation is 9 ft at the finished underside, with mains parallel to world X and the grid origin at world 0,0. Edit these settings to match the plan. Nominal starter sections are 15/16 in wide by 1-1/2 in deep; wall angle is 7/8 by 7/8 in. Set the specified products and dimensions. Members use rectangular envelopes with their lower edges at the ceiling elevation; entered tile thickness extends upward from the same datum. Counts and cuts come from the displayed members; tile purchasing uses net area. Hangers, connector tabs, tegular offsets and offcut reuse are not included.',
+      'Modeled grid and tile area clipped to the traced room. Starter elevation is 9 ft at the finished underside, with mains parallel to world X and the grid origin at world 0,0. Edit these settings to match the plan. Nominal starter sections are 15/16 in wide by 1-1/2 in deep; wall angle is 7/8 by 7/8 in. Set the specified products and dimensions. Members use rectangular envelopes with their lower edges at the ceiling elevation; entered tile thickness extends upward from the same datum. Counts and cuts come from the displayed members; tile purchasing uses net area. Hangers, connector tabs and tegular offsets require separate details.',
     geometryKinds: ['area'],
     inputs: [],
     outputs: [],
     ceilingTemplate: {
       elevation: 9 * foot,
       materialId: `ceiling-tile-${size}-unspecified`,
+      wastePercent: 5,
       layers: 1,
       grid: {
         system: size,
@@ -78,6 +83,7 @@ function ceilingGrid(square: boolean): Assembly {
           : {}),
         wallAngle: {
           materialId: 'ceiling-wall-angle-12ft-unspecified',
+          wastePercent: 5,
           width: (7 / 8) * inch,
           depth: (7 / 8) * inch,
           stockLength: 12 * foot,
@@ -172,12 +178,14 @@ export function starterAssemblies(): Record<string, Assembly> {
         studSpacing: 16 * inch,
         stud: {
           materialId: 'steel-stud-3-5-8-unspecified',
+          wastePercent: 5,
           width: 1.625 * inch,
           depth: 3.625 * inch,
           stockLength: 12 * foot,
         },
         track: {
           materialId: 'steel-track-3-5-8-unspecified',
+          wastePercent: 5,
           width: 3.625 * inch,
           depth: 1.25 * inch,
           stockLength: 10 * foot,
@@ -187,6 +195,7 @@ export function starterAssemblies(): Record<string, Assembly> {
         finishes: ['front', 'back'].map((face) => ({
           id: face,
           materialId: 'drywall-5-8-unspecified',
+          wastePercent: 5,
           face: face as 'front' | 'back',
           layers: 1,
           thickness: 0.625 * inch,

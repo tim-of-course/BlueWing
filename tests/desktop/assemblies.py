@@ -200,16 +200,18 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             assert {source['surfaceId'] for source in sources if 'surfaceId' in source} == {s['id'] for s in model['surfaces']}
             assert math.isclose(sum(row['baseAmount'] for row in outputs if row['unit'] == 'ft2'), 64, abs_tol=1e-8)
             for role, (count, _) in expected.items():
-                assert sum(row['purchasedAmount'] for row in outputs if row.get('role') == role) == count
+                order, = [row for row in outputs if row.get('role') == role]
+                # All runs exceed half their stock. 5% adds one stick for each of these small orders.
+                assert order['packedCount'] == count and order['purchasedAmount'] == count + 1
             # Waste changes orders, never the installed layout or its cut schedule.
-            assembly['ceilingTemplate']['grid']['crossTee4']['wastePercent'] = 10
+            assembly['ceilingTemplate']['grid']['crossTee4']['wastePercent'] = 20
             call('assembly.put', assembly, True)
             with_waste = call('construction.inspect')
             assert len(with_waste['pieces']) == len(model['pieces'])
             assert [(piece['id'], piece['start'], piece['end'], piece['cutLength']) for piece in with_waste['pieces']] == [
                 (piece['id'], piece['start'], piece['end'], piece['cutLength']) for piece in model['pieces']]
             assert next(row['purchasedCount'] for row in with_waste['purchases']
-                        if row['role'] == 'ceiling-tee-4ft') == 7
+                        if row['role'] == 'ceiling-tee-4ft') == 8
             call('history.undo', mutates=True)
             assert settled(call('construction.inspect')) == settled(model)
         call('construction.render', {'path': str(EVIDENCE / 'ceiling-layout.png'), 'width': 800, 'height': 500,

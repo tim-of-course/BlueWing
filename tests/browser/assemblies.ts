@@ -357,11 +357,11 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const totals = page.getByRole('table', { name: 'Material totals' });
   for (const [material, amount] of [
-    ['ceiling-tile-2x2-unspecified', '96 ft2'],
-    ['ceiling-main-12ft-unspecified', '1 ea'],
-    ['ceiling-tee-4ft-unspecified', '10 ea'],
-    ['ceiling-tee-2ft-unspecified', '12 ea'],
-    ['ceiling-wall-angle-12ft-unspecified', '4 ea'],
+    ['ceiling-tile-2x2-unspecified', '100.8 ft2'],
+    ['ceiling-main-12ft-unspecified', '24 LF'],
+    ['ceiling-tee-4ft-unspecified', '44 LF'],
+    ['ceiling-tee-2ft-unspecified', '26 LF'],
+    ['ceiling-wall-angle-12ft-unspecified', '60 LF'],
   ] as const)
     await expect(
       totals.getByRole('row').filter({ hasText: material }),
@@ -385,5 +385,5 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     totals.getByRole('row').filter({ hasText: 'ceiling-tile-2x2-unspecified' }),
-  ).toContainText('96 ft2');
+  ).toContainText('100.8 ft2');
 }

@@ -16,6 +16,7 @@ const member = (
   width: width * inch,
   depth: depth * inch,
   stockLength: stockFeet * ft,
+  wastePercent: 5,
 });
 const component = (
   id: string,
@@ -67,6 +68,7 @@ function surface(
       kind: 'path-surface',
       elevation: 0,
       materialId,
+      wastePercent: 5,
       layers: 1,
       thickness: thickness * inch,
       ...(height === undefined ? {} : { height: height * inch }),
@@ -90,6 +92,7 @@ function horizontal(
   const ceilingTemplate: CeilingTemplate = {
     elevation: elevation * ft,
     materialId,
+    wastePercent: 5,
     layers: 1,
     thickness: thickness * inch,
     packageSize: sheet,
@@ -219,7 +222,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'wood-blocking',
       'Wood blocking pieces',
       'Wood blocking/backing',
-      'Modeled blocks measured from individual path segments. Trace the actual ends of each block and enter its centreline elevation. Starter 2x6 uses actual 1-1/2 by 5-1/2 in dimensions and 8 ft stock. Set the specified size, orientation and product. No inferred between-stud cuts, fasteners or offcut reuse.',
+      'Modeled blocks measured from individual path segments. Trace the actual ends of each block and enter its centreline elevation. Starter 2x6 uses actual 1-1/2 by 5-1/2 in dimensions and 8 ft stock. Set the specified size, orientation and product. Between-stud cuts and fasteners require project details.',
       {
         kind: 'path-members',
         elevation: 4 * ft,

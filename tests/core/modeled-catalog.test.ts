@@ -6,16 +6,23 @@ import {
   validateAssembly,
   validateProject,
 } from '../../src/core/commands';
-import { calculateProject } from '../../src/core/calculations';
+import {
+  calculateProject,
+  pieceSchedule,
+  exportQuantities,
+} from '../../src/core/calculations';
+import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
+import { packedStickCount } from '../../src/core/purchasing';
+import { exportConstruction } from '../../src/core/detailed-commands';
 import { starterAssemblies } from '../../src/core/assemblies';
 import { geometryCategories } from '../../src/core/categories';
 import { constructionSceneInput } from '../../src/three/scene';
 import { ProjectSession } from '../../src/core/session';
 import { inspectReview } from '../../src/core/review';
+import { takeoffProject } from '../../src/core/takeoffs';
 import { generateConstruction } from '../../src/core/construction';
 import { resolveConstruction } from '../../src/core/applied-assemblies';
 import { modeledOutputs } from '../../src/core/material-results';
-import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
 import type {
   CalculationResult,
   GeometryKind,
@@ -96,6 +103,218 @@ function applied(project: Project) {
   return assignment;
 }
 
+function twoWallTypes() {
+  const project = fixture('steel-framing', 'path', 6);
+  const first = project.recipes['steel-framing'];
+  const trace = project.geometries.trace;
+  assert.ok(first?.wallTemplate && trace);
+  first.wallTemplate.height = 8 * ft;
+  const second = structuredClone(first);
+  second.id = 'four-foot-wall';
+  project.recipes[second.id] = second;
+  project.geometries.short = {
+    ...trace,
+    id: 'short',
+    name: 'Return',
+    points: [
+      { x: 0, y: 10 },
+      { x: 4, y: 10 },
+    ],
+  };
+  project.groups.returns = {
+    id: 'returns',
+    name: 'Returns',
+    geometryIds: ['short'],
+  };
+  project.assignments.b = {
+    ...applied(project),
+    id: 'b',
+    groupId: 'returns',
+    recipeId: second.id,
+  };
+  assert.ok(second.wallTemplate);
+  return { project, second, track: second.wallTemplate.track };
+}
+
+void test('first-fit descending reuses offcuts independent of cut order', () => {
+  // 6+4, 6+4, 3. Total footage alone cannot handle the three 6-foot cuts below.
+  const cuts = [4, 3, 6, 4, 6];
+  assert.equal(packedStickCount(cuts, 10), 3);
+  assert.equal(packedStickCount([...cuts].reverse(), 10), 3);
+  assert.deepEqual(cuts, [4, 3, 6, 4, 6]);
+  assert.equal(packedStickCount([6, 6, 6], 10), 3);
+  assert.equal(packedStickCount([0.1, 0.1, 0.1], 0.3), 1);
+});
+
+void test('two wall types share one track order and retain their own installed quantities', () => {
+  const { project, track } = twoWallTypes();
+  const result = calculateProject(project);
+  assert.ok(result.complete);
+  const orders = result.outputs.filter(
+    (row) => row.materialId === track.materialId,
+  );
+  assert.equal(orders.length, 1);
+  const order = orders[0];
+  assert.ok(order);
+  // Top and bottom track on each wall: (6+4), (6+4). Two sticks plus 5% -> three.
+  assert.equal(order.baseAmount, 4);
+  assert.equal(order.packedCount, 2);
+  near(order.wasteAmount, 0.1);
+  near(order.adjustedAmount, 2.1);
+  assert.equal(order.purchasedAmount, 3);
+  near(order.purchasedLength?.value, 30);
+  assert.equal(order.purchasedLength?.unit, 'ft');
+  assert.deepEqual(
+    order.installedByAssignment?.map((item) => [
+      item.assignmentId,
+      item.pieceCount,
+      Math.round(item.cutLength.value / ft),
+    ]),
+    [
+      ['a', 2, 12],
+      ['b', 2, 8],
+    ],
+  );
+  const total = result.totals.find(
+    (row) => row.materialId === track.materialId,
+  );
+  assert.equal(total?.amount, 3);
+  near(total.purchasedLength?.value, 30);
+  const schedule = pieceSchedule(project, result).filter(
+    (row) => row.materialId === track.materialId,
+  );
+  const installed = schedule.filter((row) => row.recordType === 'installed');
+  assert.deepEqual(
+    installed.map((row) => row.assignmentId),
+    ['a', 'a', 'b', 'b'],
+  );
+  assert.deepEqual(
+    installed.map((row) => row.group),
+    ['Work', 'Work', 'Returns', 'Returns'],
+  );
+  assert.ok(
+    installed.every(
+      (row) => row.quantity === 1 && row.purchasedCount === undefined,
+    ),
+  );
+  assert.equal(schedule.length, 5);
+  assert.equal(schedule.at(-1)?.purchasedCount, 3);
+  const rows = estiMakerTakeoff(project, result).rows.filter(
+    (row) => row.source.materialId === track.materialId,
+  );
+  assert.equal(rows.length, 1);
+  const row = rows[0];
+  assert.ok(row);
+  near(row.quantity, 30);
+  assert.equal(row.source.assignmentId, null);
+  assert.equal(row.pieceCount, 3);
+  near(row.pieceLength?.value, 10 * ft);
+  assert.equal(row.provenance.packedCount, 2);
+  assert.equal(row.provenance.sourceRefs.length, 4);
+  assert.deepEqual(
+    row.provenance.sourceRefs.map((source) => source.assignmentId),
+    ['a', 'a', 'b', 'b'],
+  );
+  assert.match(
+    exportQuantities(project, 'csv', result),
+    /"purchasedLength_ft"/,
+  );
+  for (const schedule of ['pieces', 'lengths', 'materials'] as const) {
+    const csv = exportConstruction(project, 'csv', schedule, result.model);
+    const lines = csv
+      .split('\n')
+      .filter((line) => line.includes(`"${track.materialId}"`));
+    const purchaseRows =
+      schedule === 'materials'
+        ? lines
+        : lines.filter((line) => line.includes('"stock-purchase"'));
+    assert.equal(purchaseRows.length, 1, schedule);
+    // The three 10 ft sticks cover 9.144 m in the construction schedule.
+    assert.match(purchaseRows[0] ?? '', /"9\.144"/);
+  }
+});
+
+void test('stock length, waste, package, scope category and material breakouts have independent purchase lines', () => {
+  for (const split of ['stock', 'waste', 'package', 'category', 'material']) {
+    const { project, second, track } = twoWallTypes();
+    const materialId = track.materialId;
+    if (split === 'stock') track.stockLength = 8 * ft;
+    if (split === 'waste') track.wastePercent = 0;
+    if (split === 'package') track.packageSize = 4;
+    if (split === 'category') second.category = 'High work';
+    if (split === 'material') track.materialId += '-high-work';
+    const result = calculateProject(project);
+    const orders = estiMakerTakeoff(project, result).rows.filter(
+      (row) =>
+        row.source.materialId === materialId ||
+        row.source.materialId === track.materialId,
+    );
+    assert.equal(orders.length, 2, split);
+    const [base, breakout] = orders;
+    assert.ok(base && breakout);
+    assert.notEqual(base.lineId, breakout.lineId);
+    assert.equal(base.provenance.packedCount, 2);
+    near(base.quantity, 30);
+    // Two 4 ft cuts use one stick. 5% rounds to two unless waste is zero or the package has four.
+    assert.equal(breakout.provenance.packedCount, 1);
+    near(
+      breakout.quantity,
+      split === 'stock'
+        ? 16
+        : split === 'waste'
+          ? 10
+          : split === 'package'
+            ? 40
+            : 20,
+    );
+    assert.equal(breakout.category, second.category);
+    assert.equal(breakout.source.materialId, track.materialId);
+  }
+});
+
+void test('change order packs additions and deductions before applying their signs', () => {
+  const { project: main, track } = twoWallTypes();
+  let project = command(main, 'takeoff.create', {
+    id: 'co',
+    kind: 'change-order',
+    name: 'Change',
+  });
+  for (const [geometry, direction] of [
+    ['trace', 'add'],
+    ['short', 'deduct'],
+  ]) {
+    project = executeCommand(project, {
+      name: 'takeoff.copyItems',
+      takeoffId: 'co',
+      payload: {
+        sourceTakeoffId: 'main',
+        geometryIds: [geometry],
+        direction,
+      },
+    }).project;
+  }
+  const view = takeoffProject(project, 'co');
+  const result = calculateProject(view);
+  const rows = estiMakerTakeoff(view, result).rows.filter(
+    (row) => row.source.materialId === track.materialId,
+  );
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((row) => [row.direction, Math.round(row.quantity)]).sort(),
+    [
+      ['add', 30],
+      ['deduct', -20],
+    ],
+  );
+  const total = result.totals.find(
+    (row) => row.materialId === track.materialId,
+  );
+  assert.deepEqual(
+    [total?.additions, total?.deductions, total?.amount],
+    [3, 2, 1],
+  );
+});
+
 function linked(result: CalculationResult) {
   assert.equal(result.complete, true, JSON.stringify(result.model.diagnostics));
   assert.equal(result.coverage.complete, true);
@@ -159,6 +378,7 @@ void test('new finish starters model measured surfaces and positioned deductions
     const result = calculateProject(project);
     linked(result);
     assert.equal(result.model.pieces.length, 0, id);
+    assert.ok(result.outputs.every((output) => output.wastePercent === 5));
     assert.ok(result.model.surfaces.length > 0, id);
     near(
       result.outputs.reduce((sum, output) => sum + output.baseAmount, 0),
@@ -636,6 +856,8 @@ void test('horizontal finishes report their measured surfaces and furring report
     const result = calculateProject(fixture(id, 'area'));
     linked(result);
     assert.equal(result.model.pieces.length, 0);
+    // 64 SF × 1.05 = 67.2 SF, rounded to three 32 SF packages.
+    near(result.outputs[0]?.purchasedAmount, 96);
     near(
       result.outputs.reduce((sum, output) => sum + output.baseAmount, 0),
       64,

@@ -168,7 +168,11 @@ export function filterConstructionCategories(
     ...model,
     pieces: model.pieces.filter(include),
     surfaces: model.surfaces.filter(include),
-    purchases: model.purchases.filter(include),
+    purchases: model.purchases.filter((purchase) =>
+      purchase.category === undefined
+        ? include(purchase)
+        : matchesCategories(categoryName(purchase.category), filter),
+    ),
     ...(model.surfacePurchases
       ? { surfacePurchases: model.surfacePurchases.filter(include) }
       : {}),

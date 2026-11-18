@@ -18,15 +18,18 @@ export default function PieceSchedule(props: {
   project: Project;
   result: CalculationSnapshot;
 }) {
-  const rows = createMemo(() => pieceSchedule(props.project, props.result));
+  const rows = createMemo(() =>
+    pieceSchedule(props.project, props.result).filter(
+      (row) => row.recordType !== 'stock-purchase',
+    ),
+  );
   return (
     <Show when={rows().length}>
       <details class="quantity-output" open>
         <summary>Required pieces by location</summary>
         <p class="muted">
-          Required pieces exclude purchasing waste and package rounding. Stock
-          counts allow one stock length per piece; offcut reuse is not
-          calculated. Rows without a positioned piece are formula estimates.
+          Each row shows an installed cut or a formula estimate. Material totals
+          above show shared stock orders after offcut reuse and waste.
         </p>
         <table>
           <caption>Piece schedule</caption>

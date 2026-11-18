@@ -1110,6 +1110,11 @@ export function exportConstruction(
         'purchased',
         'packages',
         'complete',
+        'packedSticks',
+        'category',
+        'wastePercent',
+        'adjustedAmount',
+        'purchasedLength_m',
       ],
       ...result.purchases.map((p) => [
         takeoff?.id,
@@ -1121,6 +1126,11 @@ export function exportConstruction(
         p.purchasedCount,
         p.packageCount,
         result.complete,
+        p.packedCount,
+        p.category ?? project.recipes[p.recipeId ?? '']?.category,
+        p.wastePercent,
+        p.adjustedCount,
+        p.purchasedLength,
       ]),
       ...(result.surfacePurchases ?? []).map((purchase) => [
         takeoff?.id,
@@ -1132,14 +1142,69 @@ export function exportConstruction(
         purchase.purchasedArea,
         purchase.packageCount,
         result.complete,
+        '',
+        project.recipes[purchase.recipeId ?? '']?.category,
+        purchase.wastePercent,
+        purchase.requiredArea * (1 + purchase.wastePercent / 100),
+        '',
       ]),
     ]);
   }
+  // Installed cut rows carry no purchase amounts. Append each stock order
+  // once, under the same units and material columns in either cut schedule.
+  const cutScheduleCsv = (
+    columns: string[],
+    installed: Parameters<typeof csv>[0],
+  ) => {
+    const orderColumns = [
+      'recordType',
+      'packedCount',
+      'wastePercent',
+      'adjustedCount',
+      'packageCount',
+      'purchasedCount',
+      'purchasedLength_m',
+      'quantityKey',
+    ];
+    const orders = result.purchases.filter(
+      (purchase) => purchase.packedCount !== undefined,
+    );
+    return csv([
+      [...columns, ...orderColumns],
+      ...installed.map((row) => [
+        ...row,
+        'installed',
+        ...orderColumns.slice(1).map(() => ''),
+      ]),
+      ...orders.map((purchase) => {
+        const values: Record<string, string | number | boolean | undefined> = {
+          takeoffId: takeoff?.id,
+          direction: purchase.direction ?? 'add',
+          material: purchase.materialId,
+          category: purchase.category,
+          stockLength_m: purchase.stockLength,
+          complete: result.complete,
+        };
+        return [
+          ...columns.map((key) => values[key]),
+          'stock-purchase',
+          purchase.packedCount,
+          purchase.wastePercent,
+          purchase.adjustedCount,
+          purchase.packageCount,
+          purchase.purchasedCount,
+          purchase.purchasedLength,
+          purchase.quantityKey,
+        ];
+      }),
+    ]);
+  };
   if (schedule === 'lengths') {
     const groups = new Map<
       string,
       {
         material: string;
+        category: string;
         role: string;
         length: number;
         stock?: number | undefined;
@@ -1148,8 +1213,10 @@ export function exportConstruction(
       }
     >();
     for (const piece of result.pieces) {
+      const category = project.recipes[piece.recipeId ?? '']?.category ?? '';
       const key = JSON.stringify([
         piece.direction,
+        category,
         piece.materialId,
         piece.role,
         piece.cutLength.toFixed(8),
@@ -1157,6 +1224,7 @@ export function exportConstruction(
       ]);
       const group = groups.get(key) ?? {
         material: piece.materialId,
+        category,
         role: piece.role,
         length: piece.cutLength,
         stock: piece.stockLength,
@@ -1166,35 +1234,38 @@ export function exportConstruction(
       group.count++;
       groups.set(key, group);
     }
-    return csv([
+    return cutScheduleCsv(
       [
         'takeoffId',
         'direction',
         'material',
+        'category',
         'role',
         'cutLength_m',
         'stockLength_m',
         'count',
         'complete',
       ],
-      ...[...groups.values()].map((g) => [
+      [...groups.values()].map((g) => [
         takeoff?.id,
         g.direction,
         g.material,
+        g.category,
         g.role,
         g.length,
         g.stock,
         g.count,
         result.complete,
       ]),
-    ]);
+    );
   }
-  return csv([
+  return cutScheduleCsv(
     [
       'takeoffId',
       'direction',
       'pieceId',
       'material',
+      'category',
       'role',
       'wallId',
       'geometryId',
@@ -1209,11 +1280,12 @@ export function exportConstruction(
       'endZ_m',
       'complete',
     ],
-    ...result.pieces.map((p) => [
+    result.pieces.map((p) => [
       takeoff?.id,
       p.direction ?? 'add',
       p.id,
       p.materialId,
+      project.recipes[p.recipeId ?? '']?.category ?? '',
       p.role,
       p.wallId,
       p.geometryId,
@@ -1228,5 +1300,5 @@ export function exportConstruction(
       p.end.z,
       result.complete,
     ]),
-  ]);
+  );
 }

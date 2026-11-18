@@ -220,16 +220,18 @@ export default function Quantities(props: {
                   {(entry) => (
                     <tr>
                       <td>
-                        {entry.row?.description ?? entry.description}
+                        {entry.output.packedCount === undefined
+                          ? (entry.row?.description ?? entry.description)
+                          : entry.description}
                         <br />
                         <small>
                           {entry.output.direction ?? 'add'} ·{' '}
                           {entry.output.materialId} ·{' '}
-                          {
-                            props.controller.project()?.groups[
-                              entry.output.groupId
-                            ]?.name
-                          }
+                          {entry.output.packedCount !== undefined
+                            ? 'Takeoff stock order'
+                            : props.controller.project()?.groups[
+                                entry.output.groupId
+                              ]?.name}
                         </small>
                       </td>
                       <td>
@@ -238,7 +240,11 @@ export default function Quantities(props: {
                           : entry.output.complete
                             ? `${number(entry.output.purchasedAmount)} ${entry.output.unit}`
                             : 'Unavailable'}
-                        <Show when={entry.row}>
+                        <Show
+                          when={
+                            entry.row && entry.output.packedCount === undefined
+                          }
+                        >
                           <br />
                           <small>
                             {number(entry.output.purchasedAmount)}{' '}
@@ -248,12 +254,24 @@ export default function Quantities(props: {
                       </td>
                       <td>{entry.category || '—'}</td>
                       <td>
-                        {entry.row?.pieceCount !== undefined
-                          ? `${number(entry.row.pieceCount)} pc × `
-                          : ''}
+                        {entry.output.packedCount !== undefined
+                          ? `${number(entry.output.purchasedAmount)} sticks × `
+                          : entry.row?.pieceCount !== undefined
+                            ? `${number(entry.row.pieceCount)} pc × `
+                            : ''}
                         {displayLength(
                           entry.output.stockLength ?? entry.output.cutLength,
                         )}
+                        <Show when={entry.output.packedCount !== undefined}>
+                          <br />
+                          <small>
+                            {number(entry.output.packedCount ?? 0)} packed +{' '}
+                            {number(entry.output.wastePercent)}% waste
+                            {entry.output.packageCount === null
+                              ? ''
+                              : ` · ${number(entry.output.packageCount)} packages`}
+                          </small>
+                        </Show>
                       </td>
                       <td>
                         {!entry.output.complete ? 'Incomplete · ' : ''}
@@ -287,10 +305,31 @@ export default function Quantities(props: {
                       <tr>
                         <td>
                           {total.materialId} ({total.unit})
+                          {total.category && ` · ${total.category}`}
                         </td>
-                        <td>{number(total.additions)}</td>
-                        <td>{number(total.deductions)}</td>
-                        <td>{number(total.amount)}</td>
+                        <For
+                          each={[
+                            total.additions,
+                            total.deductions,
+                            total.amount,
+                          ]}
+                        >
+                          {(count) => (
+                            <td>
+                              {number(count)}
+                              <Show when={total.stockLength}>
+                                {(stock) => (
+                                  <>
+                                    {' '}
+                                    × {displayLength(stock())} ={' '}
+                                    {number((count * stock().value) / 0.3048)}{' '}
+                                    LF
+                                  </>
+                                )}
+                              </Show>
+                            </td>
+                          )}
+                        </For>
                       </tr>
                     )}
                   </For>
@@ -326,6 +365,11 @@ export default function Quantities(props: {
                     entry.description,
                     entry.category,
                     entry.output.materialId,
+                    ...(entry.output.installedByAssignment ?? []).map(
+                      (item) =>
+                        props.controller.project()?.groups[item.groupId]
+                          ?.name ?? '',
+                    ),
                     props.controller.project()?.groups[entry.output.groupId]
                       ?.name ?? '',
                   ]
@@ -347,24 +391,35 @@ export default function Quantities(props: {
                   <details class="quantity-output">
                     <summary>
                       <strong>
-                        {props.controller.project()?.groups[output().groupId]
-                          ?.name ?? output().groupId}{' '}
-                        / {entry().row?.description ?? entry().description}
+                        {output().packedCount !== undefined
+                          ? 'Installed cuts'
+                          : (props.controller.project()?.groups[
+                              output().groupId
+                            ]?.name ?? output().groupId)}{' '}
+                        /{' '}
+                        {output().packedCount !== undefined
+                          ? entry().description
+                          : (entry().row?.description ?? entry().description)}
                       </strong>
                       <span>
                         <Show
-                          when={entry().row}
-                          fallback={
-                            output().complete
-                              ? `${number(output().purchasedAmount)} ${output().unit}`
-                              : 'Incomplete'
-                          }
+                          when={output().packedCount === undefined}
+                          fallback={`${number(output().baseAmount)} cuts`}
                         >
-                          {(row) => (
-                            <>
-                              {number(row().quantity)} {row().unit}
-                            </>
-                          )}
+                          <Show
+                            when={entry().row}
+                            fallback={
+                              output().complete
+                                ? `${number(output().purchasedAmount)} ${output().unit}`
+                                : 'Incomplete'
+                            }
+                          >
+                            {(row) => (
+                              <>
+                                {number(row().quantity)} {row().unit}
+                              </>
+                            )}
+                          </Show>
                         </Show>
                       </span>
                     </summary>
@@ -375,7 +430,12 @@ export default function Quantities(props: {
                         </p>
                       )}
                     </Show>
-                    <Show when={entry().row?.cutSchedule?.length}>
+                    <Show
+                      when={
+                        output().packedCount === undefined &&
+                        entry().row?.cutSchedule?.length
+                      }
+                    >
                       <p class="muted">
                         Required cuts (before waste/packages):{' '}
                         {entry()
@@ -390,10 +450,13 @@ export default function Quantities(props: {
                       </p>
                     </Show>
                     <p class="muted">
-                      Assembly:{' '}
-                      {props.controller.project()?.recipes[output().recipeId]
-                        ?.name ?? output().recipeId}{' '}
-                      · Material: {output().materialId}
+                      <Show when={output().recipeId}>
+                        Assembly:{' '}
+                        {props.controller.project()?.recipes[output().recipeId]
+                          ?.name ?? output().recipeId}{' '}
+                        ·{' '}
+                      </Show>
+                      Material: {output().materialId}
                       {' · '}
                       {output().modeling === 'modeled'
                         ? 'Measured from 3D'
@@ -408,38 +471,53 @@ export default function Quantities(props: {
                         {displayLength(output().stockLength)}
                       </p>
                     </Show>
-                    <dl class="quantity-breakdown">
-                      <div>
-                        <dt>Net / base</dt>
-                        <dd>
-                          {number(output().baseAmount)} {output().unit}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Waste ({number(output().wastePercent)}%)</dt>
-                        <dd>
-                          {number(output().wasteAmount)} {output().unit}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>With waste</dt>
-                        <dd>
-                          {number(output().adjustedAmount)} {output().unit}
-                        </dd>
-                      </div>
-                      <Show when={output().packageCount !== null}>
+                    <For each={output().installedByAssignment}>
+                      {(item) => (
+                        <p>
+                          {props.controller.project()?.groups[item.groupId]
+                            ?.name ?? item.groupId}{' '}
+                          /{' '}
+                          {props.controller.project()?.recipes[item.recipeId]
+                            ?.name ?? item.recipeId}{' '}
+                          · {number(item.pieceCount)} cuts ·{' '}
+                          {number(item.cutLength.value / 0.3048)} installed LF
+                        </p>
+                      )}
+                    </For>
+                    <Show when={output().packedCount === undefined}>
+                      <dl class="quantity-breakdown">
                         <div>
-                          <dt>Packages</dt>
-                          <dd>{output().packageCount}</dd>
+                          <dt>Net / base</dt>
+                          <dd>
+                            {number(output().baseAmount)} {output().unit}
+                          </dd>
                         </div>
-                      </Show>
-                      <div>
-                        <dt>Purchased</dt>
-                        <dd>
-                          {number(output().purchasedAmount)} {output().unit}
-                        </dd>
-                      </div>
-                    </dl>
+                        <div>
+                          <dt>Waste ({number(output().wastePercent)}%)</dt>
+                          <dd>
+                            {number(output().wasteAmount)} {output().unit}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>With waste</dt>
+                          <dd>
+                            {number(output().adjustedAmount)} {output().unit}
+                          </dd>
+                        </div>
+                        <Show when={output().packageCount !== null}>
+                          <div>
+                            <dt>Packages</dt>
+                            <dd>{output().packageCount}</dd>
+                          </div>
+                        </Show>
+                        <div>
+                          <dt>Purchased</dt>
+                          <dd>
+                            {number(output().purchasedAmount)} {output().unit}
+                          </dd>
+                        </div>
+                      </dl>
+                    </Show>
                     <For each={output().diagnostics}>
                       {(message) => <p class="warning">{message}</p>}
                     </For>
@@ -476,7 +554,7 @@ export default function Quantities(props: {
                                     if (geometry) {
                                       props.controller.showGeometry(
                                         geometry.id,
-                                        output().groupId,
+                                        source().groupId ?? output().groupId,
                                       );
                                       props.onShowDrawing();
                                     }
@@ -510,6 +588,9 @@ export default function Quantities(props: {
                                 {source().value === null
                                   ? (source().diagnostic ?? 'Unavailable')
                                   : `${number(source().value ?? 0)} ${output().unit}`}
+                                <Show when={source().cutLength}>
+                                  {(cut) => <> × {displayLength(cut())}</>}
+                                </Show>
                               </td>
                             </tr>
                           )}

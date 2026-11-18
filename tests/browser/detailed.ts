@@ -185,7 +185,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
       .getByRole('table', { name: 'Material totals' })
       .getByRole('row')
       .filter({ hasText: '362S162-33' }),
-  ).toContainText('19 ea');
+  ).toContainText('19 sticks');
   await page
     .getByLabel('Workspace view', { exact: true })
     .selectOption('split');

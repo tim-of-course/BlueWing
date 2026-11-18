@@ -210,6 +210,9 @@ export interface Measurement {
   diagnostic?: string;
 }
 export interface CalculationSource {
+  assignmentId?: string;
+  groupId?: string;
+  recipeId?: string;
   direction?: 'add' | 'deduct';
   pieceId?: string;
   surfaceId?: string;
@@ -239,6 +242,18 @@ export interface CalculationOutput {
   cutLength?: Quantity;
   stockLength?: Quantity;
   baseAmount: number;
+  /** Takeoff-wide stock order. baseAmount remains the installed piece count. */
+  packedCount?: number;
+  category?: string;
+  packageSize?: number;
+  purchasedLength?: Quantity;
+  installedByAssignment?: {
+    assignmentId: string;
+    groupId: string;
+    recipeId: string;
+    pieceCount: number;
+    cutLength: Quantity;
+  }[];
   wastePercent: number;
   wasteAmount: number;
   adjustedAmount: number;
@@ -248,6 +263,8 @@ export interface CalculationOutput {
   diagnostics: string[];
 }
 export interface QuantityTotal {
+  category?: string;
+  purchasedLength?: Quantity;
   additions: number;
   deductions: number;
   cutLength?: Quantity;

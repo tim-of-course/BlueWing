@@ -287,12 +287,17 @@ void test('project custom color changes persist, undo and redo without recalcula
   const definition = session.project.recipes['steel-framing'];
   assert.ok(definition);
   await run('assembly.put', { ...definition, category: 'Special scope' });
-  assert.strictEqual(session.calculation, calculation);
+  assert.notStrictEqual(session.calculation, calculation);
+  assert.ok(
+    session.calculation.model.purchases.every(
+      (purchase) => purchase.category === 'Special scope',
+    ),
+  );
   assert.ok(
     geometryCategories(session.project).line?.includes('Special scope'),
   );
   await run('history.undo');
-  assert.strictEqual(session.calculation, calculation);
+  assert.deepEqual(session.calculation, calculation);
   assert.ok(
     geometryCategories(session.project).line?.includes(
       'Light-gauge metal framing',
