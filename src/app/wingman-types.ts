@@ -61,7 +61,8 @@ export interface ViewportPort<T> {
 /** Presentation is local UI state; publishing it never edits the takeoff. */
 export interface WingmanPresentation {
   hasMessageDraft(): boolean;
-  publish(visual: WingmanVisual): void;
+  /** False when the user is viewing another project or takeoff, so nothing is shown. */
+  publish(visual: WingmanVisual): boolean;
   inspect(): unknown;
   flash(): void;
   annotate(

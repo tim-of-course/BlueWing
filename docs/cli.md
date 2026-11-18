@@ -271,7 +271,7 @@ Every CLI request accepts one optional envelope cursor, `messagesAfter`. Parsed 
 
 The UI's pause control rejects all non-messaging CLI commands with `WINGMAN_PAUSED`, including inspection and rendering. Commands queued before a pause remain rejected after resume; submit a new request to retry. Commands already executing may finish. UI operations and messages continue while paused.
 
-Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. `wingman.inspect` reads the presentation, `wingman.flash` expands and glows the corner preview, and `wingman.annotate` replaces local plan annotations with `{ "annotations": [{ "points": [{ "x": 10, "y": 20 }], "label": "Check", "color": "#ff8800" }], "highlightIds": [] }`. These commands do not edit the estimate.
+Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. When the user is viewing a different takeoff, the view is not shown and the result carries `notShownToUser` with the reason; the image file is still written. `wingman.inspect` reads the presentation, `wingman.flash` expands and glows the corner preview, and `wingman.annotate` replaces local plan annotations with `{ "annotations": [{ "points": [{ "x": 10, "y": 20 }], "label": "Check", "color": "#ff8800" }], "highlightIds": [] }`. These commands do not edit the estimate.
 
 For ordinary work, include the most recent received message ID in the next command. There is no separate acknowledgement command or destructive inbox read:
 

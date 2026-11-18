@@ -59,7 +59,7 @@ import {
   type ConversationMode,
 } from './cli-guide';
 import { messagingStorage } from '../platform/messaging-storage';
-import type { WingmanPresentation } from './wingman-types';
+import type { WingmanPresentation, WingmanVisual } from './wingman-types';
 import type { PlanSnippet } from '../core/review';
 import type { acquireConstructionSnapshot } from '../three/renderer';
 import { PerformanceRecorder } from '../performance/recorder';
@@ -182,6 +182,16 @@ export class Application {
     this.listeners.forEach((listener) => {
       listener();
     });
+  }
+  /** Publish a CLI render to Wingman and tell the caller when it was not shown. */
+  private shown(data: object, visual: WingmanVisual): object {
+    return this.presentation?.publish(visual) === false
+      ? {
+          ...data,
+          notShownToUser:
+            'The user is viewing a different takeoff, so this view did not appear in Wingman. The image file was still written.',
+        }
+      : data;
   }
   recordCliContact(): void {
     if (!this.session) return;
@@ -514,7 +524,7 @@ export class Application {
             );
             data = { path, snippetId: snippet.id, ...image.metadata };
             if (request.origin === 'cli')
-              this.presentation?.publish({
+              data = this.shown(data as object, {
                 projectId: project.id,
                 takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
@@ -704,7 +714,7 @@ export class Application {
               omittedObjects: scene.omitted,
             };
             if (request.origin === 'cli')
-              this.presentation?.publish({
+              data = this.shown(data as object, {
                 projectId: project.id,
                 takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
@@ -851,7 +861,7 @@ export class Application {
             );
             data = { path, ...rendered.metadata };
             if (request.origin === 'cli')
-              this.presentation?.publish({
+              data = this.shown(data as object, {
                 projectId: project.id,
                 takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
