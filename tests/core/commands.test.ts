@@ -72,6 +72,7 @@ void test('registry examples validate and mutating examples execute in an open p
     'notes.write',
     'project.category.put',
     'project.sizes.put',
+    'project.specialOrderStuds.put',
     'sheet.put',
     'sheet.naming.apply',
     'sheet.scale',

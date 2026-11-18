@@ -81,6 +81,40 @@ void test('75 explicit 2ft pieces export 150 LF with quantity-only provenance an
   );
 });
 
+void test('a shared packaged length pools feet and inches in one order', () => {
+  const project = fixture();
+  const recipe = present(project.recipes.tee);
+  recipe.inputs = [
+    { name: 'a', type: 'number', unit: 'ft', default: 4 },
+    { name: 'b', type: 'number', unit: 'in', default: 48 },
+  ];
+  const first = definition(project);
+  delete first.piece;
+  Object.assign(first, {
+    unit: 'ft',
+    formula: 'a',
+    allowance: { wastePercent: 0, packageSize: 10 },
+  });
+  recipe.outputs.push({
+    ...first,
+    id: 'second',
+    unit: 'in',
+    formula: 'b',
+    allowance: { wastePercent: 0, packageSize: 120 },
+  });
+  assert.deepEqual(
+    takeoff(project).rows.map((r) => [
+      r.subItem.kind,
+      r.quantity,
+      r.orderQuantity,
+    ]),
+    [
+      ['group', 8, 10],
+      ['rounding', 2, 10],
+    ],
+  );
+});
+
 void test('direct lengths/areas convert purchased quantities once and generic exports remain intact', () => {
   for (const [unit, value, expected, target] of [
     ['ft', 10, 10, 'LF'],

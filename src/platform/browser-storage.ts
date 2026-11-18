@@ -99,6 +99,7 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
       'categoryColors',
       'notes',
       'standardSizes',
+      'allowSpecialOrderStuds',
     ]) {
       const value: unknown = await request(
         transaction.objectStore('records').get([this.path, 'extensions', key]),

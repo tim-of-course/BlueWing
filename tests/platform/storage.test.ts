@@ -206,6 +206,7 @@ const project = (): Project => ({
     },
   },
   formatVersion: 9,
+  allowSpecialOrderStuds: true,
   standardSizes: companySizes(),
   id: 'p',
   name: 'Test',

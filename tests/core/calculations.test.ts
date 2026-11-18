@@ -30,6 +30,7 @@ function fixture(
       },
     },
     formatVersion: 9,
+    allowSpecialOrderStuds: true,
     standardSizes: companySizes(),
     id: 'project',
     name: 'Estimate',

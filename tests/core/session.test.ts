@@ -15,6 +15,7 @@ function project(): Project {
       },
     },
     formatVersion: 9,
+    allowSpecialOrderStuds: true,
     standardSizes: companySizes(),
     id: 'project',
     name: 'Original',

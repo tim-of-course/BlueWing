@@ -8,6 +8,7 @@ export function quantityChanges(
     JSON.stringify([
       total.materialId,
       total.category,
+      total.specialOrder,
       total.orderDetail,
       total.packageSize,
       total.wastePercent,

@@ -498,6 +498,7 @@ export function calculateProject(project: Project): CalculationResult {
     }
     const key = JSON.stringify([
       output.materialId,
+      ...(output.specialOrder ? ['special'] : []),
       output.orderDetail,
       output.packageSize,
       output.wastePercent,
@@ -508,6 +509,7 @@ export function calculateProject(project: Project): CalculationResult {
     ]);
     const total = totals.get(key) ?? {
       materialId: output.materialId,
+      ...(output.specialOrder ? { specialOrder: true } : {}),
       ...(output.orderDetail ? { orderDetail: output.orderDetail } : {}),
       ...(output.packageSize === undefined
         ? {}
@@ -675,7 +677,7 @@ export function exportQuantities(
       output.role ?? '',
       output.cutLength?.value ?? null,
       output.stockLength?.value ?? null,
-      output.packedCount === undefined ? 'assignment' : 'takeoff',
+      'takeoff',
       output.category ?? project.recipes[output.recipeId]?.category ?? '',
       output.packedCount ?? null,
       output.purchasedLength?.value ?? null,
@@ -725,6 +727,7 @@ export function pieceSchedule(
         const recipeId = source.recipeId ?? output.recipeId;
         return {
           ...common,
+          outputId: source.outputId ?? output.outputId,
           recordType: output.modeling === 'estimate' ? 'estimate' : 'installed',
           sheet: project.sheets[geometry?.sheetId ?? '']?.name ?? '',
           geometryId: source.geometryId,

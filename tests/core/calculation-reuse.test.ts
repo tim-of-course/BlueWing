@@ -37,6 +37,7 @@ function baseProject(): Project {
       },
     },
     formatVersion: 9,
+    allowSpecialOrderStuds: true,
     standardSizes: companySizes(),
     id: 'reuse-project',
     name: 'Calculation reuse',

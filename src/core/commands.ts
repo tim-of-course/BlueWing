@@ -475,6 +475,13 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     true,
     { sizes: companySizes() },
   ],
+  [
+    'project.specialOrderStuds.put',
+    'Allow or disable special-order stud lengths across this job.',
+    object({ enabled: { type: 'boolean' } }),
+    true,
+    { enabled: true },
+  ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
   [
     'project.category.put',
@@ -1001,6 +1008,7 @@ export function validateProject(
       {
         formatVersion: { type: 'number', enum: [9] },
         standardSizes: standardSizesSchema,
+        allowSpecialOrderStuds: { type: 'boolean' },
         takeoffs: {
           type: 'object',
           additionalProperties: object(
@@ -1046,6 +1054,7 @@ export function validateProject(
       [
         'formatVersion',
         'standardSizes',
+        'allowSpecialOrderStuds',
         'takeoffs',
         'id',
         'name',
@@ -1263,6 +1272,7 @@ export function executeCommandOnDraft(
         'project.inspect',
         'project.category.put',
         'project.sizes.inspect',
+        'project.specialOrderStuds.put',
         'project.sizes.put',
         'notes.read',
         'notes.write',
@@ -1324,6 +1334,10 @@ export function executeCommandOnDraft(
         construction: next.construction,
         review: next.review,
       };
+      break;
+    case 'project.specialOrderStuds.put':
+      next.allowSpecialOrderStuds = payload.enabled as boolean;
+      data = next.allowSpecialOrderStuds;
       break;
     case 'project.sizes.inspect':
       data = next.standardSizes;

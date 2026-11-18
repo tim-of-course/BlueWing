@@ -68,6 +68,7 @@ export function recordChanges(previous: Project | undefined, next: Project) {
     'review',
     'categoryColors',
     'standardSizes',
+    'allowSpecialOrderStuds',
     'notes',
   ] as const)
     if (JSON.stringify(previous?.[id]) !== JSON.stringify(next[id]))

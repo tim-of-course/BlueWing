@@ -30,6 +30,7 @@ export interface QuantitySourceRef {
   surfaceId: string | null;
 }
 export interface OrderRow {
+  specialOrder?: true;
   direction: 'add' | 'deduct';
   grossQuantity: number;
   lineId: string;
@@ -129,12 +130,13 @@ export function quantityLabel(project: Project, output: Output) {
   return {
     inputDefinitions:
       definition?.component?.assembly.inputs ?? recipe?.inputs ?? [],
-    description: output.orderDetail
-      ? output.name
-      : (definition?.output.name ??
-        (output.modeling === 'modeled'
-          ? `${output.materialId.replaceAll(/[-_]/g, ' ')}${output.role ? ` · ${output.role.replaceAll(/[-_]/g, ' ')}` : ''}`
-          : output.name)),
+    description:
+      output.specialOrder || output.orderDetail
+        ? output.name
+        : (definition?.output.name ??
+          (output.modeling === 'modeled'
+            ? `${output.materialId.replaceAll(/[-_]/g, ' ')}${output.role ? ` · ${output.role.replaceAll(/[-_]/g, ' ')}` : ''}`
+            : output.name)),
     category:
       output.category ??
       definition?.component?.assembly.category ??
@@ -233,17 +235,19 @@ export function presentQuantities(
         output.role !== undefined ||
         output.stockLength != null ||
         output.cutLength != null);
-    const missingInput = output.sources.some((entry) =>
-      label.inputDefinitions.some(
-        (input) =>
-          input.type === 'number' &&
-          (input.unit === 'ft' ||
-            input.unit === 'in' ||
-            input.unit === 'ft2') &&
-          entry.inputs[input.name] === undefined &&
-          input.default === undefined,
-      ),
-    );
+    const missingInput =
+      !output.complete &&
+      output.sources.some((entry) =>
+        label.inputDefinitions.some(
+          (input) =>
+            input.type === 'number' &&
+            (input.unit === 'ft' ||
+              input.unit === 'in' ||
+              input.unit === 'ft2') &&
+            entry.inputs[input.name] === undefined &&
+            input.default === undefined,
+        ),
+      );
     const missingCalibration =
       !output.complete &&
       output.unit !== 'scalar' &&
@@ -334,7 +338,9 @@ export function presentQuantities(
         );
       physicalLengthSource = hasStock ? 'stock' : 'cut';
       quantity = output.purchasedAmount * feet;
-      description = `${label.description} · ${number(feet)}ft (${number(output.purchasedAmount)}pc)`;
+      description = output.specialOrder
+        ? label.description
+        : `${label.description} · ${number(feet)}ft (${number(output.purchasedAmount)}pc)`;
       unit = 'LF';
       const schedule = new Map<
         string,
@@ -383,6 +389,7 @@ export function presentQuantities(
         'Converted purchased quantity is not finite.',
       );
     const row: OrderRow = {
+      ...(output.specialOrder ? { specialOrder: true } : {}),
       ...(output.packageCount !== null && !dimensionedPiece
         ? { pieceCount: output.packageCount }
         : {}),

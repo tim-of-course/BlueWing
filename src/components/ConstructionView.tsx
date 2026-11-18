@@ -853,7 +853,21 @@ export default function ConstructionView(props: ConstructionViewProps) {
             aria-label="Selected construction item"
           >
             <strong>
-              {item().materialId} ·{' '}
+              {item().materialId}
+              {(() => {
+                const selectedItem = item();
+                if ('cutLength' in selectedItem)
+                  return selectedItem.specialOrder && selectedItem.stockLength
+                    ? ', ' +
+                        formatLength(selectedItem.stockLength) +
+                        ' special order'
+                    : '';
+                const detail = props.result.surfacePurchases?.find((p) =>
+                  p.surfaceIds.includes(selectedItem.id),
+                )?.orderDetail;
+                return detail ? ', ' + detail : '';
+              })()}{' '}
+              ·{' '}
               {'role' in item() ? (item() as { role: string }).role : 'Surface'}
             </strong>
             <span>Piece: {item().id}</span>

@@ -184,6 +184,46 @@ void test('sloped finishes order by sheet bands and overheight vertical finishes
   );
 });
 
+void test('wall type special-order studs respect count, minimum length, stock override and job schedule', () => {
+  const height = 9 + 4 / 12;
+  function order(
+    count: number,
+    enabled = true,
+    stockLength?: number,
+    h = height,
+  ) {
+    let project = fixture('steel-framing', 'path', ((count - 1) * 16) / 12);
+    applied(project).wallOverrides = {
+      height: h,
+      ...(stockLength ? { stud: { stockLength } } : {}),
+    };
+    project = command(project, 'project.specialOrderStuds.put', { enabled });
+    const result = calculateProject(project);
+    const pieces = result.model.pieces.filter((p) => p.role === 'stud');
+    assert.equal(pieces.length, count);
+    const rows = estiMakerTakeoff(project, result).rows.filter(
+      (r) => r.source.materialId === 'steel-stud-3-5-8-20eq',
+    );
+    const row = rows[0];
+    assert.ok(row);
+    assert.equal(rows.length, 2);
+    return row;
+  }
+  const special = order(120);
+  assert.equal(special.specialOrder, true);
+  near(special.pieceLength?.value, height);
+  assert.equal(special.pieceCount, 126);
+  assert.ok(special.description.includes('9\' 4" special order'));
+  for (const row of [order(99), order(120, false)]) {
+    assert.equal(row.specialOrder, undefined);
+    near(row.pieceLength?.value, 10);
+  }
+  near(order(120, true, 12).pieceLength?.value, 12);
+  near(order(120, true, undefined, 6.5).pieceLength?.value, 8);
+  assert.equal(order(120, true, undefined, 9).specialOrder, undefined);
+  assert.equal(order(120, true, undefined, 21).specialOrder, true);
+});
+
 function twoWallTypes() {
   const project = fixture('steel-framing', 'path', 6);
   const first = project.recipes['steel-framing'];
@@ -557,6 +597,36 @@ function addSurface(
     allowances: {},
   });
 }
+
+void test('a completely open face retains its drawing reference and gross order', () => {
+  let project = addSurface(framedTrace(), 'wainscot', 4);
+  const trace = project.geometries.trace;
+  assert.ok(trace);
+  project = command(project, 'geometry.put', {
+    ...trace,
+    points: [
+      { x: 0, y: 0 },
+      { x: 3, y: 0 },
+    ],
+  });
+  project = command(project, 'opening.put', {
+    ...door,
+    distance: 0,
+    jambCount: 0,
+  });
+  const result = calculateProject(project);
+  assert.deepEqual(result.model.diagnostics, []);
+  const row = estiMakerTakeoff(project, result).rows.find(
+    (r) => r.source.materialId === 'wainscot',
+  );
+  assert.ok(row);
+  near(row.quantity, 12);
+  near(row.provenance.openingWastePercent, 100);
+  assert.deepEqual(
+    row.provenance.sourceRefs.map((ref) => [ref.geometryId, ref.surfaceId]),
+    [['trace', null]],
+  );
+});
 
 void test('one framed door cuts independent finish and insulation scopes on its trace and exports the clipped wainscot', () => {
   let project = framedTrace();

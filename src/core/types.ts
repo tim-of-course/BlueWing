@@ -188,6 +188,7 @@ export interface Takeoff {
 }
 export interface Project {
   formatVersion: 9;
+  allowSpecialOrderStuds: boolean;
   standardSizes: StandardSizes;
   takeoffs: Record<string, Takeoff>;
   /** Derived view context; never written by the session. */
@@ -230,6 +231,7 @@ export interface CalculationSource {
   stockLength?: Quantity;
 }
 export interface CalculationOutput extends OrderCoverage {
+  specialOrder?: true;
   groupRequirements?: { groupId: string; amount: number }[];
   /** Semantic formula/purchase bucket identity; independent of public output indexes. */
   quantityKey?: string;
@@ -271,6 +273,7 @@ export interface CalculationOutput extends OrderCoverage {
   diagnostics: string[];
 }
 export interface QuantityTotal {
+  specialOrder?: true;
   orderDetail?: string;
   packageSize?: number;
   wastePercent?: number;

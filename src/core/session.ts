@@ -46,6 +46,7 @@ interface HistoryEntry {
   records: RecordChange[];
   construction: ExtensionChange<Project['construction']> | undefined;
   review: ExtensionChange<Project['review']> | undefined;
+  allowSpecialOrderStuds: ExtensionChange<boolean> | undefined;
   standardSizes: ExtensionChange<Project['standardSizes']> | undefined;
   categoryColors: ExtensionChange<Project['categoryColors']> | undefined;
   notes: ExtensionChange<Project['notes']> | undefined;
@@ -154,6 +155,10 @@ function difference(
     calculationChanged,
     construction: extensionChange(before.construction, after.construction),
     review: extensionChange(before.review, after.review),
+    allowSpecialOrderStuds: extensionChange(
+      before.allowSpecialOrderStuds,
+      after.allowSpecialOrderStuds,
+    ),
     standardSizes: extensionChange(before.standardSizes, after.standardSizes),
     categoryColors: extensionChange(
       before.categoryColors,
@@ -179,6 +184,8 @@ function restore(
 ): Project {
   const next = structuredClone(project);
   next.name = direction === 'before' ? entry.beforeName : entry.afterName;
+  if (entry.allowSpecialOrderStuds)
+    next.allowSpecialOrderStuds = entry.allowSpecialOrderStuds[direction];
   if (entry.standardSizes)
     next.standardSizes = structuredClone(entry.standardSizes[direction]);
   if (entry.categoryColors) {
