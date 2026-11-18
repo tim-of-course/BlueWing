@@ -131,7 +131,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         sheets = command('project.import', {'path': str(ROOT / 'tests/fixtures/assessment-plan.pdf')}, True)
         sheet = sheets[0]['id']
         command('sheet.calibrate', {'id': sheet, 'start': {'x': 72, 'y': 144},
-                                   'end': {'x': 372, 'y': 144}, 'distance': {'value': 6, 'unit': 'm'}}, True)
+                                   'end': {'x': 372, 'y': 144}, 'distance': {'value': 6, 'unit': 'ft'}}, True)
         command('geometry.put', {'id': 'wall-path', 'name': 'Wingman wall', 'sheetId': sheet,
                                  'kind': 'path', 'points': [{'x': 72, 'y': 144}, {'x': 372, 'y': 144}]}, True)
         member = {'materialId': 'stud', 'width': 0.04, 'depth': 0.09, 'stockLength': 4}

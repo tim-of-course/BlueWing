@@ -300,7 +300,7 @@ export const applicationCommands = [
       target: {
         type: 'object',
         description:
-          'Camera focus in world metres (Z up). Defaults to the filtered model centre.',
+          'Camera focus in world feet (Z up). Defaults to the filtered model centre.',
         properties: {
           x: { type: 'number' },
           y: { type: 'number' },
@@ -312,7 +312,7 @@ export const applicationCommands = [
       span: {
         type: 'number',
         minimum: Number.MIN_VALUE,
-        description: 'World metres across the shorter image axis at zoom 1.',
+        description: 'World feet across the shorter image axis at zoom 1.',
       },
       displayMode: { type: 'string', enum: ['solid', 'framing', 'xray'] },
     },
