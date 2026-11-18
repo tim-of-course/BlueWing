@@ -999,20 +999,16 @@ export function copyDetailedGeometry(
     if (modeled) applicationIds.push(id);
 
     if (wall?.conditions?.length) {
-      (detail.wall ??= {}).conditions = wall.conditions.map((source) => {
-        const condition = structuredClone(source);
+      // A junction whose members belong to a wall on another trace stays
+      // behind: the copy stands free there and frames that station itself.
+      (detail.wall ??= {}).conditions = wall.conditions.flatMap((source) => {
         const owner = walls.get(source.ownerWallId ?? wall.id);
-        condition.id = owner?.conditions.get(source.id) ?? newId();
-        if (!owner) {
-          // The original junction's members were counted on a different trace.
-          condition.count = 0;
-          delete condition.ownerWallId;
-          delete condition.memberOffsets;
-        } else if (source.ownerWallId) {
-          condition.ownerWallId = owner.id;
-        }
+        if (!owner) return [];
+        const condition = structuredClone(source);
+        condition.id = owner.conditions.get(source.id) ?? newId();
+        if (source.ownerWallId) condition.ownerWallId = owner.id;
         conditionIds.add(condition.id);
-        return condition;
+        return [condition];
       });
     }
     for (const opening of detail.material?.openings ?? []) {
