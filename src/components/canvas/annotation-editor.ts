@@ -40,12 +40,20 @@ export function createAnnotationEditor(options: {
   const [selectedId, select] = createSignal<string | null>(null);
   const [preview, setPreview] = createSignal<AnnotationShape | null>(null);
   const [textEdit, setTextEdit] = createSignal<TextEdit | null>(null);
-  const annotations = createMemo(() =>
-    controller().annotationsVisible()
-      ? Object.values(controller().project()?.annotations ?? {}).filter(
-          (a) => a.sheetId === options.sheet()?.id,
-        )
-      : [],
+  const annotations = createMemo(
+    () => {
+      if (!controller().annotationsVisible()) return [];
+      const sheetId = options.sheet()?.id;
+      return Object.values(controller().project()?.annotations ?? {}).filter(
+        (annotation) => annotation.sheetId === sheetId,
+      );
+    },
+    {
+      name: 'canvas.sheetAnnotations',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((annotation, index) => annotation === next[index]),
+    },
   );
   const selected = () => annotations().find((a) => a.id === selectedId());
   let drag: Drag | undefined;
