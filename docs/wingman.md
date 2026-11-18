@@ -18,11 +18,11 @@ Wingman retains the two most recent plan backgrounds across swaps and collapse/r
 
 **Attach screenshot** or **Cmd/Ctrl+Shift+X** captures a rectangle anywhere inside the app, including headers, sidebars, plans, and 3D. Captures remain in the message draft until sent and can be removed or supplemented. Escape cancels capture. Sent images stay fixed. The application content is captured, not operating-system chrome or other apps.
 
-CLI messages are delivered as text with image paths, including on application errors. Message reads do not remove history. Callers report their last received message so concurrent calls or a lost response cannot consume another caller's messages. Chat saves separately from estimate revision and Undo.
+CLI messages are delivered as text with image paths, including on application errors. Message reads do not remove history. Read top-level `messages` on every result in ID order, then pass the highest processed ID for that project as the envelope’s `messagesAfter`. On connection, earlier messages appear as `messageHistory`. The agent reads them for context and asks about requests whose status is unclear. Chat saves separately from estimate revision and Undo.
 
 Conversations and screenshot files are local application data keyed by project identity. They survive reopening on the same device but are not included when copying the `.bluewing` file to another computer. No model, provider, external message service, or agent runtime is embedded. See [CLI examples and cursor rules](cli.md#wingman-messages-and-presentation).
 
-Pause blocks new non-messaging CLI actions and rejects queued actions that have not started. A running atomic action can finish. Resuming never replays rejected actions. Desktop editing and messaging remain available.
+Pause blocks new non-messaging CLI actions and rejects queued actions that have not started. A running atomic action can finish. Resume CLI wakes a pending message wait even if the user sends no text. Rejected actions require a new request. Desktop editing and messaging remain available.
 
 **Waiting for your message** appears while a CLI message wait is pending. **End conversation** wakes that wait and prevents it renewing. Neither asks an external host to stop a running task. An agent that cannot remain available should explain that in Wingman. If its process disconnects, the waiting indicator clears when the outstanding application wait expires, within 25 seconds. Bluewing communicates your intent; the external host controls agent availability.
 

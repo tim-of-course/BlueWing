@@ -6,6 +6,9 @@ import {
   type MessagingStorage,
 } from '../../src/app/messaging';
 import { dispatchCli, parseCli } from '../../src/app/cli';
+import { Application } from '../../src/app/application';
+import { createProject } from '../../src/core/geometry';
+import { ProjectSession } from '../../src/core/session';
 
 function fixture() {
   const saved = new Map<string, Message[]>();
@@ -20,6 +23,76 @@ function fixture() {
   };
   return { messaging: new Messaging(storage), storage };
 }
+void test('project open tolerates missing images and protects unreadable transcripts', async () => {
+  const project = createProject('Clinic');
+  const image = {
+    id: 'a',
+    name: 'detail.png',
+    path: 'missing.png',
+    width: 2,
+    height: 3,
+    dataUrl: 'data:image/png;base64,',
+  };
+  const history = JSON.stringify([
+    {
+      id: 1,
+      text: 'See detail',
+      sender: 'user',
+      createdAt: '2026-11-17',
+      attachments: [image, { ...image, path: 'readable.png' }],
+    },
+  ]);
+  let source = history;
+  let writes = 0;
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      __TAURI_INTERNALS__: {
+        invoke(command: string, args: { path?: string }) {
+          if (command === 'app_data_read') return Promise.resolve(source);
+          if (command === 'read_file' && args.path === 'readable.png')
+            return Promise.resolve({ data: 'eA==' });
+          if (command === 'app_data_write') writes++;
+          return Promise.reject(new Error('Unreadable file'));
+        },
+      },
+    },
+  });
+  try {
+    for (source of [history, '', '{}', '[{"id":1}]']) {
+      const app = new Application(true);
+      Object.assign(app.storage, {
+        open: () => Promise.resolve(),
+        load: () => Promise.resolve(project),
+      });
+      await app.dispatch({ name: 'project.open', payload: { path: 'clinic' } });
+      assert.equal(app.project?.id, project.id);
+      if (source === history) {
+        const row = (await app.messaging.read())[0];
+        assert.equal(app.messaging.status().loadError, null);
+        assert.deepEqual(row?.attachments[0], { ...image, unavailable: true });
+        assert.equal(row.attachments[1]?.dataUrl, image.dataUrl + 'eA==');
+        assert.equal(
+          app.messaging.delivery().messages[0]?.attachments[0]?.unavailable,
+          true,
+        );
+      } else {
+        assert.match(app.messaging.status().loadError ?? '', /load Wingman/);
+        await assert.rejects(app.messaging.read(), /load Wingman/);
+        await assert.rejects(app.messaging.wait(0, 0), /load Wingman/);
+        await assert.rejects(
+          app.messaging.send('hi', [], 'agent'),
+          /load Wingman/,
+        );
+      }
+    }
+    assert.equal(writes, 0);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'window', previous);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
+});
 void test('message results and CLI metadata cannot mutate the accepted conversation', async () => {
   const { messaging } = fixture();
   await messaging.bind('one');
@@ -141,10 +214,9 @@ void test('CLI envelopes project-scope and filter messages without transcript cl
       'project.inspect',
       '{"projectId":"other","messagesAfter":900}',
     ]);
-    assert.equal(changed.response.messagesProjectId, 'one');
-    assert.equal(changed.response.messages?.length, 2);
-    assert.ok(!JSON.stringify(changed).includes('dataUrl'));
-    assert.ok(JSON.stringify(changed).includes('/local/large.png'));
+    assert.equal(changed.response.messagesProjectId, 'other');
+    assert.deepEqual(changed.response.messages, []);
+    assert.ok(!JSON.stringify(changed).includes('/local/large.png'));
     assert.equal(calls, 0);
   } finally {
     globalThis.structuredClone = clone;
@@ -253,6 +325,23 @@ void test('CLI parsing owns origin and validates the envelope cursor', () => {
     /nonnegative integer/,
   );
 });
+void test('CLI parses one leading UTF-8 BOM from stdin or argument JSON', () => {
+  const source = '\uFEFF{"payload":{"text":"I’m measuring 8′"}}';
+  assert.deepEqual(parseCli(['messages.send'], source).payload, {
+    text: 'I’m measuring 8′',
+  });
+  assert.deepEqual(parseCli(['messages.send', source]).payload, {
+    text: 'I’m measuring 8′',
+  });
+  assert.deepEqual(
+    parseCli(['help', '\uFEFF{"payload":{"command":"messages.read"}}']).payload,
+    { command: 'messages.read' },
+  );
+  assert.throws(
+    () => parseCli(['messages.send'], '\uFEFF' + source),
+    SyntaxError,
+  );
+});
 void test('short help and command help parse without requesting the full registry', () => {
   assert.equal(parseCli([]).name, 'help');
   assert.equal(parseCli(['--help']).name, 'help');
@@ -277,11 +366,27 @@ void test('Wingman wait wakes for user input, permits agent sends, and shows onl
   const user = await messaging.send('Use 12 feet', [], 'user');
   const reply = await pending;
   assert.equal(reply.status, 'messages');
-  assert.equal(reply.after, user.id);
+  assert.equal(reply.messages.at(-1)?.id, user.id);
   assert.equal(reply.messages.length, 2);
   assert.equal(reply.projectId, 'one');
   assert.equal(messaging.snapshot().waiting, false);
   assert.deepEqual((await messaging.wait(0, 0)).messages, reply.messages);
+});
+void test('Resume CLI wakes pending waits and renewals between native exchanges', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  messaging.setPaused(true);
+  const poll = await messaging.wait(0, 0);
+  const pending = messaging.wait(0, 1000);
+  messaging.setPaused(false);
+  const resumed = await pending;
+  assert.equal(resumed.status, 'resumed');
+  assert.deepEqual(resumed.messages, []);
+  assert.equal((await messaging.wait(0, 0, poll.waitToken)).status, 'resumed');
+  assert.equal(
+    (await messaging.wait(0, 0, resumed.waitToken)).status,
+    'timeout',
+  );
 });
 void test('ending a conversation wakes all waits, prevents renewal, and permits a new conversation', async () => {
   const { messaging } = fixture();
@@ -328,7 +433,7 @@ void test('timeouts return received agent messages and release only their own wa
   const long = messaging.wait(0, 1000);
   const timed = await messaging.wait(0, 1);
   assert.equal(timed.status, 'timeout');
-  assert.equal(timed.after, 1);
+  assert.equal(timed.messages.at(-1)?.id, 1);
   assert.equal(messaging.snapshot().waiting, true);
   messaging.stopWaiting();
   await long;
@@ -459,8 +564,8 @@ void test('CLI strips image data from message results and identifies the cursor 
     'messages.read',
     '{"projectId":"old","messagesAfter":900}',
   ]);
-  assert.equal(changed.response.messages?.length, 1);
-  assert.equal(changed.response.messagesProjectId, 'one');
+  assert.deepEqual(changed.response.messages, []);
+  assert.equal(changed.response.messagesProjectId, 'old');
   application.dispatch = async () => ({
     data: await messaging.wait(0, 0),
     projectId: 'one',
@@ -470,4 +575,122 @@ void test('CLI strips image data from message results and identifies the cursor 
   assert.ok(!JSON.stringify(waiting).includes('dataUrl'));
   assert.ok(JSON.stringify(waiting).includes('/local/a.png'));
   assert.equal(waiting.response.messagesProjectId, 'one');
+});
+void test('stale Wingman requests cannot touch the open presentation or receive its chat', async () => {
+  const app = new Application(false);
+  const project = createProject('Other job');
+  app.session = new ProjectSession(project, { save: () => Promise.resolve() });
+  const { messaging } = fixture();
+  Object.assign(app, { messaging });
+  await messaging.bind(project.id);
+  await messaging.send('Private job detail', [], 'user');
+  const unexpected = () => assert.fail('Touched the other job presentation');
+  app.presentation = {
+    inspect: unexpected,
+    annotate: unexpected,
+    flash: unexpected,
+    publish: unexpected,
+    hasMessageDraft: () => false,
+  };
+  for (const name of [
+    'messages.send',
+    'messages.read',
+    'messages.wait',
+    'wingman.inspect',
+    'wingman.flash',
+    'wingman.annotate',
+  ]) {
+    const result = await dispatchCli(app, [name], '{"projectId":"previous"}');
+    assert.equal(result.exitCode, 1);
+    assert.ok('error' in result.response);
+    assert.match(result.response.error.message, /Project changed/);
+    assert.deepEqual(result.response.messages, []);
+    assert.equal(result.response.messagesProjectId, 'previous');
+    assert.equal(result.response.messageGuidance, undefined);
+  }
+  assert.equal((await messaging.read()).length, 1);
+});
+void test('one project cursor selects rows once and rejects replay overrides and future IDs', async () => {
+  const app = new Application(false);
+  const project = createProject('Clinic');
+  app.session = new ProjectSession(project, { save: () => Promise.resolve() });
+  const { messaging } = fixture();
+  Object.assign(app, { messaging });
+  await messaging.bind(project.id);
+  await messaging.send('Earlier', [], 'agent');
+  const user = await messaging.send('Change the height', [], 'user');
+  const call = (name: string, messagesAfter: number, payload = {}) =>
+    dispatchCli(
+      app,
+      [name],
+      JSON.stringify({ projectId: project.id, messagesAfter, payload }),
+    );
+  for (const name of ['messages.read', 'messages.wait']) {
+    const payload = name === 'messages.wait' ? { timeoutMs: 0 } : {};
+    const reply = (await call(name, 1, payload)).response;
+    assert.ok('data' in reply);
+    assert.deepEqual(reply.messages, [user]);
+    if (name === 'messages.read') assert.equal(reply.data, null);
+    else
+      assert.deepEqual(Object.keys(reply.data as object).sort(), [
+        'projectId',
+        'status',
+        'waitToken',
+      ]);
+    assert.equal((await call(name, 2, { ...payload, after: 0 })).exitCode, 1);
+  }
+  for (const name of [
+    'messages.read',
+    'messages.wait',
+    'messages.send',
+    'project.inspect',
+  ]) {
+    const rejected = (await call(name, 3, { text: 'Premature' })).response;
+    assert.ok('error' in rejected);
+    assert.match(rejected.error.message, /ahead.*last message ID \(2\)/);
+    assert.deepEqual(rejected.messages, []);
+  }
+  const sent = (await call('messages.send', 1, { text: 'Acknowledged' }))
+    .response;
+  assert.ok('data' in sent);
+  assert.deepEqual(sent.data, { id: 3 });
+  assert.deepEqual(
+    sent.messages.map((m) => m.id),
+    [2, 3],
+  );
+});
+void test('connect separates prior requests and answers from live Wingman input', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  const first = await messaging.send('Check the wall', [], 'user');
+  const done = await messaging.send('Checked', [], 'agent');
+  const open = await messaging.send('Check the opening too', [], 'user');
+  const application = {
+    messaging,
+    project: null,
+    dispatch: () =>
+      Promise.resolve({ projectId: 'one', revision: 0, data: null }),
+  };
+  const connect = () =>
+    dispatchCli(application, ['connect', '{"projectId":"one"}']);
+  const initial = (await connect()).response;
+  assert.deepEqual(initial.messageHistory, [first, done, open]);
+  assert.deepEqual(initial.messages, []);
+  assert.equal(initial.messageGuidance, undefined);
+  application.dispatch = async () => {
+    await messaging.send('New while connecting', [], 'user');
+    return { projectId: 'one', revision: 0, data: null };
+  };
+  const later = (
+    await dispatchCli(application, [
+      'connect',
+      '{"projectId":"one","messagesAfter":2}',
+    ])
+  ).response;
+  assert.deepEqual(later.messageHistory, [open]);
+  assert.deepEqual(
+    later.messages?.map((row) => row.id),
+    [4],
+  );
+  assert.match(later.messageGuidance ?? '', /messages.send/);
 });

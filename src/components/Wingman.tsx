@@ -419,17 +419,26 @@ export default function Wingman(props: Props) {
                       <div class="wingman-message-images">
                         <For each={message.attachments}>
                           {(attachment) => (
-                            <a
-                              href={attachment.dataUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Open screenshot"
+                            <Show
+                              when={!attachment.unavailable}
+                              fallback={
+                                <span class="wingman-empty">
+                                  {attachment.name} (image unavailable)
+                                </span>
+                              }
                             >
-                              <img
-                                src={attachment.dataUrl}
-                                alt={attachment.name}
-                              />
-                            </a>
+                              <a
+                                href={attachment.dataUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Open screenshot"
+                              >
+                                <img
+                                  src={attachment.dataUrl}
+                                  alt={attachment.name}
+                                />
+                              </a>
+                            </Show>
                           )}
                         </For>
                       </div>
@@ -684,10 +693,12 @@ export default function Wingman(props: Props) {
               </button>
             </Show>
           </Show>
-          <Show when={error()}>
-            <p class="wingman-error" role="alert">
-              {error()}
-            </p>
+          <Show when={error() || conversation().loadError}>
+            {(problem) => (
+              <p class="wingman-error" role="alert">
+                {problem()}
+              </p>
+            )}
           </Show>
         </aside>
       </Show>

@@ -15,16 +15,23 @@ fn wait_request(args: &[String], input: Option<&str>) -> Option<(Value, Duration
     {
         return None;
     }
-    let mut body: Value = serde_json::from_str(
-        input
-            .or_else(|| args.get(1).map(String::as_str))
-            .unwrap_or("{}"),
-    )
-    .ok()?;
+    let source = input
+        .or_else(|| args.get(1).map(String::as_str))
+        .unwrap_or("{}");
+    let mut body: Value =
+        serde_json::from_str(source.strip_prefix('\u{feff}').unwrap_or(source)).ok()?;
     let fields = body.as_object()?;
     if fields.keys().any(|key| {
-        !["payload", "projectId", "expectedRevision", "messagesAfter"].contains(&key.as_str())
+        ![
+            "payload",
+            "projectId",
+            "takeoffId",
+            "expectedRevision",
+            "messagesAfter",
+        ]
+        .contains(&key.as_str())
     }) || fields.get("projectId").is_some_and(|v| !v.is_string())
+        || fields.get("takeoffId").is_some_and(|v| !v.is_string())
         || fields
             .get("messagesAfter")
             .is_some_and(|v| safe_integer(v).is_none())
@@ -40,10 +47,7 @@ fn wait_request(args: &[String], input: Option<&str>) -> Option<(Value, Duration
     let payload = body["payload"].as_object()?;
     if payload
         .keys()
-        .any(|key| !["after", "timeoutMs", "waitToken"].contains(&key.as_str()))
-        || payload
-            .get("after")
-            .is_some_and(|v| safe_integer(v).is_none())
+        .any(|key| !["timeoutMs", "waitToken"].contains(&key.as_str()))
         || payload.get("waitToken").is_some_and(|v| !v.is_string())
     {
         return None;
@@ -109,7 +113,7 @@ fn renew(
         };
         body["payload"]["waitToken"] = json!(token);
         body["projectId"] = json!(project);
-        // Keep the original cursors: intermediate replies are not delivered to
+        // Keep the original cursor: intermediate replies are not delivered to
         // the caller. The final response must still include their messages.
     }
 }
@@ -123,16 +127,17 @@ mod tests {
         Reply {
             exit_code: 0,
             response: json!({"ok":true,"messages":[],"data":{
-                "status":status,"messages":[],"after":99,"waitToken":"generation-1","projectId":"project-1"
+                "status":status,"waitToken":"generation-1","projectId":"project-1"
             }}),
         }
     }
 
     #[test]
-    fn renews_in_bounded_chunks_and_binds_without_consuming_cursors() {
+    fn renews_in_bounded_chunks_and_binds_without_consuming_the_cursor() {
         for stdin in [false, true] {
             let source =
-                json!({"messagesAfter":3,"payload":{"after":2,"timeoutMs":60000}}).to_string();
+                json!({"takeoffId":"co","messagesAfter":3,"payload":{"timeoutMs":60000}})
+                    .to_string();
             let args = if stdin {
                 vec!["messages.wait".into()]
             } else {
@@ -147,8 +152,9 @@ mod tests {
                     let body: Value =
                         serde_json::from_str(input.as_deref().unwrap_or_else(|| &args[1])).unwrap();
                     assert_eq!(body["payload"]["timeoutMs"], [25000, 25000, 10000][calls]);
-                    assert_eq!(body["payload"]["after"], 2);
+                    assert!(body["payload"].get("after").is_none());
                     assert_eq!(body["messagesAfter"], 3);
+                    assert_eq!(body["takeoffId"], "co");
                     if calls > 0 {
                         assert_eq!(body["projectId"], "project-1");
                         assert_eq!(body["payload"]["waitToken"], "generation-1");
@@ -163,6 +169,19 @@ mod tests {
             assert_eq!(calls, 3);
             assert_eq!(result.response["data"]["status"], "timeout");
         }
+    }
+
+    #[test]
+    fn accepts_one_leading_bom_in_stdin_and_argument_json() {
+        let args = vec!["messages.wait".into()];
+        let source = "\u{feff}{\"takeoffId\":\"étage\"}";
+        let parsed = wait_request(&args, Some(source)).unwrap();
+        assert_eq!(parsed.0["takeoffId"], "étage");
+        assert_eq!(
+            wait_request(&[args[0].clone(), source.into()], None),
+            Some(parsed)
+        );
+        assert!(wait_request(&args, Some("\u{feff}\u{feff}{}")).is_none());
     }
 
     #[test]
@@ -194,6 +213,7 @@ mod tests {
     fn stops_for_status_errors_and_racing_user_messages() {
         for case in [
             "messages",
+            "resumed",
             "ended",
             "project_changed",
             "error",
@@ -240,6 +260,7 @@ mod tests {
             (vec!["messages.wait", "{}"], Some("{}")),
             (vec!["messages.wait", "not json"], None),
             (vec!["messages.wait", r#"{"unknown":true}"#], None),
+            (vec!["messages.wait", r#"{"takeoffId":1}"#], None),
             (
                 vec!["messages.wait", r#"{"payload":{"timeoutMs":-1}}"#],
                 None,
@@ -249,9 +270,10 @@ mod tests {
                 None,
             ),
             (
-                vec!["messages.wait", r#"{"payload":{"after":9007199254740992}}"#],
+                vec!["messages.wait", r#"{"messagesAfter":9007199254740992}"#],
                 None,
             ),
+            (vec!["messages.wait", r#"{"payload":{"after":0}}"#], None),
         ];
         for (args, input) in requests {
             let args: Vec<String> = args.into_iter().map(str::to_owned).collect();

@@ -5,6 +5,7 @@ export interface Attachment {
   width: number;
   height: number;
   path?: string;
+  unavailable?: true;
 }
 export interface Message {
   id: number;
@@ -25,6 +26,7 @@ export function wireMessage(message: Message) {
       width: attachment.width,
       height: attachment.height,
       ...(attachment.path === undefined ? {} : { path: attachment.path }),
+      ...(attachment.unavailable ? { unavailable: true } : {}),
     })),
   };
 }
@@ -35,27 +37,31 @@ export interface MessagingStorage {
   exportAttachment(attachment: Attachment): Promise<Attachment>;
 }
 export interface MessageWait {
-  status: 'messages' | 'timeout' | 'ended' | 'project_changed';
+  status: 'messages' | 'timeout' | 'resumed' | 'ended' | 'project_changed';
   projectId: string | null;
   waitToken: string;
-  after: number;
   messages: Message[];
 }
 export class Messaging {
   private projectId: string | null = null;
   private messages: Message[] = [];
+  private loadError: string | null = null;
   private paused = false;
-  private epoch = 0;
+  private resumes = 0;
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<(change: MessagingChange) => void>();
-  private waitToken: string = crypto.randomUUID();
+  private conversationToken: string = crypto.randomUUID();
   private waiters = new Set<symbol>();
+  private get waitToken() {
+    return `${this.conversationToken}.${String(this.resumes)}`;
+  }
   constructor(private storage: MessagingStorage) {}
   status() {
     return {
       projectId: this.projectId,
       paused: this.paused,
       waiting: this.waiters.size > 0,
+      loadError: this.loadError,
     };
   }
   snapshot(after = 0) {
@@ -68,13 +74,29 @@ export class Messaging {
   }
   /** CLI delivery creates isolated metadata without copying screenshot contents. */
   delivery(after = 0, projectId?: string) {
-    if (projectId !== undefined && projectId !== this.projectId) after = 0;
+    if (projectId !== undefined && projectId !== this.projectId)
+      return { projectId, messages: [] };
     return {
       projectId: this.projectId,
       messages: this.messages
         .filter((message) => message.id > after)
         .map(wireMessage),
     };
+  }
+  checkCursor(after: number, projectId?: string) {
+    if (
+      !this.projectId ||
+      (projectId !== undefined && projectId !== this.projectId)
+    )
+      return;
+    const lastId = this.lastMessageId;
+    if (!this.loadError && after > lastId)
+      throw new Error(
+        `messagesAfter is ahead of the last message ID (${String(lastId)}) for this project.`,
+      );
+  }
+  get lastMessageId(): number {
+    return this.messages.at(-1)?.id ?? 0;
   }
   subscribe(fn: (change: MessagingChange) => void): () => void {
     this.listeners.add(fn);
@@ -94,11 +116,17 @@ export class Messaging {
   }
   bind(projectId: string | null): Promise<void> {
     return this.schedule(async () => {
-      const messages =
-        projectId === null ? [] : await this.storage.read(projectId);
+      let messages: Message[] = [];
+      let loadError: string | null = null;
+      try {
+        if (projectId !== null) messages = await this.storage.read(projectId);
+      } catch (error) {
+        loadError = `Could not load Wingman conversation: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      this.loadError = loadError;
       this.projectId = projectId;
       this.messages = messages;
-      this.waitToken = crypto.randomUUID();
+      this.conversationToken = crypto.randomUUID();
       this.waiters.clear();
       this.publish('bind');
     });
@@ -106,22 +134,24 @@ export class Messaging {
   setPaused(paused: boolean): void {
     if (this.paused === paused) return;
     this.paused = paused;
-    if (paused) this.epoch++;
+    if (!paused) this.resumes++;
     this.publish();
   }
   stopWaiting(): void {
-    this.waitToken = crypto.randomUUID();
+    this.conversationToken = crypto.randomUUID();
     this.waiters.clear();
     this.publish();
   }
   /** A ticket stays invalid after any intervening pause, even after resume. */
   cliTicket(): () => void {
-    const epoch = this.epoch;
+    const resumes = this.resumes;
     const paused = this.paused;
     return () => {
-      if (paused || this.paused || epoch !== this.epoch)
+      if (paused || this.paused || resumes !== this.resumes)
         throw Object.assign(
-          new Error('Wingman is paused; submit a new command after resume.'),
+          new Error(
+            'Wingman is paused. Say so once in Wingman using messages.send, then call messages.wait for resume.',
+          ),
           { code: 'WINGMAN_PAUSED' },
         );
     };
@@ -163,6 +193,7 @@ export class Messaging {
     return this.schedule(async () => {
       if (!projectId || projectId !== this.projectId)
         throw new Error('Open a project before sending a message');
+      if (this.loadError) throw new Error(this.loadError);
       if (!text.trim() && copies.length === 0)
         throw new Error('A message needs text or an attachment');
       if (
@@ -194,6 +225,7 @@ export class Messaging {
     });
   }
   async read(after = 0, waitMs = 0): Promise<Message[]> {
+    if (this.loadError) throw new Error(this.loadError);
     const projectId = this.projectId;
     const available = () => this.messages.some((message) => message.id > after);
     const read = () =>
@@ -217,13 +249,15 @@ export class Messaging {
     timeoutMs = 25000,
     waitToken = this.waitToken,
   ): Promise<MessageWait> {
+    if (this.loadError) throw new Error(this.loadError);
     const projectId = this.projectId;
     if (!projectId)
       throw new Error('Open a project before waiting for messages');
     const read = () => this.messages.filter((message) => message.id > after);
     const status = (): MessageWait['status'] => {
       if (projectId !== this.projectId) return 'project_changed';
-      if (waitToken !== this.waitToken) return 'ended';
+      if (!waitToken.startsWith(this.conversationToken + '.')) return 'ended';
+      if (waitToken !== this.waitToken) return 'resumed';
       return read().some((message) => message.sender === 'user')
         ? 'messages'
         : 'timeout';
@@ -255,8 +289,7 @@ export class Messaging {
     return {
       status: outcome,
       projectId,
-      waitToken,
-      after: messages.at(-1)?.id ?? after,
+      waitToken: outcome === 'resumed' ? this.waitToken : waitToken,
       messages,
     };
   }

@@ -7,12 +7,17 @@ export interface CliConnection {
 }
 
 export function conversationInstructions(mode: ConversationMode): string {
+  const shared = [
+    'Read messageHistory for context, act only on clearly open requests, and ask if unsure.',
+    'Use one agent per conversation. After an uncertain send, read with messages.read before sending again.',
+  ].join('\n');
   if (mode === 'chat')
-    return 'Chat only: use Bluewing tools and visual views, and keep questions, progress, and answers in our external chat. Interpret any Wingman messages in this mode as user input to answer in the external chat. Wait for further instructions there.';
+    return `Chat only: use Bluewing tools and visual views, and keep questions, progress, and answers in our external chat. Answer new Wingman messages there and wait for further instructions there.\n${shared}`;
   return [
     'Wingman + chat: reply to my Wingman messages using messages.send so I can work entirely in Bluewing. Our external chat remains available; duplicate replies are optional.',
+    shared,
     'After connecting, introduce yourself briefly in Wingman. After answering or completing work, call messages.wait and use your available tools to await its result. Continue this conversation while your environment supports it.',
-    'On timeout, renew the wait if you can continue. On ended or project_changed, stop waiting. If your environment cannot remain available, explain that briefly through messages.send before ending your turn. Bluewing does not require any particular model or harness.',
+    'On timeout, renew the wait if you can continue. On resumed, continue work. On ended or project_changed, stop waiting. If your environment cannot remain available, explain that briefly through messages.send before ending your turn.',
   ].join('\n');
 }
 
@@ -26,18 +31,23 @@ export function connectionPrompt(
 ): string {
   const quote = (value: string) =>
     connection.shell === 'powershell'
-      ? `'${value.replaceAll("'", "''")}'`
+      ? `'${value.replace(/['\u2018\u2019\u201a\u201b]/g, "'$&")}'`
       : `'${value.replaceAll("'", "'\\''")}'`;
   const request = JSON.stringify({ projectId: project.id, payload: { mode } });
   const command =
     connection.shell === 'powershell'
-      ? `$env:BLUEWING_DATA_DIR = ${quote(connection.dataDir)}; ${quote(request)} | & ${quote(connection.cliPath)} connect --stdin`
+      ? `$OutputEncoding = [System.Text.UTF8Encoding]::new($false); $env:BLUEWING_DATA_DIR = ${quote(connection.dataDir)}; ${quote(request)} | & ${quote(connection.cliPath)} connect --stdin`
       : `BLUEWING_DATA_DIR=${quote(connection.dataDir)} ${quote(connection.cliPath)} connect ${quote(request)}`;
   return [
     `Connect to my open Bluewing project ${JSON.stringify(project.name)} using this ${connection.shell === 'powershell' ? 'PowerShell' : 'shell'} command:`,
     command,
+    ...(connection.shell === 'powershell'
+      ? [
+          'Reuse $OutputEncoding in each new shell and send JSON via --stdin, piping Get-Content -Raw -Encoding UTF8 -LiteralPath request.json for text with quotes or non-ASCII characters.',
+        ]
+      : []),
     conversationInstructions(mode),
-    `Use this executable and BLUEWING_DATA_DIR for subsequent commands. Keep requests bound to projectId ${JSON.stringify(project.id)}. Bluewing must remain open. Use takeoff.list then takeoff.select to set the CLI current takeoff (starts on Main). Selection persists for the open project session independently of the UI. An envelope takeoffId overrides one request; check the echoed takeoff identity in results. Read the connection result for command help and message cursors.`,
+    `Keep Bluewing open. Reuse this executable and BLUEWING_DATA_DIR with projectId ${JSON.stringify(project.id)}. Use takeoff.list then takeoff.select to set CLI context (initially Main, independent of the UI). Envelope takeoffId overrides one request. Check the echoed takeoff and read connect for help and cursor rules.`,
   ].join('\n\n');
 }
 
@@ -76,7 +86,7 @@ export function cliIntroduction(
       conversation: 'messages.send, messages.read, messages.wait',
     },
     messages:
-      'Results carry messages and messagesProjectId, including on command errors. Read user messages and open attachment paths. Keep the greatest received message id with that project identity and pass it as messagesAfter on every next request, including sends; reads are nondestructive. messages.wait also accepts payload.after and timeoutMs (native default 300000ms). Process messages on send/wait results before waiting again. Pause CLI blocks non-messaging commands; only the user can resume.',
+      'Read top-level messages on every result, including sends and errors. Open attachment paths as needed. Process messageHistory on connect, then unseen messages in ID order. Pass the highest processed ID from either list for messagesProjectId as envelope messagesAfter on every request. Reads are nondestructive. messages.wait accepts timeoutMs (native default 300000). Only the user can resume paused CLI work.',
     ...(mode === undefined
       ? {}
       : { mode, instructions: conversationInstructions(mode) }),

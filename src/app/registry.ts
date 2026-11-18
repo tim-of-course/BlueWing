@@ -123,7 +123,7 @@ export const applicationCommands = [
   ),
   entry(
     'connect',
-    'Identify the open project and get instructions for Wingman + chat or Chat only.',
+    'Identify the open project and get conversation instructions. Earlier rows are delivered in messageHistory.',
     { mode: { type: 'string', enum: ['wingman', 'chat'] } },
     [],
     false,
@@ -156,26 +156,24 @@ export const applicationCommands = [
   ),
   entry(
     'messages.read',
-    'Read messages after a cursor; optionally wait up to 25000ms for delivery.',
+    'Read top-level messages after the envelope messagesAfter cursor. Optionally wait up to 25000ms for delivery.',
     {
-      after: { type: 'number', minimum: 0 },
       waitMs: { type: 'number', minimum: 0 },
     },
     [],
     false,
-    { after: 0, waitMs: 25000 },
+    { waitMs: 25000 },
   ),
   entry(
     'messages.wait',
-    'Wait for user input in Wingman. The native CLI quietly renews short waits, up to timeoutMs (default 300000). Stop on ended or project_changed.',
+    'Wait for user messages after the envelope messagesAfter cursor or for Resume CLI. The native CLI renews up to timeoutMs (default 300000). Continue work on resumed. Stop on ended or project_changed.',
     {
-      after: { type: 'number', minimum: 0 },
       timeoutMs: { type: 'number', minimum: 0 },
       waitToken: string,
     },
     [],
     false,
-    { after: 0, timeoutMs: 300000 },
+    { timeoutMs: 300000 },
   ),
   entry(
     'wingman.inspect',
