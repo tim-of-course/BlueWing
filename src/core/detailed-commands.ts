@@ -31,6 +31,7 @@ import {
 } from './review';
 import type { ReviewMark } from './review';
 
+import { wallSheetSchema, sheetChoiceSchema } from './face-ordering';
 const text: PayloadSchema = { type: 'string' };
 const number: PayloadSchema = { type: 'number' };
 const nonnegative: PayloadSchema = { type: 'number', minimum: 0 };
@@ -138,6 +139,8 @@ const finish = object(
       ...nonnegative,
       description: 'Finish bottom in feet above the wall base. Defaults to 0.',
     },
+    board: wallSheetSchema,
+    battProduct: text,
     height: {
       ...positive,
       description:
@@ -375,6 +378,7 @@ export const constructionSchemas = {
       },
       thickness,
       wastePercent,
+      board: sheetChoiceSchema,
       packageSize: surfacePackage,
       grid: object(
         {

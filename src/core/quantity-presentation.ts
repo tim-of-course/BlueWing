@@ -121,11 +121,12 @@ export function quantityLabel(project: Project, output: Output) {
   return {
     inputDefinitions:
       definition?.component?.assembly.inputs ?? recipe?.inputs ?? [],
-    description:
-      definition?.output.name ??
-      (output.modeling === 'modeled'
-        ? `${output.materialId.replaceAll(/[-_]/g, ' ')}${output.role ? ` · ${output.role.replaceAll(/[-_]/g, ' ')}` : ''}`
-        : output.name),
+    description: output.orderDetail
+      ? output.name
+      : (definition?.output.name ??
+        (output.modeling === 'modeled'
+          ? `${output.materialId.replaceAll(/[-_]/g, ' ')}${output.role ? ` · ${output.role.replaceAll(/[-_]/g, ' ')}` : ''}`
+          : output.name)),
     category:
       output.category ??
       definition?.component?.assembly.category ??

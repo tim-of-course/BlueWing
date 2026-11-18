@@ -10,6 +10,12 @@ import type {
   Vec3,
 } from './construction-types';
 import { pointInPolygon } from './geometry';
+import {
+  wallSheetSchema,
+  sizeFace,
+  type FacePackaging,
+  type OrderCoverage,
+} from './face-ordering';
 import { surfaceArea } from './material-results';
 
 export interface MaterialOpening {
@@ -21,7 +27,7 @@ export interface MaterialOpening {
 }
 
 /** Feet and radians. The kind selects the fields that may be authored. */
-export interface MaterialTemplate {
+export interface MaterialTemplate extends FacePackaging {
   kind: 'path-surface' | 'path-members' | 'area-members';
   /** Surface bottom, or member centreline. Added to level and sheet placement. */
   elevation: number;
@@ -94,6 +100,8 @@ const fields: Record<string, PayloadSchema> = {
   offset: number,
   wastePercent: nonnegative,
   packageSize: positive,
+  board: wallSheetSchema,
+  battProduct: text,
   openings: array(
     object({
       id: text,
@@ -143,6 +151,8 @@ const kindFields: Record<MaterialTemplate['kind'], string[]> = {
     'wastePercent',
     'packageSize',
     'openings',
+    'board',
+    'battProduct',
   ],
   'path-members': ['endElevation', 'components'],
   'area-members': ['spacing', 'origin', 'rotation', 'member', 'role'],
@@ -735,6 +745,22 @@ export function generateMaterialLayout(
       }
       station = high;
     }
+    let coverage: OrderCoverage = {};
+    try {
+      coverage = sizeFace(
+        project.standardSizes,
+        template,
+        length,
+        height,
+        height,
+        layers,
+      );
+    } catch (error) {
+      diagnostic(
+        'surface-order-size',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     result.faceRequirements = [
       {
         ...source,
@@ -745,6 +771,7 @@ export function generateMaterialLayout(
         ...(template.packageSize === undefined
           ? {}
           : { packageSize: template.packageSize }),
+        ...coverage,
         surfaceIds: result.surfaces.map((s) => s.id),
       },
     ];

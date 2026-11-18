@@ -170,7 +170,8 @@ void test('steel wall starters use company framing and drywall purchasing defaul
     assert.equal(stud?.pieceCount, 20);
     near(stud.pieceLength?.value, 10);
     near(stud.quantity, 200);
-    for (const finish of wall.finishes ?? []) near(finish.packageSize, 48);
+    for (const finish of wall.finishes ?? [])
+      assert.equal(finish.board?.hangDirection, 'vertical');
     const board = rows.filter((row) => row.unit === 'SF');
     assert.equal(board.length, id === 'steel-wall' ? 2 : 0);
     for (const row of board) near(row.quantity, 240);

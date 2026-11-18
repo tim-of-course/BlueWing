@@ -220,7 +220,7 @@ export function starterAssemblies(): Record<string, Assembly> {
           face: face as 'front' | 'back',
           layers: 1,
           thickness: 0.625 / 12,
-          packageSize: 48,
+          board: { hangDirection: 'vertical' },
         })),
         backing: [],
       },
