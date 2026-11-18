@@ -29,13 +29,16 @@ export function poolOrders(
       output.category ?? '',
       output.materialId,
       output.direction ?? 'add',
-      output.unit,
+      output.unit === 'in' ? 'ft' : output.unit,
       output.stockLength?.value ?? null,
       output.stockLength ? null : (output.cutLength?.value ?? null),
+      ...(output.specialOrder ? ['special'] : []),
       output.packageKind ?? null,
       output.orderDetail ?? null,
       output.wastePercent,
-      output.packageSize ?? null,
+      output.packageSize === undefined
+        ? null
+        : output.packageSize / (output.unit === 'in' ? 12 : 1),
       ...(output.complete
         ? []
         : ['incomplete', output.quantityKey ?? output.outputId]),
@@ -44,7 +47,30 @@ export function poolOrders(
     items.push(output);
     orders.set(key, items);
   }
-  return [...orders].map(([key, items]) => {
+  return [...orders].map(([key, contributions]) => {
+    const mixedLengths =
+      contributions.some((i) => i.unit === 'in') &&
+      contributions.some((i) => i.unit === 'ft');
+    const items = mixedLengths
+      ? contributions.map((item) => {
+          if (item.unit !== 'in') return item;
+          return {
+            ...item,
+            unit: 'ft' as const,
+            baseAmount: item.baseAmount / 12,
+            adjustedAmount: item.adjustedAmount / 12,
+            wasteAmount: item.wasteAmount / 12,
+            purchasedAmount: item.purchasedAmount / 12,
+            ...(item.packageSize === undefined
+              ? {}
+              : { packageSize: item.packageSize / 12 }),
+            sources: item.sources.map((s) => ({
+              ...s,
+              value: s.value === null ? null : s.value / 12,
+            })),
+          };
+        })
+      : contributions;
     const first = items[0];
     if (!first) throw new Error('Empty order');
     const order = { ...first };

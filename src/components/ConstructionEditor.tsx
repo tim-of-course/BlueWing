@@ -233,14 +233,15 @@ export function ConstructionFields(props: {
                             <Show when={key === 'battProduct'}>
                               <datalist id={battList}>
                                 <For
+                                  keyed={(b) => b.name}
                                   each={
                                     props.controller.project()?.standardSizes
                                       .batts
                                   }
                                 >
                                   {(b) => (
-                                    <option value={b.name}>
-                                      {b.coverage} SF per bag
+                                    <option value={b().name}>
+                                      {b().coverage} SF per bag
                                     </option>
                                   )}
                                 </For>
@@ -509,7 +510,6 @@ export default function ConstructionEditor(props: {
             ...member,
             width: 3.625 / 12,
             depth: 1.25 / 12,
-            stockLength: 10,
             materialId: '',
           },
           bottomAllowance: 0,

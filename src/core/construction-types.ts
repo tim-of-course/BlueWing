@@ -185,6 +185,7 @@ export interface ConstructionDiagnostic extends ConstructionSource {
   message: string;
 }
 export interface ConstructionPiece extends ConstructionSource {
+  specialOrder?: true;
   id: string;
   materialId: string;
   role: string;
@@ -216,6 +217,7 @@ export interface ConstructionSurface extends ConstructionSource {
   packageSize?: number;
 }
 export interface ConstructionPurchase extends ConstructionSource {
+  specialOrder?: true;
   /** Exact key used by summarizeMaterials, before presentation. */
   quantityKey?: string;
   role: string;
@@ -244,6 +246,7 @@ export interface FaceRequirement extends ConstructionSource, OrderCoverage {
 export interface ConstructionSurfacePurchase
   extends ConstructionSource, OrderCoverage {
   groupRequirements?: { groupId: string; amount: number }[];
+  openingOnlySources?: ConstructionSource[];
   category?: string;
   grossArea?: number;
   openingArea?: number;

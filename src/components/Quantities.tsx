@@ -289,11 +289,17 @@ export default function Quantities(props: {
                           : entry.output.packedCount !== undefined
                             ? `${number(entry.output.purchasedAmount)} sticks × `
                             : entry.row?.pieceCount !== undefined
-                              ? `${number(entry.row.pieceCount)} pc × `
+                              ? number(entry.row.pieceCount) +
+                                (entry.row.pieceLength ? ' pc × ' : ' packages')
                               : ''}
-                        {displayLength(
-                          entry.output.stockLength ?? entry.output.cutLength,
-                        )}
+                        {entry.output.stockLength || entry.output.cutLength
+                          ? displayLength(
+                              entry.output.stockLength ??
+                                entry.output.cutLength,
+                            )
+                          : entry.row?.pieceCount === undefined
+                            ? '—'
+                            : ''}
                         <Show when={entry.output.packedCount !== undefined}>
                           <br />
                           <small>
@@ -595,7 +601,13 @@ export default function Quantities(props: {
                         <For
                           each={output().sources.slice(0, 300)}
                           keyed={(source) =>
-                            source.pieceId ?? source.geometryId
+                            source.pieceId ??
+                            source.surfaceId ??
+                            JSON.stringify([
+                              source.assignmentId,
+                              source.outputId,
+                              source.geometryId,
+                            ])
                           }
                         >
                           {(source) => (

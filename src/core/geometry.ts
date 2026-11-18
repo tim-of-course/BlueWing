@@ -20,6 +20,7 @@ export function createProject(
 ): Project {
   return {
     formatVersion: 9,
+    allowSpecialOrderStuds: true,
     standardSizes: structuredClone(standardSizes),
     takeoffs: {
       main: {

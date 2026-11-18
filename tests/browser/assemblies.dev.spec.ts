@@ -7,6 +7,7 @@ import {
   ceilingWorkflow,
   ceilingLayoutWorkflow,
 } from './assemblies';
+import { startProject } from './takeoff';
 import { materialLayoutWorkflow } from './material-layouts';
 
 test('assemblies support project copies, object overrides and piece schedules', async ({
@@ -133,4 +134,71 @@ test('modeled material starters edit surfaces and copy opening header details', 
   expectNoDiagnostics(artifact);
   expectNoSilentHolds(artifact);
   expect(errors).toEqual([]);
+});
+
+test('company sizes copy into new jobs and project purchasing settings persist independently', async ({
+  page,
+}) => {
+  await startProject(page);
+  const openEditor = page.getByRole('button', {
+    name: 'Assemblies',
+    exact: true,
+  });
+  const editor = page.getByRole('dialog', {
+    name: 'Assembly editor',
+    exact: true,
+  });
+  const sizes = editor.getByRole('button', {
+    name: 'Standard sizes',
+    exact: true,
+  });
+  const company = page.getByRole('dialog', {
+    name: 'Company standard sizes',
+    exact: true,
+  });
+  const job = page.getByRole('dialog', {
+    name: 'Project standard sizes',
+    exact: true,
+  });
+  const minimum = 'Special-order stud minimum';
+  await openEditor.click();
+  await editor
+    .getByRole('button', { name: 'Global library', exact: true })
+    .click();
+  await sizes.click();
+  await expect(company.getByLabel(minimum)).toHaveValue('100');
+  await company.getByLabel(minimum).fill('135');
+  await company.getByRole('button', { name: 'Save sizes' }).click();
+  await expect(company).toBeHidden();
+  await editor
+    .getByRole('button', { name: 'Project assemblies', exact: true })
+    .click();
+  await sizes.click();
+  await expect(job.getByLabel(minimum)).toHaveValue('100');
+  await job.getByLabel(minimum).fill('88');
+  await job.getByRole('button', { name: 'Save sizes' }).click();
+  await expect(job).toBeHidden();
+  const special = editor.getByLabel('Allow special-order studs for this job');
+  await expect(special).toBeChecked();
+  await special.click();
+  await expect(special).not.toBeChecked();
+  await editor.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await openEditor.click();
+  await expect(special).not.toBeChecked();
+  await sizes.click();
+  await expect(job.getByLabel(minimum)).toHaveValue('88');
+  await job.getByRole('button', { name: 'Cancel' }).click();
+  await editor.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Create project', exact: true })
+    .click();
+  await page.getByLabel('Project name', { exact: true }).fill('Next job');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await openEditor.click();
+  await expect(special).toBeChecked();
+  await sizes.click();
+  await expect(job.getByLabel(minimum)).toHaveValue('135');
 });

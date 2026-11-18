@@ -871,12 +871,12 @@ export function generateConstruction(
         const start = at(station, bottom, face);
         const normal = at(station, bottom, face + 1);
         const stockLength = spec.stockLength ?? wall.stud.stockLength;
-        // The largest standard stock retains the shortfall diagnostic for overlong cuts.
+        // Resolve automatic stock after all cuts in the wall type are known.
         const generated = emit(
           { ...source, ...(opening ? { openingId: opening.id } : {}) },
           `${wall.id}/${id}`,
           role,
-          { ...spec, stockLength: stockLength ?? longestStud },
+          stockLength === undefined ? spec : { ...spec, stockLength },
           start,
           at(station, top, face),
           { x: normal.y - start.y, y: start.x - normal.x, z: 0 },
@@ -1610,11 +1610,60 @@ export function generateConstruction(
     result.complete &&= generated.complete;
     budget -= generated.pieces.length + generated.surfaces.length;
   }
+  const specialCandidates = new Map<string, ConstructionPiece[]>();
+  const standardTicks = new Set(
+    studLengths.map((length) => Math.round(length * 192)),
+  );
   for (const order of studOrders) {
     const stock =
       studLengths.find((length) => length + EPS >= order.tallest) ??
       longestStud;
-    for (const piece of order.auto) piece.stockLength = stock;
+    for (const piece of order.auto) {
+      piece.stockLength = stock;
+      const ticks = Math.round(piece.cutLength * 192);
+      if (
+        !project.allowSpecialOrderStuds ||
+        piece.cutLength + EPS < 7 ||
+        standardTicks.has(ticks)
+      )
+        continue;
+      const key = JSON.stringify([
+        piece.assignmentId ?? piece.wallId,
+        piece.materialId,
+        ticks,
+      ]);
+      const members = specialCandidates.get(key) ?? [];
+      members.push(piece);
+      specialCandidates.set(key, members);
+    }
+  }
+  for (const members of specialCandidates.values()) {
+    if (members.length < project.standardSizes.specialOrderMinimum) continue;
+    for (const piece of members) {
+      piece.stockLength = Math.round(piece.cutLength * 192) / 192;
+      piece.specialOrder = true;
+    }
+  }
+  for (const order of studOrders) {
+    for (const piece of order.auto)
+      if (
+        !piece.specialOrder &&
+        piece.cutLength > present(piece.stockLength) + EPS
+      )
+        diagnostic(
+          {
+            ...applicationSource(piece),
+            wallId: present(piece.wallId),
+            geometryId: present(piece.geometryId),
+          },
+          'stock-shortfall',
+          piece.id +
+            ': cut ' +
+            String(piece.cutLength) +
+            ' ft exceeds stock ' +
+            String(piece.stockLength) +
+            ' ft',
+        );
   }
   summarizeMaterials(project, result);
   return result;

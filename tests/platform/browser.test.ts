@@ -45,6 +45,7 @@ for (const browserType of [chromium, firefox, webkit]) {
           },
           formatVersion: 9 as const,
           standardSizes,
+          allowSpecialOrderStuds: true,
           id: 'p',
           name: 'Original',
           revision: 0,

@@ -1,3 +1,4 @@
+import { formatLength } from './length';
 import type { CalculationOutput, Project } from './types';
 import type {
   ConstructionResult,
@@ -70,6 +71,7 @@ export function summarizeMaterials(
       project.recipes[piece.recipeId ?? '']?.category ?? '',
       piece.materialId,
       piece.stockLength ?? piece.cutLength,
+      ...(piece.specialOrder ? ['special'] : []),
       piece.wastePercent ?? 0,
       piece.packageSize ?? null,
     ]);
@@ -102,6 +104,7 @@ export function summarizeMaterials(
       quantityKey: JSON.stringify(['members', key]),
       ...owner,
       direction: first.direction ?? 'add',
+      ...(first.specialOrder ? { specialOrder: true } : {}),
       role: pieces.every((p) => p.role === first.role) ? first.role : 'member',
       materialId: first.materialId,
       stockLength,
@@ -161,6 +164,19 @@ export function summarizeMaterials(
       (sum, id) => sum + present(surfaces.get(id)).area,
       0,
     );
+    const faceOwner = (face: ConstructionSource) =>
+      JSON.stringify([face.assignmentId, face.geometryId, face.finishId]);
+    const represented = new Set(
+      faces.filter((f) => f.surfaceIds.length).map(faceOwner),
+    );
+    const openingOnlySources: ConstructionSource[] = [];
+    for (const face of faces) {
+      const owner = faceOwner(face);
+      if (!represented.has(owner)) {
+        openingOnlySources.push(provenance(face));
+        represented.add(owner);
+      }
+    }
     const grossArea = faces.reduce((sum, f) => sum + f.grossArea, 0);
     const orderArea = faces.reduce(
       (sum, f) => sum + (f.orderArea ?? f.grossArea),
@@ -193,6 +209,7 @@ export function summarizeMaterials(
       })),
       materialId: first.materialId,
       surfaceIds,
+      ...(openingOnlySources.length ? { openingOnlySources } : {}),
       ...(faces.some((f) => f.finishId)
         ? { grossArea, openingArea: Math.max(0, grossArea - requiredArea) }
         : {}),
@@ -272,6 +289,7 @@ export function modeledOutputs(
       modeling: 'modeled',
       outputId: `members/${String(index)}`,
       direction: purchase.direction ?? 'add',
+      ...(purchase.specialOrder ? { specialOrder: true } : {}),
       category: project.recipes[first.recipeId ?? '']?.category ?? '',
       ...(purchase.packageSize === undefined
         ? {}
@@ -289,8 +307,15 @@ export function modeledOutputs(
       purchasedLength: { value: purchase.purchasedLength, unit: 'ft' },
       ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
-      name:
-        project.recipes[purchase.recipeId ?? '']?.name ?? purchase.materialId,
+      name: purchase.specialOrder
+        ? (purchase.materialId === 'steel-stud-3-5-8-20eq'
+            ? '3-5/8 in 20EQ stud'
+            : purchase.materialId) +
+          ', ' +
+          formatLength(purchase.stockLength) +
+          ' special order'
+        : (project.recipes[purchase.recipeId ?? '']?.name ??
+          purchase.materialId),
       unit: 'ea',
       role: purchase.role,
       sources: members.map((piece) => ({
@@ -325,7 +350,8 @@ export function modeledOutputs(
   }
   for (const [index, purchase] of (result.surfacePurchases ?? []).entries()) {
     const patches = purchase.surfaceIds.map((id) => present(surfaces.get(id)));
-    const diagnostics = messages([purchase, ...patches]);
+    const openingOnly = purchase.openingOnlySources ?? [];
+    const diagnostics = messages([purchase, ...patches, ...openingOnly]);
     const base = purchase.requiredArea;
     outputs.push({
       ...identity(purchase),
@@ -346,13 +372,21 @@ export function modeledOutputs(
             purchase.orderDetail
         : `${purchase.finishId ?? 'Ceiling'} installed area`,
       unit: 'ft2',
-      sources: patches.map((surface) => ({
-        ...identity(surface),
-        geometryId: surface.geometryId ?? '',
-        surfaceId: surface.id,
-        inputs: { layers: surface.layers },
-        value: surface.area,
-      })),
+      sources: [
+        ...openingOnly.map((source) => ({
+          ...identity(source),
+          geometryId: source.geometryId ?? '',
+          inputs: {},
+          value: 0,
+        })),
+        ...patches.map((surface) => ({
+          ...identity(surface),
+          geometryId: surface.geometryId ?? '',
+          surfaceId: surface.id,
+          inputs: { layers: surface.layers },
+          value: surface.area,
+        })),
+      ],
       baseAmount: base,
       ...(purchase.orderArea === undefined
         ? {}

@@ -363,7 +363,6 @@ export default function RecipeEditor(props: {
                   materialId: '',
                   width: 3.625 / 12,
                   depth: 1.25 / 12,
-                  stockLength: 10,
                 },
                 finishes: [],
                 backing: [],
@@ -496,6 +495,32 @@ export default function RecipeEditor(props: {
         >
           Standard sizes
         </button>
+        <Show when={scope() === 'project' && props.controller.project()}>
+          {(project) => (
+            <label>
+              <input
+                type="checkbox"
+                checked={project().allowSpecialOrderStuds}
+                disabled={dirty() || saving()}
+                onChange={(event) => {
+                  const enabled = event.currentTarget.checked;
+                  setSaving(true);
+                  void props.controller
+                    .execute(
+                      {
+                        name: 'project.specialOrderStuds.put',
+                        payload: { enabled },
+                      },
+                      props.controller.observe(),
+                    )
+                    .catch(report)
+                    .finally(() => setSaving(false));
+                }}
+              />{' '}
+              Allow special-order studs for this job
+            </label>
+          )}
+        </Show>
         <Show when={sizes()}>
           {(table) => (
             <StandardSizesDialog
