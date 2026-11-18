@@ -6,7 +6,7 @@ import type {
 } from './construction-types';
 import type { MaterialTemplate } from './material-layout';
 
-const sheet = 32;
+const drywallSheet = 4 * 12;
 
 const member = (
   materialId: string,
@@ -81,7 +81,9 @@ function surface(
       ...(height === undefined ? {} : { height: height / 12 }),
       ...(category === 'Acoustical ceilings/acoustical work'
         ? {}
-        : { packageSize: sheet }),
+        : {
+            packageSize: category === 'Drywall hang/finish' ? drywallSheet : 32,
+          }),
       openings: [],
     },
   );
@@ -102,7 +104,7 @@ function horizontal(
     wastePercent: 5,
     layers: 1,
     thickness: thickness / 12,
-    packageSize: sheet,
+    packageSize: category === 'Drywall hang/finish' ? drywallSheet : 32,
   };
   return {
     id,
@@ -133,7 +135,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       name: 'Steel framing wall',
       category: 'Light-gauge metal framing',
       description:
-        'Modeled 3-5/8 in framing wall without finishes. Enter height, specified sections, stud spacing, stock lengths and end allowances. Openings, project header details and backing rows produce actual members. Starter dimensions are editable examples, not a structural specification.',
+        'Modeled 3-5/8 in 20EQ framing wall at 16 in spacing with 10 ft track. Enter height and end allowances. Stud stock follows the tallest cut in each wall unless overridden. Openings, project header details and backing rows produce actual members. Starter dimensions are editable examples, not a structural specification.',
       geometryKinds: ['path'],
       inputs: [],
       outputs: [],
@@ -273,7 +275,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'Drywall hang/finish',
       'drywall-5-8-unspecified',
       0.625,
-      'Starts with 5/8 in board and editable 4x8 sheet coverage. Use separate assignments for different board products.',
+      'Starts with 5/8 in board and editable 4x12 sheet coverage. Use separate assignments for different board products.',
     ),
     horizontal(
       'drywall-ceiling',
@@ -282,7 +284,7 @@ export function modeledStarters(wall: WallTemplate): Assembly[] {
       'drywall-5-8-unspecified',
       0.625,
       9,
-      'Starts with 5/8 in board, 4x8 sheet coverage and a 9 ft underside.',
+      'Starts with 5/8 in board, 4x12 sheet coverage and a 9 ft underside.',
     ),
     surface(
       'plywood-wall-surface',

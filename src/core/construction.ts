@@ -1,5 +1,9 @@
 import type { Geometry, Point, Project } from './types';
-import { kickerStockLength, wholeQuantity } from './purchasing';
+import {
+  kickerStockLength,
+  standardStudStock,
+  wholeQuantity,
+} from './purchasing';
 import { polygonArea } from './geometry';
 import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
 import { summarizeMaterials } from './material-results';
@@ -12,6 +16,7 @@ import {
 import type {
   ConstructionData,
   ConstructionOptions,
+  ConstructionPiece,
   ConstructionResult,
   ConstructionSource,
   MemberSpec,
@@ -543,6 +548,7 @@ export function generateConstruction(
   );
   let budget = options.maxPieces ?? CONSTRUCTION_GENERATION_BUDGET;
   let budgetSource: ConstructionSource = {};
+  const studOrders: { tallest: number; auto: ConstructionPiece[] }[] = [];
   const emit = (
     source: ConstructionSource,
     id: string,
@@ -560,7 +566,7 @@ export function generateConstruction(
     );
     if (cutLength <= EPS) return;
     if (--budget < 0) throw new Error('generation-budget');
-    result.pieces.push({
+    const generated: ConstructionPiece = {
       ...source,
       id,
       role,
@@ -598,13 +604,15 @@ export function generateConstruction(
             Math.sin(sectionRotation),
       },
       sectionRotation,
-    });
+    };
+    result.pieces.push(generated);
     if (spec.stockLength !== undefined && cutLength > spec.stockLength + EPS)
       diagnostic(
         source,
         'stock-shortfall',
         `${id}: cut ${String(cutLength)} ft exceeds stock ${String(spec.stockLength)} ft`,
       );
+    return generated;
   };
   try {
     for (const wall of ordered(data.walls)) {
@@ -776,6 +784,8 @@ export function generateConstruction(
         ...line.stations,
         ...(wall.topProfile?.points.map((p) => p.distance) ?? []),
       ]);
+      const studOrder = { tallest: 0, auto: [] as ConstructionPiece[] };
+      studOrders.push(studOrder);
       const piece = (
         id: string,
         role: string,
@@ -838,6 +848,36 @@ export function generateConstruction(
             sectionAxis,
             rotation,
           );
+        }
+      };
+      const verticalStud = (
+        id: string,
+        role: string,
+        spec: MemberSpec,
+        station: number,
+        bottom: number,
+        top: number,
+        opening?: Opening,
+        face = 0,
+        rotation = 0,
+      ) => {
+        const start = at(station, bottom, face);
+        const normal = at(station, bottom, face + 1);
+        const stockLength = spec.stockLength ?? wall.stud.stockLength;
+        // The largest standard stock retains the shortfall diagnostic for overlong cuts.
+        const generated = emit(
+          { ...source, ...(opening ? { openingId: opening.id } : {}) },
+          `${wall.id}/${id}`,
+          role,
+          { ...spec, stockLength: stockLength ?? 20 },
+          start,
+          at(station, top, face),
+          { x: normal.y - start.y, y: start.x - normal.x, z: 0 },
+          rotation,
+        );
+        if (generated) {
+          studOrder.tallest = Math.max(studOrder.tallest, generated.cutLength);
+          if (stockLength === undefined) studOrder.auto.push(generated);
         }
       };
       const horizontal = (
@@ -1017,13 +1057,12 @@ export function generateConstruction(
           const spans = subtract(bottom, studTop, cuts);
           for (let k = 0; k < spans.length; k++) {
             const span = present(spans[k]);
-            piece(
+            verticalStud(
               `stud/${String(s)}/${String(n)}/${String(k)}`,
               cuts.length ? 'cripple' : (condition?.kind ?? 'stud'),
               wall.stud,
               station,
               span[0],
-              station,
               span[1],
               undefined,
               memberOffset?.face ?? 0,
@@ -1140,13 +1179,12 @@ export function generateConstruction(
                 );
                 continue;
               }
-              piece(
+              verticalStud(
                 `opening/${o.id}/jamb/${side}/${String(n)}`,
                 'jamb',
                 o.jamb ?? wall.stud,
                 station,
                 bottom,
-                station,
                 topAt(station),
                 o,
                 offset?.face ?? 0,
@@ -1492,6 +1530,11 @@ export function generateConstruction(
     result.diagnostics.push(...generated.diagnostics);
     result.complete &&= generated.complete;
     budget -= generated.pieces.length + generated.surfaces.length;
+  }
+  for (const order of studOrders) {
+    const stock =
+      standardStudStock.find((length) => length + EPS >= order.tallest) ?? 20;
+    for (const piece of order.auto) piece.stockLength = stock;
   }
   summarizeMaterials(project, result);
   return result;
