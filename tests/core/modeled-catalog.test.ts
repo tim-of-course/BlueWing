@@ -927,11 +927,12 @@ void test('horizontal finishes report their measured surfaces and furring report
     const result = calculateProject(fixture(id, 'area'));
     linked(result);
     assert.equal(result.model.pieces.length, 0);
-    // 64 SF × 1.05 = 67.2 SF, rounded to three 32 SF packages.
+    // 67.2 SF purchases two 48 SF drywall sheets or three 32 SF packages.
     const surfaces = result.outputs.filter((output) => output.unit === 'ft2');
     assert.equal(surfaces.length, 1);
-    near(surfaces[0]?.purchasedAmount, 96);
-    near(surfaces[0]?.baseAmount, 64);
+    assert.equal(surfaces[0]?.packageCount, id === 'drywall-ceiling' ? 2 : 3);
+    near(surfaces[0].purchasedAmount, 96);
+    near(surfaces[0].baseAmount, 64);
   }
   const furring = calculateProject(fixture('steel-furring', 'area'));
   linked(furring);

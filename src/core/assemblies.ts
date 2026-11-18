@@ -185,7 +185,7 @@ export function starterAssemblies(): Record<string, Assembly> {
       name: 'Steel wall with drywall',
       category: 'Light-gauge metal framing',
       description:
-        'Modeled wall framing and finishes. Enter the wall height before quantities are available. Starter members use 3-5/8 in studs with 1-5/8 in flanges at 16 in spacing, 12 ft stud stock, and 10 ft track stock. Two optional finish faces start with one layer of 5/8 in drywall each. Edit the specified products, member dimensions, allowances and finish layers; remove finishes for framing-only work or add positioned backing rows. Openings and project header details are entered on each applied wall.',
+        'Modeled wall framing and finishes. Enter the wall height before quantities are available. Starter members use 3-5/8 in 20EQ studs with 1-5/8 in flanges at 16 in spacing, stud stock sized to the tallest cut, and 10 ft track stock. Two optional finish faces start with one layer of 5/8 in drywall each. Edit the specified products, member dimensions, allowances and finish layers; remove finishes for framing-only work or add positioned backing rows. Openings and project header details are entered on each applied wall.',
       geometryKinds: ['path'],
       inputs: [],
       outputs: [],
@@ -193,11 +193,10 @@ export function starterAssemblies(): Record<string, Assembly> {
         baseElevation: 0,
         studSpacing: 16 / 12,
         stud: {
-          materialId: 'steel-stud-3-5-8-unspecified',
+          materialId: 'steel-stud-3-5-8-20eq',
           wastePercent: 5,
           width: 1.625 / 12,
           depth: 3.625 / 12,
-          stockLength: 12,
         },
         track: {
           materialId: 'steel-track-3-5-8-unspecified',
@@ -216,7 +215,7 @@ export function starterAssemblies(): Record<string, Assembly> {
           face: face as 'front' | 'back',
           layers: 1,
           thickness: 0.625 / 12,
-          packageSize: 32,
+          packageSize: 48,
         })),
         backing: [],
       },

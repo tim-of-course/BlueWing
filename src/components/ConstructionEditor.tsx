@@ -469,7 +469,6 @@ export default function ConstructionEditor(props: {
       materialId: '',
       width: 1.625 / 12,
       depth: 3.625 / 12,
-      stockLength: 12,
     };
     const selected = props.controller
       .selection()
@@ -488,6 +487,7 @@ export default function ConstructionEditor(props: {
             ...member,
             width: 3.625 / 12,
             depth: 1.25 / 12,
+            stockLength: 10,
             materialId: '',
           },
           bottomAllowance: 0,
@@ -522,7 +522,7 @@ export default function ConstructionEditor(props: {
             {
               id: 'web-a',
               role: 'header-web',
-              member: { ...member },
+              member: { ...member, stockLength: 12 },
               startExtension: 0,
               endExtension: 0,
               verticalOffset: 1.8125 / 12,
@@ -531,7 +531,7 @@ export default function ConstructionEditor(props: {
             {
               id: 'web-b',
               role: 'header-web',
-              member: { ...member },
+              member: { ...member, stockLength: 12 },
               startExtension: 0,
               endExtension: 0,
               verticalOffset: 1.8125 / 12,
@@ -540,7 +540,7 @@ export default function ConstructionEditor(props: {
             {
               id: 'closure',
               role: 'header-closure',
-              member: { ...member, materialId: '' },
+              member: { ...member, materialId: '', stockLength: 12 },
               startExtension: 0,
               endExtension: 0,
               verticalOffset: 0.8125 / 12,

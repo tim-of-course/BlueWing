@@ -122,6 +122,59 @@ void test('24 ft wall: 19 studs, exact endpoints, net face layers and determinis
   assert.deepEqual(generateConstruction(project, data), result);
   assert.equal(JSON.stringify(data), before);
 });
+void test('wall stock follows actual stud, jamb and cripple cuts, with explicit stock taking precedence', () => {
+  const { project, data, wall } = fixture(24, 10);
+  const geometry = () => generateConstruction(project, data);
+  const stock = () =>
+    geometry()
+      .pieces.filter((piece) =>
+        ['stud', 'jamb', 'cripple'].includes(piece.role),
+      )
+      .map((piece) => piece.stockLength);
+  for (const [height, length] of [
+    [7, 8],
+    [9, 9],
+    [10, 10],
+    [10.1, 12],
+    [13, 14],
+    [15, 16],
+    [17, 18],
+    [19, 20],
+  ] as const) {
+    wall.height = height;
+    assert.deepEqual([...new Set(stock())], [length]);
+  }
+  wall.height = 21;
+  assert.ok(
+    geometry().diagnostics.some((issue) => issue.code === 'stock-shortfall'),
+  );
+  wall.height = 10.25;
+  wall.topAllowance = 0.25;
+  addHeader(data);
+  data.openings.window = opening('window', 6, 4, 3, 4);
+  const pieces = geometry().pieces;
+  for (const role of ['stud', 'jamb', 'cripple']) {
+    const members = pieces.filter((piece) => piece.role === role);
+    assert.ok(members.length > 0);
+    assert.ok(members.every((piece) => piece.stockLength === 10));
+  }
+  wall.topProfile = {
+    mode: 'linear',
+    points: [
+      { distance: 0, height: 9 },
+      { distance: 24, height: 11 },
+    ],
+  };
+  assert.deepEqual([...new Set(stock())], [12]);
+  wall.stud.stockLength = 14;
+  assert.deepEqual([...new Set(stock())], [14]);
+  data.openings.window.jamb = { ...spec, stockLength: 16 };
+  assert.equal(
+    geometry().pieces.find((piece) => piece.role === 'jamb')?.stockLength,
+    16,
+  );
+});
+
 void test('collinear wall points leave studs, tracks and finishes unchanged and retain authored member conditions', () => {
   const { project, data, wall } = fixture(10);
   const points = present(project.geometries.path).points;

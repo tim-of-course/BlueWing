@@ -347,7 +347,12 @@ export default function RecipeEditor(props: {
                 baseElevation: 0,
                 studSpacing: 16 / 12,
                 stud: { materialId: '', width: 1.625 / 12, depth: 3.625 / 12 },
-                track: { materialId: '', width: 3.625 / 12, depth: 1.25 / 12 },
+                track: {
+                  materialId: '',
+                  width: 3.625 / 12,
+                  depth: 1.25 / 12,
+                  stockLength: 10,
+                },
                 finishes: [],
                 backing: [],
               },

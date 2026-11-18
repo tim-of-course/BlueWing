@@ -150,6 +150,32 @@ void test('starters distinguish modeled material layouts from unmodeled quick es
     assert.match(recipe.description ?? '', /Unmodeled/);
   }
 });
+void test('steel wall starters use company framing and drywall purchasing defaults', () => {
+  for (const id of ['steel-wall', 'steel-framing']) {
+    const project = fixture(id);
+    assignment(project).wallOverrides = { height: 10 };
+    const wall = assembly(project).wallTemplate;
+    assert.ok(wall);
+    near(wall.studSpacing, 16 / 12);
+    near(wall.stud.depth, 3.625 / 12);
+    assert.equal(wall.stud.materialId, 'steel-stud-3-5-8-20eq');
+    assert.equal(wall.stud.stockLength, undefined);
+    near(wall.track.stockLength, 10);
+    const result = calculateProject(project);
+    const rows = estiMakerTakeoff(project, result).rows;
+    const stud = rows.find(
+      (row) => row.source.materialId === wall.stud.materialId,
+    );
+    assert.equal(stud?.pieceCount, 20);
+    near(stud.pieceLength?.value, 10);
+    near(stud.quantity, 200);
+    for (const finish of wall.finishes ?? []) near(finish.packageSize, 48);
+    const board = rows.filter((row) => row.unit === 'SF');
+    assert.equal(board.length, id === 'steel-wall' ? 2 : 0);
+    for (const row of board) near(row.quantity, 288);
+  }
+});
+
 void test('drywall deductions apply per face before layers; required dimensions stay incomplete', () => {
   const project = fixture();
   assert.equal(calculateProject(project).complete, false);
