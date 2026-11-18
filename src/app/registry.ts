@@ -6,6 +6,7 @@ import {
   type PayloadSchema,
 } from '../core/commands';
 
+import { standardSizesSchema, companySizes } from '../core/standard-sizes';
 const string: PayloadSchema = { type: 'string' };
 function entry(
   name: string,
@@ -325,6 +326,25 @@ export const applicationCommands = [
       view: 'isometric',
       displayMode: 'framing',
     },
+  ),
+  entry(
+    'library.sizes.inspect',
+    'Read company standard sizes for new jobs.',
+    {},
+    [],
+    false,
+    {},
+  ),
+  entry(
+    'library.sizes.put',
+    'Replace company standard sizes for new jobs.',
+    {
+      sizes: standardSizesSchema,
+      expectedLibraryRevision: { type: 'number', minimum: 0 },
+    },
+    ['sizes', 'expectedLibraryRevision'],
+    true,
+    { sizes: companySizes(), expectedLibraryRevision: 0 },
   ),
   entry(
     'library.inspect',

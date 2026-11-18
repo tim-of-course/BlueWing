@@ -1,3 +1,4 @@
+import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
@@ -204,7 +205,8 @@ const project = (): Project => ({
       owned: {},
     },
   },
-  formatVersion: 8,
+  formatVersion: 9,
+  standardSizes: companySizes(),
   id: 'p',
   name: 'Test',
   revision: 0,
@@ -328,7 +330,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 8);
+  assert.equal((await storage.load()).formatVersion, 9);
   const next: Project = {
     ...initial,
     revision: 1,
@@ -367,7 +369,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   assert.equal(
     database.prepare('SELECT format_version FROM project').get()
       ?.format_version,
-    8,
+    9,
   );
   database.close();
 });
@@ -376,7 +378,7 @@ void test('old project formats are rejected without changing the saved file', as
   const { storage, database, backups } = fixture();
   await storage.open('unsupported', true);
   await storage.initialize(project());
-  for (const version of [1, 2, 3, 4, 5, 6, 7]) {
+  for (const version of [1, 2, 3, 4, 5, 6, 7, 8]) {
     database.prepare('UPDATE project SET format_version=?').run(version);
     await assert.rejects(storage.load(), /format|version/i);
     assert.equal(

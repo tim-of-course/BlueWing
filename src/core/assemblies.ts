@@ -5,7 +5,13 @@ import type {
   RecipeOutput,
   Unit,
 } from './types';
-import { validateAssembly } from './commands';
+import {
+  companySizes,
+  checkSizes,
+  standardSizesSchema,
+  type StandardSizes,
+} from './standard-sizes';
+import { validateAssembly, validatePayload } from './commands';
 import { modeledStarters, starterKickers } from './modeled-starters';
 
 const number = (
@@ -203,7 +209,6 @@ export function starterAssemblies(): Record<string, Assembly> {
           wastePercent: 5,
           width: 3.625 / 12,
           depth: 1.25 / 12,
-          stockLength: 10,
         },
         kickers: starterKickers(),
         bottomAllowance: 0,
@@ -446,7 +451,12 @@ export function starterAssemblies(): Record<string, Assembly> {
   );
 }
 export function createLibrary(): AssemblyLibrary {
-  return { version: 4, revision: 0, assemblies: starterAssemblies() };
+  return {
+    version: 5,
+    standardSizes: companySizes(),
+    revision: 0,
+    assemblies: starterAssemblies(),
+  };
 }
 export function validateLibrary(
   value: unknown,
@@ -455,7 +465,8 @@ export function validateLibrary(
     !value ||
     typeof value !== 'object' ||
     !('version' in value) ||
-    value.version !== 4 ||
+    value.version !== 5 ||
+    !('standardSizes' in value) ||
     !('revision' in value) ||
     !Number.isInteger(value.revision) ||
     Number(value.revision) < 0 ||
@@ -465,6 +476,8 @@ export function validateLibrary(
     Array.isArray(value.assemblies)
   )
     throw new Error('Invalid assembly library');
+  validatePayload(standardSizesSchema, value.standardSizes, 'standard sizes');
+  checkSizes(value.standardSizes as StandardSizes);
   for (const [id, assembly] of Object.entries(value.assemblies)) {
     validateAssembly(assembly);
     if (id !== assembly.id) throw new Error('Invalid library assembly id');

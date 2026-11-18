@@ -1,9 +1,5 @@
 import type { Geometry, Point, Project } from './types';
-import {
-  kickerStockLength,
-  standardStudStock,
-  wholeQuantity,
-} from './purchasing';
+import { kickerStockLength, wholeQuantity } from './purchasing';
 import { polygonArea } from './geometry';
 import { generateCeilingGrid, validateCeilingGrid } from './ceiling-grid';
 import { summarizeMaterials } from './material-results';
@@ -513,6 +509,10 @@ export function generateConstruction(
     result.complete = false;
   };
   validateConstruction(project, data);
+  const studLengths = [...project.standardSizes.studLengths].sort(
+    (a, b) => a - b,
+  );
+  const longestStud = present(studLengths.at(-1));
   const placements = new Map(
     Object.values(data.placements).map((placement) => [
       placement.sheetId,
@@ -622,6 +622,12 @@ export function generateConstruction(
         geometryId: wall.geometryId,
       };
       budgetSource = source;
+      const track = {
+        ...wall.track,
+        stockLength:
+          wall.track.stockLength ??
+          Math.min(...project.standardSizes.trackLengths),
+      };
       const geometry = present(project.geometries[wall.geometryId]);
       if (
         geometry.points.length + (wall.topProfile?.points.length ?? 0) >
@@ -709,7 +715,7 @@ export function generateConstruction(
             ...kickers.member,
             stockLength:
               kickers.member.stockLength ??
-              kickerStockLength(kickers.cutLength),
+              kickerStockLength(kickers.cutLength, studLengths),
           };
           const leg = kickers.cutLength / Math.SQRT2;
           for (let i = 0; i < kickerCount; i++) {
@@ -869,7 +875,7 @@ export function generateConstruction(
           { ...source, ...(opening ? { openingId: opening.id } : {}) },
           `${wall.id}/${id}`,
           role,
-          { ...spec, stockLength: stockLength ?? 20 },
+          { ...spec, stockLength: stockLength ?? longestStud },
           start,
           at(station, top, face),
           { x: normal.y - start.y, y: start.x - normal.x, z: 0 },
@@ -1078,21 +1084,14 @@ export function generateConstruction(
           .filter((o) => o.sill <= EPS)
           .map((o) => [o.distance, o.distance + o.width]),
       ))
-        horizontal(
-          `bottom-track/${String(a)}`,
-          'bottom-track',
-          wall.track,
-          a,
-          b,
-          0,
-        );
+        horizontal(`bottom-track/${String(a)}`, 'bottom-track', track, a, b, 0);
       for (let i = 1; i < breaks.length; i++) {
         const a = present(breaks[i - 1]);
         const b = present(breaks[i]);
         piece(
           `top-track/${String(i)}`,
           'top-track',
-          wall.track,
+          track,
           a,
           heightAt(wall, a),
           b,
@@ -1104,7 +1103,7 @@ export function generateConstruction(
           piece(
             `step-track/${String(i)}`,
             'step-track',
-            wall.track,
+            track,
             b,
             before,
             b,
@@ -1195,7 +1194,7 @@ export function generateConstruction(
           horizontal(
             `opening/${o.id}/sill`,
             'sill',
-            o.sillMember ?? wall.track,
+            o.sillMember ?? track,
             a,
             b,
             Math.min(o.sill, minTop),
@@ -1533,7 +1532,8 @@ export function generateConstruction(
   }
   for (const order of studOrders) {
     const stock =
-      standardStudStock.find((length) => length + EPS >= order.tallest) ?? 20;
+      studLengths.find((length) => length + EPS >= order.tallest) ??
+      longestStud;
     for (const piece of order.auto) piece.stockLength = stock;
   }
   summarizeMaterials(project, result);

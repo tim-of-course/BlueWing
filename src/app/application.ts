@@ -748,6 +748,19 @@ export class Application {
               });
             break;
           }
+          case 'library.sizes.inspect':
+            this.library = await this.libraryStore.read();
+            data = structuredClone(this.library.standardSizes);
+            this.publish();
+            break;
+          case 'library.sizes.put':
+            this.library = await this.libraryStore.replaceSizes(
+              payload.expectedLibraryRevision as number,
+              payload.sizes as AssemblyLibrary['standardSizes'],
+            );
+            data = structuredClone(this.library.standardSizes);
+            this.publish();
+            break;
           case 'library.inspect':
             this.library = await this.libraryStore.read();
             data = structuredClone(this.library);
@@ -798,7 +811,11 @@ export class Application {
             try {
               const project =
                 request.name === 'project.create'
-                  ? createProject(payload.name as string)
+                  ? createProject(
+                      payload.name as string,
+                      undefined,
+                      (await this.libraryStore.read()).standardSizes,
+                    )
                   : await this.storage.load();
               if (request.name === 'project.create')
                 await this.storage.initialize(project);

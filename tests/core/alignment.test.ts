@@ -1,3 +1,4 @@
+import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { matchSheetAlignment } from '../../src/core/alignment';
@@ -19,7 +20,8 @@ function required<T>(value: T | undefined): T {
 
 function fixture(): Project {
   return {
-    formatVersion: 8,
+    formatVersion: 9,
+    standardSizes: companySizes(),
     takeoffs: { main: { id: 'main', name: 'Main', kind: 'main', owned: {} } },
     id: 'p',
     name: 'Alignment',

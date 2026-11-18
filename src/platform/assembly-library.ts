@@ -15,15 +15,15 @@ export function libraryStorage(native: boolean): LibraryStorage {
   return native
     ? {
         read: () =>
-          invoke<string | null>('app_data_read', { key: 'assemblies-v4.json' }),
+          invoke<string | null>('app_data_read', { key: 'assemblies-v5.json' }),
         write: (data) =>
-          invoke('app_data_write', { key: 'assemblies-v4.json', data }),
+          invoke('app_data_write', { key: 'assemblies-v5.json', data }),
       }
     : {
         read: () =>
-          Promise.resolve(localStorage.getItem('bluewing.assemblies.v4')),
+          Promise.resolve(localStorage.getItem('bluewing.assemblies.v5')),
         write: (data) => {
-          localStorage.setItem('bluewing.assemblies.v4', data);
+          localStorage.setItem('bluewing.assemblies.v5', data);
           return Promise.resolve();
         },
       };
@@ -54,6 +54,21 @@ export class AssemblyLibraryStore {
       validateAssembly(assembly);
       library.assemblies[assembly.id] = structuredClone(assembly);
     }
+    library.revision++;
+    await this.storage.write(JSON.stringify(library));
+    return library;
+  }
+  async replaceSizes(
+    expectedRevision: number,
+    sizes: AssemblyLibrary['standardSizes'],
+  ) {
+    const library = await this.read();
+    if (library.revision !== expectedRevision)
+      throw new Error(
+        'Assembly library changed. Refresh the library and retry.',
+      );
+    library.standardSizes = structuredClone(sizes);
+    validateLibrary(library);
     library.revision++;
     await this.storage.write(JSON.stringify(library));
     return library;

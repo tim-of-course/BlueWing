@@ -225,7 +225,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   if (!finish) throw new Error('Missing finish starter');
   finish.name = 'Company ceiling finish';
   await page.evaluate((library) => {
-    localStorage.setItem('bluewing.assemblies.v4', JSON.stringify(library));
+    localStorage.setItem('bluewing.assemblies.v5', JSON.stringify(library));
   }, old);
   await startProject(page);
   await drawWall(page);

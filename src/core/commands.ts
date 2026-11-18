@@ -6,6 +6,12 @@ import {
   mainId,
   ownedCollections,
 } from './takeoffs';
+import {
+  companySizes,
+  checkSizes,
+  standardSizesSchema,
+  type StandardSizes,
+} from './standard-sizes';
 import { searchNotes } from './notes';
 import type {
   Assignment,
@@ -454,6 +460,20 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
       sourcePoints: [{ x: 0, y: 0 }],
       referencePoints: [{ x: 10, y: 10 }],
     },
+  ],
+  [
+    'project.sizes.inspect',
+    'Read the standard sizes saved with this job.',
+    object({}),
+    false,
+    {},
+  ],
+  [
+    'project.sizes.put',
+    'Replace the standard sizes saved with this job.',
+    object({ sizes: standardSizesSchema }),
+    true,
+    { sizes: companySizes() },
   ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
   [
@@ -971,7 +991,7 @@ export function validateProject(
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 8
+    input.formatVersion !== 9
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -979,7 +999,8 @@ export function validateProject(
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [8] },
+        formatVersion: { type: 'number', enum: [9] },
+        standardSizes: standardSizesSchema,
         takeoffs: {
           type: 'object',
           additionalProperties: object(
@@ -1024,6 +1045,7 @@ export function validateProject(
       },
       [
         'formatVersion',
+        'standardSizes',
         'takeoffs',
         'id',
         'name',
@@ -1039,6 +1061,7 @@ export function validateProject(
     'project',
   );
   const project = input as Project;
+  checkSizes(project.standardSizes);
   if (project.takeoffId && !view)
     throw new Error('Derived takeoff views cannot be persisted');
   if (
@@ -1239,6 +1262,8 @@ export function executeCommandOnDraft(
         'project.rename',
         'project.inspect',
         'project.category.put',
+        'project.sizes.inspect',
+        'project.sizes.put',
         'notes.read',
         'notes.write',
         'notes.search',
@@ -1299,6 +1324,14 @@ export function executeCommandOnDraft(
         construction: next.construction,
         review: next.review,
       };
+      break;
+    case 'project.sizes.inspect':
+      data = next.standardSizes;
+      break;
+    case 'project.sizes.put':
+      next.standardSizes = structuredClone(payload.sizes as StandardSizes);
+      checkSizes(next.standardSizes);
+      data = next.standardSizes;
       break;
     case 'project.category.put': {
       const name = (payload.name as string).trim();

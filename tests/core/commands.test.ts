@@ -71,6 +71,7 @@ void test('registry examples validate and mutating examples execute in an open p
     'project.rename',
     'notes.write',
     'project.category.put',
+    'project.sizes.put',
     'sheet.put',
     'sheet.naming.apply',
     'sheet.scale',

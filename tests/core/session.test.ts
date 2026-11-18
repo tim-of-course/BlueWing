@@ -1,3 +1,4 @@
+import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ProjectConflictError, ProjectSession } from '../../src/core/session';
@@ -13,7 +14,8 @@ function project(): Project {
         owned: {},
       },
     },
-    formatVersion: 8,
+    formatVersion: 9,
+    standardSizes: companySizes(),
     id: 'project',
     name: 'Original',
     revision: 0,
