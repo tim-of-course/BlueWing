@@ -165,7 +165,7 @@ Use `bluewing help <command>` or `commands.list` for complete schemas. Commands 
 
 A copied junction keeps its shared members when the owning wall application is also on the duplicated trace. When another trace owns the members, the copy leaves that junction behind and frames the station as a free-standing wall would: an ordinary stud at a wall end, or the regular spacing elsewhere. The original owner continues to supply the original's members.
 
-Project format 9 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 5 in `data/assemblies-v5.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 7 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
+Project format 10 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 5 in `data/assemblies-v5.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 7 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
 
 ## Review and verification
 

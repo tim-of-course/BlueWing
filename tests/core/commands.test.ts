@@ -34,6 +34,15 @@ void test('registry examples validate and mutating examples execute in an open p
       { x: 10, y: 160 },
     ],
   };
+  project.annotations['annotation-id'] = {
+    id: 'annotation-id',
+    sheetId: 'sheet-2',
+    kind: 'text',
+    points: [{ x: 0, y: 0 }],
+    text: 'Confirm',
+    author: 'user',
+    createdAt: '2026-11-18T00:00:00.000Z',
+  };
   const starters = starterAssemblies();
   for (const id of ['steel-box-header', 'steel-wall', 'ceiling-grid-2x4']) {
     const assembly = starters[id];
@@ -77,6 +86,9 @@ void test('registry examples validate and mutating examples execute in an open p
     'sheet.naming.apply',
     'sheet.scale',
     'sheet.calibrate',
+    'annotation.add',
+    'annotation.update',
+    'annotation.delete',
   );
   await run(
     'construction.alignment.put',

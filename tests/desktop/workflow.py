@@ -96,6 +96,11 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
         assert stale["error"]["code"] == "PROJECT_CONFLICT"
         call("history.undo", mutates=True)
         assert call("project.inspect")["geometries"]["wall"]["points"][0]["x"] == 72
+        annotation = call("annotation.add", {
+            "sheetId": sheet_id, "kind": "text", "points": [{"x": 92, "y": 116}],
+            "text": "Verify head detail",
+        }, True)
+        assert annotation["author"] == "agent" and annotation["createdAt"].endswith("Z")
         saved_revision = revision
         preview = call("preview", {"includeProject": True, "commands": [{"name": "project.rename", "payload": {"name": "Preview"}}]})
         assert preview["project"]["name"] == "Preview" and revision == saved_revision
@@ -111,6 +116,8 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
         call("project.close", mutates=True)
         call("project.open", {"path": project_path})
         assert call("project.inspect")["revision"] == saved_revision
+        assert call("annotation.list", {"sheetId": sheet_id}) == [annotation]
+        assert call("annotation.inspect", {"id": annotation["id"]}) == annotation
         call("history.undo", mutates=True, succeeds=False)
 
         reference = os.environ.get("BLUEWING_TEST_PLAN")

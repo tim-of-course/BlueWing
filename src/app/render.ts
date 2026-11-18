@@ -1,6 +1,7 @@
 import { takeoffContext, deductionGeometryIds } from '../core/takeoffs';
 import type { Project } from '../core/types';
 import type { PdfDocuments } from '../pdf/documents';
+import { paintAnnotation } from '../components/canvas/annotations';
 import { paintTakeoff } from '../components/canvas/paint';
 import type { PlanSnippet } from '../core/review';
 import {
@@ -11,6 +12,7 @@ import {
 
 export interface RenderOptions {
   sheetId: string;
+  showSheetAnnotations?: boolean;
   categories?: (string | null)[];
   maxDimension?: number;
   mode?: 'plan' | 'takeoff' | 'combined';
@@ -100,6 +102,11 @@ export async function renderImage(
         unitsPerPixel: 2 / scale,
       },
     );
+  }
+  if (options.showSheetAnnotations) {
+    for (const annotation of Object.values(project.annotations))
+      if (annotation.sheetId === sheet.id)
+        paintAnnotation(context, annotation, 1 / scale);
   }
   for (const annotation of options.annotations ?? []) {
     const first = annotation.points[0];

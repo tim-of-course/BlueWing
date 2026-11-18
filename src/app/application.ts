@@ -116,6 +116,7 @@ export class Application {
   library: AssemblyLibrary | null = null;
   session: ProjectSession | null = null;
   draftPending = false;
+  annotationsVisible = true;
   activeTakeoffId: string | null = null;
   /** CLI navigation is session state, independent of the user's visible workspace. */
   cliTakeoffId: string | null = null;
@@ -219,6 +220,7 @@ export class Application {
   }
   private attach(project: Project) {
     this.textPrefetch.clear();
+    this.annotationsVisible = true;
     this.activeTakeoffId = mainId(project);
     this.cliTakeoffId = mainId(project);
     this.session = new ProjectSession(project, this.storage);
@@ -977,11 +979,10 @@ export class Application {
           case 'sheet.render': {
             const project = this.projectFor(request.takeoffId);
             if (!project) throw new Error('Open a project first');
-            const rendered = await renderImage(
-              project,
-              this.pdf,
-              payload as unknown as RenderOptions,
-            );
+            const rendered = await renderImage(project, this.pdf, {
+              ...(payload as unknown as RenderOptions),
+              showSheetAnnotations: this.annotationsVisible,
+            });
             const path = await writeOutput(
               this.native,
               `sheet-${project.takeoffId ?? 'main'}.png`,

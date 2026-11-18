@@ -427,7 +427,7 @@ export const applicationCommands = [
   ),
   entry(
     'sheet.render',
-    'Render a sheet region as a PNG. Use this result’s pixelToPage matrix to convert its image pixels to page points.',
+    'Render a sheet region as a PNG with the workspace’s current annotation visibility. Use this result’s pixelToPage matrix to convert its image pixels to page points.',
     {
       sheetId: string,
       caption: string,

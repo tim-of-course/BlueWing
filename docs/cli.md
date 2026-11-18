@@ -61,6 +61,14 @@ bluewing quantities.exportEstiMaker '{"payload":{"path":"/absolute/path/estimate
 
 Assembly definitions, the device-local global library, per-object inputs, and piece schedules are documented in [Assemblies](assemblies.md#cli-and-storage). `assembly.put` and `assembly.delete` extend the existing recipe command path. `library.inspect` works without a project; library writes use `expectedLibraryRevision` in their payload.
 
+## Permanent sheet annotations
+
+Read `annotation.list` with `{sheetId}` before working on a sheet. It returns complete records across Main, phases and change orders, including hidden annotations and freehand points. Use `annotation.inspect` with `{id}` for one record.
+
+Use `annotation.add` with `{sheetId, kind, points, text?}`. A text annotation takes one anchor and nonempty text. Arrow and line take a start and end. Rectangle, ellipse and revision-cloud take opposite corners. Draw freehand strokes using the Annotations tool. All points use rotated PDF page coordinates. Use `annotation.update` with `{id, points?, text?}` and `annotation.delete` with `{id}`. These edits support batch, preview, revision guards and shared Undo/Redo. Bluewing records the originating author and UTC creation time.
+
+Use permanent annotations for location-specific information that future estimators should see. The Annotations toggle beside View controls the canvas and sheet PNGs, including cropped renders. Review snippet annotations belong to a source-linked review crop. Wingman annotations last for a presentation. Notes hold project-wide Markdown.
+
 ## Project scratchpad
 
 `notes.read` returns `{markdown}`. `notes.write` replaces the full Markdown string using `{markdown}` and the normal project identity/expected revision; an empty string clears it. Read before writing and preserve unrelated text. `notes.search` accepts a nonempty `{query}` and returns matching `lines` with 1-based `line` numbers and `text`, plus `totalMatches` (occurrences). Search is case-insensitive literal substring matching in accepted text, without regex or an index. Notes use shared Undo/Redo, batch, preview, saving, and Pause CLI behavior.
@@ -247,7 +255,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 9 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 5 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 9.
+Only project format 10 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 5 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 9.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

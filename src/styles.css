@@ -292,6 +292,7 @@ small,
   font-size: 11px;
 }
 .tool-rail {
+  position: relative;
   width: 48px;
   padding: 10px 6px;
   display: flex;
@@ -306,6 +307,37 @@ small,
   padding: 0;
   font-size: 20px;
   border-color: transparent;
+}
+.annotation-text-editor {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 10px;
+  background: #161b24;
+  border: 1px solid #364256;
+  border-radius: 5px;
+}
+.annotation-choices {
+  position: absolute;
+  right: 100%;
+  top: 230px;
+  z-index: 25;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 3px;
+  padding: 5px;
+  background: #161b24;
+  border: 1px solid #364256;
+  border-radius: 5px;
+}
+.tool-rail .annotation-choices button {
+  width: auto;
+  height: auto;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.annotation-choices button[aria-pressed='true'] {
+  background: #364256;
 }
 footer {
   display: flex;

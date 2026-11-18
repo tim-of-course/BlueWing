@@ -31,7 +31,8 @@ import type {
   Unit,
 } from '../core/types';
 
-export type DrawingTool = 'select' | 'path' | 'area' | 'count' | 'calibrate';
+export type DrawingTool =
+  'select' | 'path' | 'area' | 'count' | 'calibrate' | 'annotations';
 export interface WorkspaceContext {
   sheetId: string | null;
   selection: string[];
@@ -98,6 +99,8 @@ export interface WorkspaceController {
   visibleCategoryTags: Accessor<Record<string, string[]>>;
   categoryFilter: Accessor<CategoryFilter>;
   setCategoryFilter(filter: CategoryFilter): void;
+  annotationsVisible: Accessor<boolean>;
+  setAnnotationsVisible(visible: boolean): void;
   isSheetVisible(sheetId: string): boolean;
   setSheetVisible(sheetId: string, visible: boolean): void;
   isGroupVisible(groupId: string, sheetId: string): boolean;
