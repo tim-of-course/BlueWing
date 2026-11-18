@@ -114,6 +114,9 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByRole('button', { name: 'Add finishes item', exact: true })
     .click();
   await finishes.getByLabel('Material Id', { exact: true }).fill('5/8 Type X');
+  await finishes
+    .getByLabel('Start Height (ft) (optional)', { exact: true })
+    .fill('2');
   await editor
     .getByRole('button', { name: 'Save construction', exact: true })
     .click();
@@ -179,7 +182,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('240 ft2');
+  ).toContainText('192 ft2');
   await expect(
     page
       .getByRole('table', { name: 'Material totals' })
@@ -303,7 +306,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('288 ft2');
+  ).toContainText('240 ft2');
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(review.locator('.review-row').first()).toContainText('changed');
   await review

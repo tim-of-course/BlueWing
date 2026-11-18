@@ -134,10 +134,15 @@ const finish = object(
       description: 'Gap from stud face to finish in metres, positive outward.',
     },
     thickness,
+    startHeight: {
+      ...nonnegative,
+      description:
+        'Finish bottom in metres above the wall base. Defaults to 0.',
+    },
     height: {
       ...positive,
       description:
-        'Metres above wall base, clipped to wall top. Omit for full height.',
+        'Finish top in metres above the wall base, clipped to the wall top. Omit to follow the wall top.',
     },
     wastePercent,
     packageSize: surfacePackage,

@@ -174,7 +174,7 @@ export function ConstructionFields(props: {
                       : key === 'height' && props.parent === 'path-surface'
                         ? 'Surface height'
                         : key === 'height' && props.parent === 'finishes'
-                          ? 'Finish height'
+                          ? 'Finish top height'
                           : key === 'elevation' &&
                               props.parent === 'path-members'
                             ? 'Start elevation'

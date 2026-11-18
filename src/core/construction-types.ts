@@ -47,7 +47,9 @@ export interface WallFinish {
   face: 'front' | 'back';
   layers: number;
   offset?: number;
-  /** Height above wall base, clipped by the wall top. Omit for full height. */
+  /** Bottom above the wall base in metres. Omit to start at the base. */
+  startHeight?: number;
+  /** Top above the wall base in metres, clipped by the wall top. Omit to follow the wall top. */
   height?: number;
   /** Thickness of each layer. */
   thickness?: number;

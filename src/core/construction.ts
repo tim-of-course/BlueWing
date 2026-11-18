@@ -19,6 +19,7 @@ import type {
   SheetPlacement,
   Vec3,
   Wall,
+  WallFinish,
 } from './construction-types';
 export type * from './construction-types';
 const EPS = 1e-8;
@@ -45,6 +46,17 @@ function numeric(value: number, label: string, minimum = -Infinity) {
 function positive(value: number, label: string) {
   numeric(value, label, 0);
   requireValue(value > 0, `${label} must be positive`);
+}
+export function validateFinishHeights(finish: WallFinish) {
+  if (finish.startHeight !== undefined)
+    numeric(finish.startHeight, 'finish start height', 0);
+  if (finish.height !== undefined) {
+    positive(finish.height, 'finish height');
+    requireValue(
+      (finish.startHeight ?? 0) < finish.height,
+      'finish start height must be below finish top height',
+    );
+  }
 }
 function integer(value: number, label: string, minimum = 0) {
   numeric(value, label, minimum);
@@ -257,7 +269,7 @@ export function validateConstruction(
       requireValue(['front', 'back'].includes(f.face), 'invalid finish face');
       integer(f.layers, 'finish layers', 1);
       numeric(f.offset ?? 0, 'finish offset');
-      if (f.height !== undefined) positive(f.height, 'finish height');
+      validateFinishHeights(f);
       if (f.thickness !== undefined) positive(f.thickness, 'finish thickness');
       numeric(f.wastePercent ?? 0, 'finish waste', 0);
       if (f.packageSize !== undefined)
@@ -1218,8 +1230,11 @@ export function generateConstruction(
           );
         });
       for (const finish of wall.finishes) {
+        const startHeight = finish.startHeight ?? 0;
+        const topHeight = finish.height ?? Infinity;
         const faceOpenings = wallOpenings.filter(
-          (o) => o.sill < (finish.height ?? Infinity) - EPS,
+          (o) =>
+            o.sill < topHeight - EPS && o.sill + o.height > startHeight + EPS,
         );
         // Vertical decomposition makes each emitted face polygon opening-free, including slope crossings.
         const faceBreaks = sorted([
@@ -1228,22 +1243,26 @@ export function generateConstruction(
             .flatMap((o) => [o.distance, o.distance + o.width])
             .filter((s) => s > 0 && s < line.length),
         ]);
+        let wallAboveStart = false;
         for (let i = 1; i < faceBreaks.length; i++) {
           const a = present(faceBreaks[i - 1]);
           const b = present(faceBreaks[i]);
           const ha = heightAt(wall, a);
           const hb = heightAt(wall, b, true);
+          if (Math.max(ha, hb) <= startHeight) continue;
+          wallAboveStart = true;
           const active = faceOpenings.filter(
             (o) => o.distance < b - EPS && o.distance + o.width > a + EPS,
           );
           const splits = [a, b];
-          const height = finish.height;
-          if (height !== undefined && (height - ha) * (height - hb) < 0)
-            splits.push(a + ((b - a) * (height - ha)) / (hb - ha));
-          for (const o of active)
-            for (const z of [o.sill, o.sill + o.height])
-              if ((z - ha) * (z - hb) < 0)
-                splits.push(a + ((b - a) * (z - ha)) / (hb - ha));
+          const boundaries = [
+            startHeight,
+            topHeight,
+            ...active.flatMap((o) => [o.sill, o.sill + o.height]),
+          ];
+          for (const z of boundaries)
+            if (z > Math.min(ha, hb) && z < Math.max(ha, hb))
+              splits.push(a + ((b - a) * (z - ha)) / (hb - ha));
           const xs = sorted(splits);
           for (let j = 1; j < xs.length; j++) {
             const x = present(xs[j - 1]);
@@ -1251,14 +1270,14 @@ export function generateConstruction(
             const hx = ha + ((hb - ha) * (x - a)) / (b - a);
             const hy = ha + ((hb - ha) * (y - a)) / (b - a);
             const bands = subtract(
-              0,
+              startHeight,
               Math.max(hx, hy),
               active.map((o) => [o.sill, o.sill + o.height]),
             );
             for (let k = 0; k < bands.length; k++) {
               const [low, high] = present(bands[k]);
-              const tx = Math.min(high, hx, finish.height ?? Infinity);
-              const ty = Math.min(high, hy, finish.height ?? Infinity);
+              const tx = Math.min(high, hx, topHeight);
+              const ty = Math.min(high, hy, topHeight);
               const area =
                 ((y - x) * (Math.max(0, tx - low) + Math.max(0, ty - low))) / 2;
               if (area <= EPS) continue;
@@ -1297,6 +1316,12 @@ export function generateConstruction(
             }
           }
         }
+        if (!wallAboveStart)
+          diagnostic(
+            { ...source, finishId: finish.id },
+            'finish-start-at-or-above-wall-top',
+            `Finish ${finish.id} starts at or above the wall top along the entire wall`,
+          );
       }
     }
     for (const ceiling of ordered(data.ceilings)) {

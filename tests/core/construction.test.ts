@@ -775,6 +775,8 @@ void test('partial-height finishes deduct only covered openings, apply layers an
     assert.ok(surface.points.every((p) => p.z <= 1.2 + 1e-8));
     close(present(surface.points[0]).y, 0.056);
   }
+  finish.startHeight = 0;
+  assert.deepEqual(generateConstruction(project, data), result);
   finish.height = NaN;
   assert.throws(() => {
     validateConstruction(project, data);
@@ -799,6 +801,70 @@ void test('wainscot height crossing a slope integrates the clipped trapezoid', (
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
     7.5,
   );
+});
+
+void test('an elevated finish clips to sloped and stepped wall tops', () => {
+  const { project, data, wall } = fixture(4, 3);
+  const finish = present(present(wall.finishes)[0]);
+  finish.layers = 1;
+  finish.startHeight = 2;
+  finish.height = 4;
+  wall.baseElevation = 5;
+  wall.topProfile = {
+    mode: 'linear',
+    points: [
+      { distance: 0, height: 1 },
+      { distance: 2, height: 3 },
+      { distance: 4, height: 5 },
+    ],
+  };
+  const slope = generateConstruction(project, data);
+  // A triangle from x=1 to 3 (2 m²), then a 2 m tall strip from x=3 to 4.
+  close(
+    slope.surfaces.reduce((sum, s) => sum + s.area, 0),
+    4,
+  );
+  for (const { points } of slope.surfaces)
+    for (const p of points) {
+      assert.ok(p.x >= 1 && p.z >= 7 && p.z <= 9);
+      assert.ok(p.z <= 6 + p.x);
+    }
+  wall.topProfile.mode = 'step';
+  const step = generateConstruction(project, data);
+  // Only the second 2 m run reaches 3 m, leaving 1 m of finish above the start.
+  assert.equal(step.surfaces.length, 1);
+  close(present(step.surfaces[0]).area, 2);
+  assert.ok(present(step.surfaces[0]).points.every((p) => p.x >= 2));
+});
+
+void test('finish ranges reject invalid bounds and diagnose starts at or above the wall top', () => {
+  const { project, data, wall } = fixture(4, 3);
+  const finish = present(present(wall.finishes)[0]);
+  for (const invalid of [-1, NaN, Infinity]) {
+    finish.startHeight = invalid;
+    assert.throws(() => {
+      validateConstruction(project, data);
+    }, /finish start height/);
+  }
+  finish.height = 2;
+  for (const invalid of [2, 3]) {
+    finish.startHeight = invalid;
+    assert.throws(() => {
+      validateConstruction(project, data);
+    }, /below finish top/);
+  }
+  delete finish.height;
+  for (const start of [3, 4]) {
+    finish.startHeight = start;
+    const result = generateConstruction(project, data);
+    assert.equal(result.complete, false);
+    assert.deepEqual(result.surfaces, []);
+    assert.deepEqual(result.surfacePurchases, []);
+    assert.deepEqual(
+      result.diagnostics.map((d) => [d.finishId, d.code]),
+      [['front', 'finish-start-at-or-above-wall-top']],
+    );
+  }
 });
 
 void test('tracks split at stock length, including sloped tracks, within configured generation limit', () => {
