@@ -9,7 +9,7 @@ export async function compactWorkflow(page: Page) {
     name: 'Walls, 1 drawing objects',
     exact: true,
   });
-  await expect(group).toContainText('24 ft');
+  await expect(group).toContainText("24'");
   expect((await group.boundingBox())?.height).toBe(22);
   expect((await page.locator('.sheet-row').boundingBox())?.height).toBe(24);
   await expect(page.getByLabel('Highlight color')).toHaveCount(0);
@@ -18,7 +18,7 @@ export async function compactWorkflow(page: Page) {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
-  await page.getByLabel('height (ft)', { exact: true }).fill('8');
+  await page.getByLabel('height', { exact: true }).fill('8');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
@@ -27,11 +27,11 @@ export async function compactWorkflow(page: Page) {
   await expect(page.getByText('0 selected', { exact: true })).toBeVisible();
   await pagePoint(page, 216, 144);
   await expect(page.getByText('0 selected', { exact: true })).toBeVisible();
-  await expect(group).toContainText('24 ft');
+  await expect(group).toContainText("24'");
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('192 ft2');
+  ).toContainText('192 ft²');
   await page
     .locator('details.quantity-output > summary')
     .filter({ hasText: 'Wall area' })
@@ -64,9 +64,9 @@ export async function compactWorkflow(page: Page) {
   await page.getByRole('button', { name: 'Preset', exact: true }).click();
   await page.getByLabel('Printed scale').selectOption('1/8″ = 1′-0″');
   await page.getByRole('button', { name: 'Apply scale', exact: true }).click();
-  await expect(group).toContainText('32 ft');
+  await expect(group).toContainText("32'");
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(group).toContainText('24 ft');
+  await expect(group).toContainText("24'");
 
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
   const bounds = await canvas.boundingBox();

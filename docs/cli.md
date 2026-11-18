@@ -1,6 +1,6 @@
 # Desktop CLI
 
-`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-6 reset and per-takeoff handoff filenames.
+`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-7 reset and per-takeoff handoff filenames.
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
@@ -41,9 +41,9 @@ For longer requests, use `bluewing <command> --stdin` and send the same JSON thr
 
 A failed child is identified by its zero-based `commands` index and command name. Run application commands such as `assembly.import` on their own before a batch that uses their results. Final validation checks the combined draft before saving.
 
-Geometry points use unzoomed, rotated PDF viewport coordinates: origin at the top left, positive x rightward, positive y downward. Import stores the original PDF-to-page transform. Calibration changes physical measurements, never the authored points. `sheet.calibrate` accepts two page points and a known distance in `ft`, `in`, `m`, or `mm`.
+Geometry points use unzoomed, rotated PDF viewport coordinates: origin at the top left, positive x rightward, positive y downward. Import stores the original PDF-to-page transform. Calibration changes physical measurements, never the authored points. `sheet.calibrate` accepts two page points and a known distance in `ft` or `in`.
 
-Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ "id": "SHEET_ID", "paper": { "value": 0.25, "unit": "in" }, "real": { "value": 1, "unit": "ft" } }` for 1/4″ = 1′-0″. Each distance supports `ft`, `in`, `m`, or `mm`; 1 mm on paper to 100 mm real distance sets 1:100. Both scale commands save through the same session and support Undo.
+Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ "id": "SHEET_ID", "paper": { "value": 0.25, "unit": "in" }, "real": { "value": 1, "unit": "ft" } }` for 1/4″ = 1′-0″. Each distance supports `ft` or `in`. Both commands store `calibration.feetPerUnit`, the real length in decimal feet of one page point, and support Undo.
 
 `sheet.render` writes a PNG and returns its sheet ID, revision, pixel dimensions, page bounds, `pageToPixel`, and `pixelToPage` transforms. Supply `sheetId`, an output `path`, and optionally `maxDimension` (capped at 4096), `mode` (`plan`, `takeoff`, or `combined`), and page-coordinate `bounds`. It shares the takeoff painter with the drawing canvas. Use the returned inverse transform when turning an observed pixel position into a geometry edit.
 
@@ -178,13 +178,13 @@ The structured Construction and Review panels use the same commands below. Consu
 | `review.mark`, `review.inspect`                   | Store review status and inspect effective status, unreviewed sources, and snippets.                                                                                                                |
 | `project.backup`                                  | Create a recovery copy of the open desktop project, optionally at `path`; returns the saved path and never overwrites an existing file.                                                            |
 
-Construction physical lengths and world positions use metres, areas use square metres, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Recipe inputs still use their declared units.
+Construction physical lengths and world positions use decimal feet, areas use square feet, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Numeric recipe inputs and outputs use their declared units (`ft`, `in`, `ft2`, `ea` or `scalar`). Piece schedules return decimal feet in `cutLength_ft` and `stockLength_ft`.
 
 `construction.render` uses the same Three.js renderer as the interactive 3D view and Wingman. Its payload supports:
 
 `sheetIds` limits the page scope: omit it for all project sheets, pass one ID for a single page, or pass `[]` for an empty scene. Unknown sheet IDs fail the request. `alignment` is `saved` by default, or `none` to ignore combined 3D transforms. Saved transforms apply only when the scope contains at least two sheets, before the other filters. Single-page views retain their original placement. The result includes resolved `sheetIds`, `alignment`, and `appliedAlignments` alongside the camera. Wingman receives this explicit scope and shows construction without an unrelated active PDF background.
 
-Combined 3D alignment is a saved presentation transform after calibration and construction placement. It does not change source geometry, placement, quantities, or single-page views. Numeric offsets use world XY metres and rotation uses radians about world Z. Set it with `construction.alignment.put`, remove it with `construction.alignment.delete`, or solve it with `construction.alignment.match`. These project mutations require the usual project identity and expected revision.
+Combined 3D alignment is a saved presentation transform after calibration and construction placement. It does not change source geometry, placement, quantities, or single-page views. Numeric offsets use world XY feet and rotation uses radians about world Z. Set it with `construction.alignment.put`, remove it with `construction.alignment.delete`, or solve it with `construction.alignment.match`. These project mutations require the usual project identity and expected revision.
 
 ```sh
 bluewing construction.alignment.put '{"projectId":"PROJECT_ID","expectedRevision":12,"payload":{"sheetId":"SOURCE_SHEET_ID","offset":{"x":2,"y":-1},"rotation":0.1}}'
@@ -194,7 +194,7 @@ bluewing construction.render '{"payload":{"path":"/absolute/path/original.png","
 bluewing construction.alignment.delete '{"projectId":"PROJECT_ID","expectedRevision":14,"payload":{"sheetId":"SOURCE_SHEET_ID"}}'
 ```
 
-Match points are corresponding source and reference **page coordinates**, in the order supplied, on distinct calibrated sheets. One pair preserves the source's saved rotation and solves translation; two pairs solve rigid rotation and translation without scaling. The reference's saved combined transform is included. The result reports `alignment`, `sourceDistance`, `referenceDistance`, `residual`, and per-pair `residuals` in metres (distances are null for one pair). A distance mismatch remains visible as residual error; matching never recalibrates either sheet.
+Match points are corresponding source and reference **page coordinates**, in the order supplied, on distinct calibrated sheets. One pair preserves the source's saved rotation and solves translation; two pairs solve rigid rotation and translation without scaling. The reference's saved combined transform is included. The result reports `alignment`, `sourceDistance`, `referenceDistance`, `residual`, and per-pair `residuals` in feet (distances are null for one pair). A distance mismatch remains visible as residual error; matching never recalibrates either sheet.
 
 | Option                                         | Meaning                                                                                                                                                    |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -202,8 +202,8 @@ Match points are corresponding source and reference **page coordinates**, in the
 | `geometryIds`, `levelId`, `materialId`, `role` | Filter the displayed construction. These never change calculations or schedules.                                                                           |
 | `view`                                         | `isometric`, `top`, `front`, `back`, `left`, or `right`. Defaults to isometric.                                                                            |
 | `azimuth`, `elevation`                         | Explicit camera angles in radians, instead of a named `view`. Elevation must be between −π/2 and π/2. Supplying both approaches is an error.               |
-| `target`                                       | Camera focus point `{ "x": 0, "y": 0, "z": 0 }` in world metres. Defaults to the filtered model's centre.                                                  |
-| `span`                                         | World span in metres across the shorter image axis at zoom 1. Defaults to fitting the filtered model.                                                      |
+| `target`                                       | Camera focus point `{ "x": 0, "y": 0, "z": 0 }` in world feet. Defaults to the filtered model's centre.                                                    |
+| `span`                                         | World span in feet across the shorter image axis at zoom 1. Defaults to fitting the filtered model.                                                        |
 | `zoom`                                         | Magnification from 0.01 to 10000, default 1. Larger values move closer without changing the target.                                                        |
 | `displayMode`                                  | `solid` (default) respects depth for all materials; `framing` hides finish and tile surfaces; `xray` shows finish outlines through framing.                |
 | `caption`                                      | Optional user-facing description of the view published to Wingman.                                                                                         |
@@ -247,7 +247,7 @@ Generation has a shared 50,000-piece/surface budget; hitting it reports incomple
 
 Snippets store `id`, `name`, `sheetId`, page `bounds`, `sources`, highlighted `geometryIds`, `annotations` (`points`, `label`, `color`), and `note`. A source is `{kind, id}`, where kind is `geometry`, `wall`, `opening`, `assembly`, `header`, or `ceiling`. Export returns sheet identity and coordinate mapping. `review.mark` takes `id`, `target`, `status`, and `note`; statuses are `needs-review`, `question`, or `reviewed`. A reviewed mark captures dependencies, so relevant source, calibration, placement, level, assignment, or linked-snippet changes produce effective status `changed`. Use `preview` to inspect quantity changes before applying an edit.
 
-Only project format 6 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 2 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 9.
+Only project format 7 is supported. Bluewing is pre-alpha; recreate incompatible development takeoffs. The app does not load or migrate other formats. The global library starts fresh in version 3 rather than importing earlier definitions. `project.backup` is still available for an explicit current-project recovery copy. Current web releases require native bridge 9.
 
 See [detailed-takeoff verification](detailed-takeoff.md) for actual results and pending checks.
 

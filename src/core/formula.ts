@@ -12,12 +12,9 @@ type Node =
   | { kind: 'binary'; op: string; left: Node; right: Node }
   | { kind: 'call'; name: string; args: Node[] };
 const units: Record<Unit, { scale: number; dimension: number }> = {
-  m: { scale: 1, dimension: 1 },
-  mm: { scale: 0.001, dimension: 1 },
-  ft: { scale: 0.3048, dimension: 1 },
-  in: { scale: 0.0254, dimension: 1 },
-  m2: { scale: 1, dimension: 2 },
-  ft2: { scale: 0.09290304, dimension: 2 },
+  ft: { scale: 1, dimension: 1 },
+  in: { scale: 1 / 12, dimension: 1 },
+  ft2: { scale: 1, dimension: 2 },
   ea: { scale: 1, dimension: 0 },
   scalar: { scale: 1, dimension: 0 },
 };

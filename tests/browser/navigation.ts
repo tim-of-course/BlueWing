@@ -69,7 +69,7 @@ export async function navigatorWorkflow(page: Page) {
   await expect(
     page
       .getByRole('complementary', { name: 'Inspector', exact: true })
-      .getByText('24 ft', { exact: true }),
+      .getByText("24'", { exact: true }),
   ).toBeVisible();
   await firstBranch
     .getByRole('button', { name: /^Collapse groups for / })
@@ -105,7 +105,7 @@ export async function navigatorWorkflow(page: Page) {
     .getByText('Preview on selected drawing', { exact: true })
     .click();
   await expect(
-    editor.getByText('Wall area: 192 ft2', { exact: true }),
+    editor.getByText('Wall area: 192 ft²', { exact: true }),
   ).toBeVisible();
   await editor
     .getByRole('button', { name: 'Cancel editing', exact: true })

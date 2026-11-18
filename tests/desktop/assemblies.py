@@ -110,7 +110,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         assert next(t['amount'] for t in totals['totals'] if t['materialId'] == 'steel-stud-unspecified') == 42
         pieces = schedule()
         assert len(pieces) == 3 and sum(p['quantity'] for p in pieces) == 40
-        assert abs(next(p['cutLength_m'] for p in pieces if p['location'] == 'Opening H1') - 1.3716) < 1e-8
+        assert abs(next(p['cutLength_ft'] for p in pieces if p['location'] == 'Opening H1') - 4.5) < 1e-8
         (EVIDENCE / 'pieces.csv').write_text(call('pieces.export', {'format': 'csv'}))
         stud_assignment = call('project.inspect')['assignments']['stud-assignment']
         stud_assignment['allowances']['studs']['packageSize'] = 20
@@ -175,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         assert not call('construction.inspect')['pieces']
         for size in ['2x2', '2x4']:
             assembly = call('assembly.import', {'libraryId': 'ceiling-grid-' + size, 'id': size + '-layout'}, True)
-            assembly['ceilingTemplate']['grid']['origin'] = {'x': 72 * 0.0254, 'y': -456 * 0.0254}
+            assembly['ceilingTemplate']['grid']['origin'] = {'x': 72 / 12, 'y': -456 / 12}
             call('assembly.put', assembly, True)
             # Replacing this assignment replaces its estimate or prior layout contribution.
             assignment['recipeId'] = assembly['id']
@@ -190,9 +190,9 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             for role, (count, feet) in expected.items():
                 members = [piece for piece in model['pieces'] if piece['role'] == role]
                 assert len(members) == count, (role, members)
-                assert all(math.isclose(piece['cutLength'], feet * 0.3048, abs_tol=1e-8) for piece in members)
+                assert all(math.isclose(piece['cutLength'], feet, abs_tol=1e-8) for piece in members)
             assert len(model['surfaces']) == (16 if size == '2x2' else 8)
-            assert math.isclose(sum(surface['area'] for surface in model['surfaces']), 64 * 0.09290304, abs_tol=1e-8)
+            assert math.isclose(sum(surface['area'] for surface in model['surfaces']), 64, abs_tol=1e-8)
             outputs = [row for row in quantities()['outputs'] if row['assignmentId'] == assignment['id']]
             assert outputs and all(row['modeling'] == 'modeled' for row in outputs)
             sources = [source for row in outputs for source in row['sources']]
@@ -234,11 +234,11 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
               for ident, geometry in [('frp', 'a'), ('acoustic', 'b'), ('kick', 'kick-run'), ('joists', 'layout-room'), ('box', 'header-run')]],
         ]}, True)
         modeled = [
-            ('frp', 'frp-wall', {'height': 8 * 0.3048, 'openings': [
-                {'id': 'door', 'distance': 6 * 0.3048, 'width': 3 * 0.3048, 'sill': 0, 'height': 7 * 0.3048}]}),
-            ('acoustic', 'acoustical-wall-surface', {'height': 4 * 0.3048, 'elevation': 4 * 0.3048}),
+            ('frp', 'frp-wall', {'height': 8, 'openings': [
+                {'id': 'door', 'distance': 6, 'width': 3, 'sill': 0, 'height': 7}]}),
+            ('acoustic', 'acoustical-wall-surface', {'height': 4, 'elevation': 4}),
             ('kick', 'steel-kick', {}),
-            ('joists', 'steel-joists', {'spacing': 2 * 0.3048, 'origin': {'x': 72 * 0.0254, 'y': -456 * 0.0254}}),
+            ('joists', 'steel-joists', {'spacing': 2, 'origin': {'x': 72 / 12, 'y': -456 / 12}}),
             ('box', 'steel-box-header', {}),
         ]
         for ident, recipe, overrides in modeled:
@@ -251,11 +251,11 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         assert len(model['applications']['materials']) == 5
         for ident, expected in [('frp', 171), ('acoustic', 96)]:
             surfaces = [s for s in model['surfaces'] if s['assignmentId'] == ident]
-            assert math.isclose(sum(s['area'] for s in surfaces) / 0.09290304, expected, abs_tol=1e-8)
+            assert math.isclose(sum(s['area'] for s in surfaces), expected, abs_tol=1e-8)
         for ident, count, length in [('kick', 1, 5), ('joists', 5, 8), ('box', 4, 6)]:
             members = [p for p in model['pieces'] if p['assignmentId'] == ident]
             assert len(members) == count
-            assert all(math.isclose(p['cutLength'], length * 0.3048, abs_tol=1e-8) for p in members)
+            assert all(math.isclose(p['cutLength'], length, abs_tol=1e-8) for p in members)
         reports = [row for row in quantities()['outputs'] if row['assignmentId'] in {item[0] for item in modeled}]
         sources = [source for row in reports for source in row['sources']]
         expected_ids = {p['id'] for p in model['pieces'] + model['surfaces'] if p['assignmentId'] in {item[0] for item in modeled}}

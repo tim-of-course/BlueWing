@@ -7,12 +7,11 @@ import type {
 import type { Point } from './types';
 import { pointInPolygon, polygonArea, validateGeometry } from './geometry';
 
-const FOOT = 0.3048;
-const MODULE = 2 * FOOT;
-const MAIN_SPACING = 4 * FOOT;
-const EPS = 1e-8;
+const MODULE = 2;
+const MAIN_SPACING = 4;
+const EPS = 3.28e-8;
 
-/** All dimensions are metres. The main direction is rotation radians from +X. */
+/** All dimensions are feet. The main direction is rotation radians from +X. */
 export interface CeilingGridSpec {
   system: '2x2' | '2x4';
   /** World-space intersection of a main runner and a 4 ft cross-tee row. */
@@ -35,7 +34,7 @@ export interface CeilingGridInput extends CeilingGridSpec {
     materialId: string;
     thickness?: number;
     wastePercent?: number;
-    /** Coverage in square metres per purchased package. */
+    /** Coverage in square feet per purchased package. */
     packageSize?: number;
   };
   maxElements?: number;
@@ -152,7 +151,7 @@ function spans(
       if (Math.abs(a[fixed] - station) <= EPS) crossings.push(a[axis], b[axis]);
     } else {
       const t = (station - a[fixed]) / (b[fixed] - a[fixed]);
-      if (t >= -EPS && t <= 1 + EPS)
+      if (t >= -1e-8 && t <= 1 + 1e-8)
         crossings.push(
           a[axis] + Math.max(0, Math.min(1, t)) * (b[axis] - a[axis]),
         );
@@ -232,7 +231,7 @@ export function clipPolygonToRectangle(
         high = Math.min(high, Math.max(t1, t2));
       }
     }
-    if (high - low <= EPS) continue;
+    if (high - low <= 1e-8) continue;
     const middle = point(a, b, (low + high) / 2);
     // Rectangle edges below own coincident boundary segments exactly once.
     if (

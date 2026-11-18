@@ -57,28 +57,28 @@ export async function systemWorkflow(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
-  await page.getByLabel('height (ft)', { exact: true }).fill('10');
-  await page.getByLabel('stockLength (ft)', { exact: true }).fill('12');
+  await page.getByLabel('height', { exact: true }).fill('10');
+  await page.getByLabel('stockLength', { exact: true }).fill('12');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const totals = page.getByRole('table', { name: 'Material totals' });
-  await expect(totals).toContainText('240 ft2');
+  await expect(totals).toContainText('240 ft²');
   await expect(totals).toContainText('19 ea');
-  await page.getByLabel('height (ft)', { exact: true }).fill('12');
+  await page.getByLabel('height', { exact: true }).fill('12');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
-  await expect(totals).toContainText('288 ft2');
+  await expect(totals).toContainText('288 ft²');
   await expect(
     page.getByRole('table', { name: 'Piece schedule' }),
-  ).toContainText('12′ 0″');
+  ).toContainText("12'");
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
-  await expect(totals).toContainText('288 ft2');
+  await expect(totals).toContainText('288 ft²');
   await expect(totals).toContainText('19 ea');
   await page
     .getByRole('button', {
@@ -98,9 +98,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     exact: true,
   });
   await editor.getByRole('button', { name: 'New wall', exact: true }).click();
-  await editor
-    .getByLabel('Wall height (ft) (optional)', { exact: true })
-    .fill('10');
+  await editor.getByLabel('Wall height (optional)', { exact: true }).fill('10');
   await editor
     .getByRole('group', { name: 'Stud', exact: true })
     .getByLabel('Material Id', { exact: true })
@@ -115,7 +113,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .click();
   await finishes.getByLabel('Material Id', { exact: true }).fill('5/8 Type X');
   await finishes
-    .getByLabel('Start Height (ft) (optional)', { exact: true })
+    .getByLabel('Start Height (optional)', { exact: true })
     .fill('2');
   await editor
     .getByRole('button', { name: 'Save construction', exact: true })
@@ -132,15 +130,13 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await editor
     .getByRole('combobox', { name: 'Use template', exact: true })
     .selectOption({ label: 'W1 steel and board' });
-  await editor
-    .getByLabel('Wall height (ft) (optional)', { exact: true })
-    .fill('12');
+  await editor.getByLabel('Wall height (optional)', { exact: true }).fill('12');
   await editor
     .getByRole('button', { name: 'Preview quantities', exact: true })
     .click();
   await expect(
     editor.getByRole('table', { name: 'Material changes' }),
-  ).toContainText('+48 ft2');
+  ).toContainText('+48 ft²');
   await editor
     .getByRole('button', { name: 'Cancel edits', exact: true })
     .click();
@@ -150,8 +146,8 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .first()
     .click();
   await expect(
-    editor.getByLabel('Wall height (ft) (optional)', { exact: true }),
-  ).toHaveValue('10');
+    editor.getByLabel('Wall height (optional)', { exact: true }),
+  ).toHaveValue("10'");
   await editor
     .getByRole('combobox', { name: 'Use template', exact: true })
     .selectOption({ label: 'W1 steel and board' });
@@ -161,9 +157,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await expect(
     editor.getByRole('button', { name: 'Close', exact: true }),
   ).toBeEnabled();
-  await editor
-    .getByLabel('Wall height (ft) (optional)', { exact: true })
-    .fill('12');
+  await editor.getByLabel('Wall height (optional)', { exact: true }).fill('12');
   await editor
     .getByRole('button', { name: 'Save construction', exact: true })
     .click();
@@ -171,8 +165,8 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByRole('button', { name: 'Reset local overrides', exact: true })
     .click();
   await expect(
-    editor.getByLabel('Wall height (ft) (optional)', { exact: true }),
-  ).toHaveValue('10');
+    editor.getByLabel('Wall height (optional)', { exact: true }),
+  ).toHaveValue("10'");
   await editor
     .getByRole('button', { name: 'Piece schedule', exact: true })
     .click();
@@ -182,7 +176,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('192 ft2');
+  ).toContainText('192 ft²');
   await expect(
     page
       .getByRole('table', { name: 'Material totals' })
@@ -228,7 +222,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   ).toContainText('362S162-33');
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
-  ).toContainText('Cut length: 10 ft 0 in');
+  ).toContainText("Cut length: 10'");
   await viewer
     .getByRole('button', { name: 'Fit selection', exact: true })
     .click();
@@ -251,15 +245,15 @@ export async function detailedWorkflow(page: Page): Promise<void> {
     .getByLabel('Choose assembly', { exact: true })
     .selectOption({ label: 'W1 steel and board' });
   await assemblies
-    .getByLabel('Wall height (m) (optional)', { exact: true })
-    .fill('3.6576');
+    .getByLabel('Wall height (optional)', { exact: true })
+    .fill('12');
   await assemblies
     .getByRole('button', { name: 'Save assembly', exact: true })
     .click();
   await assemblies.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
-  ).toContainText('Cut length: 12 ft 0 in');
+  ).toContainText("Cut length: 12'");
   await view.selectOption('top');
   await expect(view).toHaveValue('top');
   await viewer.getByRole('img').press('ArrowRight');
@@ -306,7 +300,7 @@ export async function detailedWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('240 ft2');
+  ).toContainText('240 ft²');
   await page.getByRole('button', { name: 'Review', exact: true }).click();
   await expect(review.locator('.review-row').first()).toContainText('changed');
   await review

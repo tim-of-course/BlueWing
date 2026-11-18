@@ -191,10 +191,7 @@ function source(
     if (output.piece) {
       if (!Number.isInteger(value))
         throw new Error('Piece quantity must be a whole number');
-      const length = (definition: {
-        formula: string;
-        unit: 'm' | 'mm' | 'ft' | 'in';
-      }) => {
+      const length = (definition: { formula: string; unit: 'ft' | 'in' }) => {
         const value = formulaQuantity({
           value: formulaOutput(
             evaluate(definition.formula, variables),
@@ -203,14 +200,14 @@ function source(
           unit: definition.unit,
         }).value;
         if (value <= 0) throw new Error('Piece length must be positive');
-        // Canonical metres make equivalent imperial/metric schedules combine.
-        return { value, unit: 'm' as const };
+        // Group equivalent cut lengths in decimal feet.
+        return { value, unit: 'ft' as const };
       };
       const cutLength = length(output.piece.cutLength);
       const stockLength = output.piece.stockLength
         ? length(output.piece.stockLength)
         : undefined;
-      if (stockLength && stockLength.value + 1e-9 < cutLength.value)
+      if (stockLength && stockLength.value + 3.28e-9 < cutLength.value)
         throw new Error('Stock length is shorter than cut length');
       return {
         geometryId,
@@ -515,7 +512,7 @@ export function calculateProject(project: Project): CalculationResult {
       output.purchasedAmount * (output.direction === 'deduct' ? -1 : 1);
     if (total.stockLength)
       total.purchasedLength = {
-        value: (total.amount * total.stockLength.value) / 0.3048,
+        value: total.amount * total.stockLength.value,
         unit: 'ft',
       };
     total.complete &&= output.complete;
@@ -620,8 +617,8 @@ export function exportQuantities(
       'complete',
       'diagnostics',
       'role',
-      'cutLength_m',
-      'stockLength_m',
+      'cutLength_ft',
+      'stockLength_ft',
       'purchaseScope',
       'category',
       'packedCount',
@@ -713,8 +710,8 @@ export function pieceSchedule(
           role: source.pieceRole ?? output.role ?? '',
           pieceId: source.pieceId ?? '',
           quantity: source.value,
-          cutLength_m: source.cutLength?.value ?? null,
-          stockLength_m: source.stockLength?.value ?? null,
+          cutLength_ft: source.cutLength?.value ?? null,
+          stockLength_ft: source.stockLength?.value ?? null,
           complete: source.value !== null && output.complete,
           diagnostic: source.diagnostic ?? output.diagnostics.join('; '),
         };
@@ -724,7 +721,7 @@ export function pieceSchedule(
         wastePercent?: number;
         adjustedCount?: number;
         purchasedCount?: number;
-        purchasedLength_m?: number;
+        purchasedLength_ft?: number;
       })[] = installed;
       if (output.packedCount !== undefined && output.stockLength)
         rows.push({
@@ -739,13 +736,13 @@ export function pieceSchedule(
           role: '',
           pieceId: '',
           quantity: null,
-          cutLength_m: null,
-          stockLength_m: output.stockLength.value,
+          cutLength_ft: null,
+          stockLength_ft: output.stockLength.value,
           packedCount: output.packedCount,
           wastePercent: output.wastePercent,
           adjustedCount: output.adjustedAmount,
           purchasedCount: output.purchasedAmount,
-          purchasedLength_m: output.purchasedAmount * output.stockLength.value,
+          purchasedLength_ft: output.purchasedAmount * output.stockLength.value,
           complete: output.complete,
           diagnostic: output.diagnostics.join('; '),
         });
@@ -783,15 +780,15 @@ export function exportPieces(
     'modeling',
     'pieceId',
     'quantity',
-    'cutLength_m',
-    'stockLength_m',
+    'cutLength_ft',
+    'stockLength_ft',
     'recordType',
     'category',
     'packedCount',
     'wastePercent',
     'adjustedCount',
     'purchasedCount',
-    'purchasedLength_m',
+    'purchasedLength_ft',
     'complete',
     'diagnostic',
   ] as const;

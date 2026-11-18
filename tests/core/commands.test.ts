@@ -20,7 +20,7 @@ void test('registry examples validate and mutating examples execute in an open p
     pageIndex: 1,
     width: 800,
     height: 600,
-    calibration: { metresPerUnit: 0.02 },
+    calibration: { feetPerUnit: 0.02 },
   };
   project.geometries['room-1'] = {
     id: 'room-1',

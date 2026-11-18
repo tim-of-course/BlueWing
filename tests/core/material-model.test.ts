@@ -17,8 +17,6 @@ import type {
   Recipe,
 } from '../../src/core/types';
 
-const ft = 0.3048;
-
 function near(actual: number, expected: number) {
   assert.ok(
     Math.abs(actual - expected) < 1e-7,
@@ -52,7 +50,7 @@ function fixture(recipe: Recipe, kind: GeometryKind = 'path') {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: ft },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.trace = {
     id: 'trace',
@@ -90,7 +88,7 @@ function fixture(recipe: Recipe, kind: GeometryKind = 'path') {
 function wall(height = 10) {
   const recipe = starter('steel-wall');
   assert.ok(recipe.wallTemplate);
-  recipe.wallTemplate.height = height * ft;
+  recipe.wallTemplate.height = height;
   return recipe;
 }
 
@@ -136,7 +134,7 @@ function linked(result: CalculationResult) {
       (source) => source.surfaceId === surface.id,
     );
     assert.ok(source);
-    near(source.value ?? NaN, surface.area / ft ** 2);
+    near(source.value ?? NaN, surface.area);
     assert.deepEqual(
       scene.surfaces.find((item) => item.id === surface.id)?.points,
       surface.points,
@@ -161,11 +159,11 @@ void test('modeled wall reports exactly the positioned studs, tracks and finish 
     piece.role.endsWith('track'),
   );
   assert.equal(studs.length, 19); // 24 ft / 16 in, plus both ends.
-  for (const stud of studs) near(stud.cutLength, 10 * ft);
+  for (const stud of studs) near(stud.cutLength, 10);
   assert.equal(tracks.length, 6); // Two 24 ft runs, each split into 10+10+4 ft.
   near(
     tracks.reduce((sum, piece) => sum + piece.cutLength, 0),
-    48 * ft,
+    48,
   );
   near(
     result.outputs
@@ -191,15 +189,15 @@ void test('project definition edits update modeled pieces while sparse wall edit
     ...materialSettings(applied),
     id: applied.id,
     geometryId: applied.geometryId,
-    height: 10 * ft,
+    height: 10,
   });
   assert.deepEqual(project.assignments.applied?.geometryDetails?.trace?.wall, {
-    height: 10 * ft,
+    height: 10,
   });
   const changed = structuredClone(project.recipes['steel-wall']);
   assert.ok(changed?.wallTemplate);
-  changed.wallTemplate.height = 9 * ft;
-  changed.wallTemplate.studSpacing = 2 * ft;
+  changed.wallTemplate.height = 9;
+  changed.wallTemplate.studSpacing = 2;
   changed.wallTemplate.stud.materialId = 'new-project-stud';
   project = command(project, 'assembly.put', changed);
   const result = calculateProject(project);
@@ -207,7 +205,7 @@ void test('project definition edits update modeled pieces while sparse wall edit
   const studs = result.model.pieces.filter((piece) => piece.role === 'stud');
   assert.equal(studs.length, 13);
   for (const stud of studs) {
-    near(stud.cutLength, 10 * ft);
+    near(stud.cutLength, 10);
     assert.equal(stud.materialId, 'new-project-stud');
   }
   project = command(project, 'wall.reset', { id: 'applied/trace' });
@@ -216,7 +214,7 @@ void test('project definition edits update modeled pieces while sparse wall edit
   for (const stud of reset.model.pieces.filter(
     (piece) => piece.role === 'stud',
   ))
-    near(stud.cutLength, 9 * ft);
+    near(stud.cutLength, 9);
 });
 
 void test('opening geometry drives layered finish area, header elevation, backing cuts and their reports', () => {
@@ -228,18 +226,18 @@ void test('opening geometry drives layered finish area, header elevation, backin
       face: 'front',
       materialId: 'type-x',
       layers: 2,
-      thickness: 0.015875,
+      thickness: 0.625 / 12,
     },
   ];
   recipe.wallTemplate.backing = [
     {
       id: 'backing',
-      height: 4 * ft,
+      height: 4,
       member: {
         materialId: 'wood-backing',
-        width: 0.0381,
-        depth: 0.0889,
-        stockLength: 16 * ft,
+        width: 1.5 / 12,
+        depth: 3.5 / 12,
+        stockLength: 16,
       },
     },
   ];
@@ -253,9 +251,9 @@ void test('opening geometry drives layered finish area, header elevation, backin
         role: 'header-web',
         member: {
           materialId: 'header-track',
-          width: 0.092075,
+          width: 3.625 / 12,
           depth: 0.05,
-          stockLength: 10 * ft,
+          stockLength: 10,
         },
         startExtension: 0,
         endExtension: 0,
@@ -267,10 +265,10 @@ void test('opening geometry drives layered finish area, header elevation, backin
   project = command(project, 'opening.put', {
     id: 'door',
     wallId: 'applied/trace',
-    distance: 8 * ft,
-    width: 3 * ft,
+    distance: 8,
+    width: 3,
     sill: 0,
-    height: 7 * ft,
+    height: 7,
     jambCount: 1,
     headerId: 'detail',
   });
@@ -282,20 +280,19 @@ void test('opening geometry drives layered finish area, header elevation, backin
     (piece) => piece.role === 'header-web',
   );
   assert.ok(header);
-  near(header.start.z, 7 * ft + 0.025);
-  near(header.end.z, 7 * ft + 0.025);
-  near(header.cutLength, 3 * ft);
+  near(header.start.z, 7 + 0.025);
+  near(header.end.z, 7 + 0.025);
+  near(header.cutLength, 3);
   const backing = result.model.pieces.filter(
     (piece) => piece.role === 'backing',
   );
   near(
     backing.reduce((sum, piece) => sum + piece.cutLength, 0),
-    21 * ft,
+    21,
   );
   assert.ok(
     backing.every(
-      (piece) =>
-        piece.end.x <= 8 * ft + 1e-8 || piece.start.x >= 11 * ft - 1e-8,
+      (piece) => piece.end.x <= 8 + 1e-8 || piece.start.x >= 11 - 1e-8,
     ),
   );
 });
@@ -310,7 +307,7 @@ void test('waste and packages change purchasing without creating extra material 
       face: 'front',
       layers: 2,
       wastePercent: 10,
-      packageSize: 32 * ft ** 2,
+      packageSize: 32,
     },
   ];
   recipe.wallTemplate.stud.wastePercent = 10;
@@ -331,7 +328,7 @@ void test('waste and packages change purchasing without creating extra material 
   near(board?.purchasedAmount ?? NaN, 544); // 480 × 1.10, rounded to 17 × 32 SF.
   near(
     result.model.surfaces.reduce((sum, surface) => sum + surface.area, 0),
-    480 * ft ** 2,
+    480,
   );
 });
 
@@ -354,7 +351,7 @@ void test('both ACT layout assemblies report their actual main, tee, angle and t
     );
     assert.ok(
       result.model.pieces.every(
-        (piece) => Math.abs(piece.start.z - piece.depth / 2 - 9 * ft) < 1e-8,
+        (piece) => Math.abs(piece.start.z - piece.depth / 2 - 9) < 1e-8,
       ),
     );
   }
@@ -363,7 +360,7 @@ void test('both ACT layout assemblies report their actual main, tee, angle and t
 void test('ACT purchase rounding groups tile patches instead of ordering a package per patch', () => {
   const recipe = starter('ceiling-grid-2x2');
   assert.ok(recipe.ceilingTemplate?.grid);
-  recipe.ceilingTemplate.packageSize = 48 * ft ** 2;
+  recipe.ceilingTemplate.packageSize = 48;
   recipe.ceilingTemplate.wastePercent = 10;
   recipe.ceilingTemplate.grid.main.wastePercent = 10;
   recipe.ceilingTemplate.grid.crossTee4.packageSize = 10;
@@ -405,7 +402,7 @@ void test('a formula piece schedule remains an explicit estimate and creates no 
   assert.ok(estimate);
   assert.equal(estimate.modeling, 'estimate');
   assert.equal(estimate.baseAmount, 19);
-  near(estimate.sources[0]?.cutLength?.value ?? NaN, 10 * ft);
+  near(estimate.sources[0]?.cutLength?.value ?? NaN, 10);
   assert.deepEqual(result.model.pieces, []);
   assert.deepEqual(result.model.surfaces, []);
   assert.deepEqual(constructionSceneInput(result.model), {

@@ -63,21 +63,21 @@ const areaId = {
 };
 const station = {
   ...nonnegative,
-  description: 'Metres along the path from its first point.',
+  description: 'Feet along the path from its first point.',
 };
 const wallHeight = {
   ...positive,
-  description: 'Metres above wall base (3.048 = 10 ft).',
+  description: 'Feet above wall base.',
 };
 const layers = { ...positive, description: 'Number of material layers.' };
-const thickness = { ...positive, description: 'Metres per layer.' };
+const thickness = { ...positive, description: 'Feet per layer.' };
 const wastePercent = {
   ...nonnegative,
   description: 'Waste added before package rounding (10 means 10%).',
 };
 const surfacePackage = {
   ...positive,
-  description: 'Square metres covered per package.',
+  description: 'Square feet covered per package.',
 };
 const rotation = {
   ...number,
@@ -87,8 +87,8 @@ const vector = object({ x: number, y: number, z: number });
 const offsets = array(
   object(
     {
-      along: { ...number, description: 'Longitudinal offset in metres.' },
-      face: { ...number, description: 'Offset along wall normal in metres.' },
+      along: { ...number, description: 'Longitudinal offset in feet.' },
+      face: { ...number, description: 'Offset along wall normal in feet.' },
       rotation,
     },
     ['along', 'face'],
@@ -100,16 +100,16 @@ const member = object(
     width: {
       ...positive,
       description:
-        'Section width in metres, along wall for verticals, across wall for horizontals.',
+        'Section width in feet, along wall for verticals, across wall for horizontals.',
     },
     depth: {
       ...positive,
       description:
-        'Section depth in metres, across wall for verticals (0.092075 = 3-5/8 in), vertical for horizontals.',
+        'Section depth in feet, across wall for verticals, vertical for horizontals.',
     },
     stockLength: {
       ...positive,
-      description: 'Length of one purchased stock piece in metres.',
+      description: 'Length of one purchased stock piece in feet.',
     },
     wastePercent,
     packageSize: {
@@ -131,18 +131,17 @@ const finish = object(
     layers,
     offset: {
       ...number,
-      description: 'Gap from stud face to finish in metres, positive outward.',
+      description: 'Gap from stud face to finish in feet, positive outward.',
     },
     thickness,
     startHeight: {
       ...nonnegative,
-      description:
-        'Finish bottom in metres above the wall base. Defaults to 0.',
+      description: 'Finish bottom in feet above the wall base. Defaults to 0.',
     },
     height: {
       ...positive,
       description:
-        'Finish top in metres above the wall base, clipped to the wall top. Omit to follow the wall top.',
+        'Finish top in feet above the wall base, clipped to the wall top. Omit to follow the wall top.',
     },
     wastePercent,
     packageSize: surfacePackage,
@@ -158,7 +157,7 @@ export const constructionSchemas = {
       baseElevation: {
         ...number,
         description:
-          'Wall base in metres above placement Z plus level elevation.',
+          'Wall base in feet above placement Z plus level elevation.',
       },
       height: wallHeight,
       topProfile: object({
@@ -171,22 +170,22 @@ export const constructionSchemas = {
       }),
       studSpacing: {
         ...positive,
-        description: 'On-centre stud spacing in metres (0.4064 = 16 in).',
+        description: 'On-centre stud spacing in feet.',
       },
       studOffset: {
         ...nonnegative,
-        description: 'Metres along the path to the first regular stud station.',
+        description: 'Feet along the path to the first regular stud station.',
       },
       stud: member,
       track: member,
       bottomAllowance: {
         ...nonnegative,
         description:
-          'Raise stud and jamb bottoms above wall base by this many metres.',
+          'Raise stud and jamb bottoms above wall base by this many feet.',
       },
       topAllowance: {
         ...nonnegative,
-        description: 'Deduct from local stud and jamb top height in metres.',
+        description: 'Deduct from local stud and jamb top height in feet.',
       },
       conditions: array(
         object(
@@ -219,7 +218,7 @@ export const constructionSchemas = {
           id: text,
           height: {
             ...nonnegative,
-            description: 'Backing centreline above wall base in metres.',
+            description: 'Backing centreline above wall base in feet.',
           },
           member,
         }),
@@ -237,20 +236,20 @@ export const constructionSchemas = {
       distance: {
         ...nonnegative,
         description:
-          'Metres along the wall path from its first point to the leading rough opening edge.',
+          'Feet along the wall path from its first point to the leading rough opening edge.',
       },
       width: {
         ...positive,
-        description: 'Rough opening width along the wall in metres.',
+        description: 'Rough opening width along the wall in feet.',
       },
       sill: {
         ...nonnegative,
         description:
-          'Rough sill above wall base in metres. Zero for a door at the base.',
+          'Rough sill above wall base in feet. Zero for a door at the base.',
       },
       height: {
         ...positive,
-        description: 'Metres from rough sill to rough head.',
+        description: 'Feet from rough sill to rough head.',
       },
       jambCount: {
         ...nonnegative,
@@ -291,20 +290,19 @@ export const constructionSchemas = {
               member,
               startExtension: {
                 ...nonnegative,
-                description: 'Metres past the leading rough edge.',
+                description: 'Feet past the leading rough edge.',
               },
               endExtension: {
                 ...nonnegative,
-                description: 'Metres past the trailing rough edge.',
+                description: 'Feet past the trailing rough edge.',
               },
               verticalOffset: {
                 ...number,
-                description:
-                  'Member centreline in metres above the rough head.',
+                description: 'Member centreline in feet above the rough head.',
               },
               faceOffset: {
                 ...number,
-                description: 'Centreline offset along wall normal in metres.',
+                description: 'Centreline offset along wall normal in feet.',
               },
               sectionRotation: rotation,
             },
@@ -328,7 +326,7 @@ export const constructionSchemas = {
     name: text,
     elevation: {
       ...number,
-      description: 'Vertical datum in metres above sheet placement Z.',
+      description: 'Vertical datum in feet above sheet placement Z.',
     },
   }),
   placements: object({
@@ -341,7 +339,7 @@ export const constructionSchemas = {
     },
     worldOffset: {
       ...vector,
-      description: 'World position of pageOrigin in metres. Z points up.',
+      description: 'World position of pageOrigin in feet. Z points up.',
     },
     rotation: {
       ...number,
@@ -357,7 +355,7 @@ export const constructionSchemas = {
       elevation: {
         ...number,
         description:
-          'Finished underside in metres above placement Z plus level elevation.',
+          'Finished underside in feet above placement Z plus level elevation.',
       },
       thickness,
       wastePercent,
@@ -368,7 +366,7 @@ export const constructionSchemas = {
           origin: {
             ...point,
             description:
-              'World XY metres at the intersection of a main and a 4 ft cross-tee row.',
+              'World XY feet at the intersection of a main and a 4 ft cross-tee row.',
           },
           rotation: {
             ...number,
@@ -503,22 +501,22 @@ export const reviewSchema = object({
 
 const trackExample = {
   materialId: 'track-3-5-8',
-  width: 0.092075,
-  depth: 0.03175,
-  stockLength: 3.048,
+  width: 3.625 / 12,
+  depth: 1.25 / 12,
+  stockLength: 10,
 };
 const putExamples = {
   walls: {
     id: 'wall-1',
     geometryId: 'original-wall-id',
     baseElevation: 0,
-    height: 3.048,
-    studSpacing: 0.4064,
+    height: 10,
+    studSpacing: 16 / 12,
     stud: {
       materialId: 'stud-3-5-8',
-      width: 0.041275,
-      depth: 0.092075,
-      stockLength: 3.048,
+      width: 1.625 / 12,
+      depth: 3.625 / 12,
+      stockLength: 10,
     },
     track: trackExample,
   },
@@ -530,9 +528,9 @@ const putExamples = {
         id: 'head-track',
         role: 'head track',
         member: trackExample,
-        startExtension: 0.0762,
-        endExtension: 0.0762,
-        verticalOffset: 0.015875,
+        startExtension: 3 / 12,
+        endExtension: 3 / 12,
+        verticalOffset: 0.625 / 12,
         faceOffset: 0,
       },
     ],
@@ -540,10 +538,10 @@ const putExamples = {
   openings: {
     id: 'opening-1',
     wallId: 'wall-1',
-    distance: 0.6096,
-    width: 0.9144,
+    distance: 2,
+    width: 3,
     sill: 0,
-    height: 2.1336,
+    height: 7,
     jambCount: 1,
     headerId: 'header-1',
   },
@@ -558,10 +556,10 @@ const putExamples = {
   ceilings: {
     id: 'ceiling-1',
     geometryId: 'room-1',
-    elevation: 2.7432,
+    elevation: 9,
     materialId: 'gypsum-5-8',
     layers: 1,
-    thickness: 0.015875,
+    thickness: 0.625 / 12,
   },
 } satisfies {
   [
@@ -618,12 +616,12 @@ export const detailedCommands: CommandDefinition[] = [
       assemblyId: 'steel-wall',
       geometryId: 'original-wall-id',
       id: 'wall-1',
-      height: 3.048,
+      height: 10,
     },
   ),
   definition(
     'ceiling.fromAssembly',
-    'Apply a project ceiling template to one area in a new group and assignment. It inherits grid origin in world XY metres and main direction in radians from world +X.',
+    'Apply a project ceiling template to one area in a new group and assignment. It inherits grid origin in world XY feet and main direction in radians from world +X.',
     object({
       assemblyId: {
         ...text,
@@ -916,7 +914,7 @@ function copyWorldOffset(project: Project, sourceId: string, copyId: string) {
   const first = geometry?.points[0];
   const copied = project.geometries[copyId]?.points[0];
   if (!geometry || !first || !copied || geometry.kind !== 'area') return;
-  const scale = project.sheets[geometry.sheetId]?.calibration?.metresPerUnit;
+  const scale = project.sheets[geometry.sheetId]?.calibration?.feetPerUnit;
   if (!scale || (copied.x === first.x && copied.y === first.y)) return;
   const placement = Object.values(project.construction?.placements ?? {}).find(
     (item) => item.sheetId === geometry.sheetId,
@@ -1106,7 +1104,7 @@ export function exportConstruction(
         'direction',
         'material',
         'unit',
-        'stockLength_m',
+        'stockLength_ft',
         'required',
         'purchased',
         'packages',
@@ -1115,7 +1113,7 @@ export function exportConstruction(
         'category',
         'wastePercent',
         'adjustedAmount',
-        'purchasedLength_m',
+        'purchasedLength_ft',
       ],
       ...result.purchases.map((p) => [
         takeoff?.id,
@@ -1137,7 +1135,7 @@ export function exportConstruction(
         takeoff?.id,
         purchase.direction ?? 'add',
         purchase.materialId,
-        'm2',
+        'ft2',
         '',
         purchase.requiredArea,
         purchase.purchasedArea,
@@ -1164,7 +1162,7 @@ export function exportConstruction(
       'adjustedCount',
       'packageCount',
       'purchasedCount',
-      'purchasedLength_m',
+      'purchasedLength_ft',
       'quantityKey',
     ];
     const orders = result.purchases.filter(
@@ -1183,7 +1181,7 @@ export function exportConstruction(
           direction: purchase.direction ?? 'add',
           material: purchase.materialId,
           category: purchase.category,
-          stockLength_m: purchase.stockLength,
+          stockLength_ft: purchase.stockLength,
           complete: result.complete,
         };
         return [
@@ -1220,7 +1218,7 @@ export function exportConstruction(
         category,
         piece.materialId,
         piece.role,
-        piece.cutLength.toFixed(8),
+        Math.round(piece.cutLength / 3.28e-8),
         piece.stockLength,
       ]);
       const group = groups.get(key) ?? {
@@ -1242,8 +1240,8 @@ export function exportConstruction(
         'material',
         'category',
         'role',
-        'cutLength_m',
-        'stockLength_m',
+        'cutLength_ft',
+        'stockLength_ft',
         'count',
         'complete',
       ],
@@ -1271,14 +1269,14 @@ export function exportConstruction(
       'wallId',
       'geometryId',
       'openingId',
-      'cutLength_m',
-      'stockLength_m',
-      'startX_m',
-      'startY_m',
-      'startZ_m',
-      'endX_m',
-      'endY_m',
-      'endZ_m',
+      'cutLength_ft',
+      'stockLength_ft',
+      'startX_ft',
+      'startY_ft',
+      'startZ_ft',
+      'endX_ft',
+      'endY_ft',
+      'endZ_ft',
       'complete',
     ],
     result.pieces.map((p) => [

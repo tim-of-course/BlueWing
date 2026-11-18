@@ -42,7 +42,7 @@ for (const browserType of [chromium, firefox, webkit]) {
               owned: {},
             },
           },
-          formatVersion: 6 as const,
+          formatVersion: 7 as const,
           id: 'p',
           name: 'Original',
           revision: 0,
@@ -54,7 +54,7 @@ for (const browserType of [chromium, firefox, webkit]) {
               pageIndex: 0,
               width: 100,
               height: 100,
-              calibration: { metresPerUnit: 2 },
+              calibration: { feetPerUnit: 2 },
             },
           },
           geometries: {},
@@ -141,12 +141,12 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.equal(result.saved.revision, 1);
       assert.equal(result.saved.takeoffs.co?.name, 'CO 1');
       assert.ok(result.saved.takeoffs.co);
-      assert.equal(result.saved.sheets.s?.calibration?.metresPerUnit, 2);
+      assert.equal(result.saved.sheets.s?.calibration?.feetPerUnit, 2);
       assert.ok(!('calibrations' in result.saved.takeoffs.co));
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
       assert.equal(result.saved.sheets.s.assetId, 'pdf');
       assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
-      assert.equal(result.saved.formatVersion, 6);
+      assert.equal(result.saved.formatVersion, 7);
       assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
     } finally {
       await browser.close();

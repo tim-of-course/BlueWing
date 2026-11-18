@@ -26,13 +26,13 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
     exact: true,
   });
   await expect(
-    surface.getByLabel('Surface height (ft) (optional)', { exact: true }),
+    surface.getByLabel('Surface height (optional)', { exact: true }),
   ).toHaveValue('');
   await surface
-    .getByLabel('Surface height (ft) (optional)', { exact: true })
-    .fill('8');
+    .getByLabel('Surface height (optional)', { exact: true })
+    .pressSequentially('96"');
   await surface
-    .getByLabel('Thickness (ft) (optional)', { exact: true })
+    .getByLabel('Thickness (optional)', { exact: true })
     .fill('0.01');
   await surface
     .getByLabel('Package Size (ft²) (optional)', { exact: true })
@@ -74,7 +74,7 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   const frpTotal = totals
     .getByRole('row')
     .filter({ hasText: 'frp-unspecified' });
-  await expect(frpTotal).toContainText('224 ft2');
+  await expect(frpTotal).toContainText('224 ft²');
 
   const scope = page.getByRole('combobox', {
     name: 'Input scope',
@@ -84,12 +84,12 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   expect(traceId).toBeTruthy();
   await scope.selectOption(traceId ?? '');
   await page
-    .getByLabel('Surface height (ft) (optional)', { exact: true })
+    .getByLabel('Surface height (optional)', { exact: true })
     .fill('12');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
-  await expect(frpTotal).toContainText('320 ft2');
+  await expect(frpTotal).toContainText('320 ft²');
   await page
     .getByRole('combobox', { name: 'Workspace view', exact: true })
     .selectOption('split');
@@ -104,8 +104,8 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
     name: 'Selected construction item',
   });
   await expect(selected).toContainText('frp-unspecified');
-  await expect(selected).toContainText('Installed finish area: 26.756 m²');
-  await expect(selected).toContainText('Total thickness 3.0 mm');
+  await expect(selected).toContainText('Installed finish area: 288.0 ft²');
+  await expect(selected).toContainText('Total thickness 1/8"');
 
   await page.getByRole('button', { name: 'Construction', exact: true }).click();
   const construction = page.getByRole('dialog', {
@@ -141,13 +141,13 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   // A reusable opening detail contributes no extra material until an opening uses it.
   await expect(totals).not.toContainText('steel-stud-6in-unspecified');
-  await expect(frpTotal).toContainText('320 ft2');
+  await expect(frpTotal).toContainText('320 ft²');
 
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
-  await expect(frpTotal).toContainText('320 ft2');
+  await expect(frpTotal).toContainText('320 ft²');
   await page.getByRole('button', { name: 'Construction', exact: true }).click();
   await construction
     .getByRole('combobox', { name: 'Construction type', exact: true })
@@ -165,7 +165,7 @@ export async function materialLayoutWorkflow(page: Page): Promise<void> {
     .click();
   await scope.selectOption(traceId ?? '');
   await expect(
-    page.getByLabel('Surface height (ft) (optional)', { exact: true }),
-  ).toHaveValue('12');
+    page.getByLabel('Surface height (optional)', { exact: true }),
+  ).toHaveValue("12'");
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
 }

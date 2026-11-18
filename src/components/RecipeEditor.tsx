@@ -1,3 +1,6 @@
+import { quantityLabel } from './quantity-label';
+import { lengthHint } from '../core/length';
+import QuantityInput from './QuantityInput';
 import SystemComponents from './SystemComponents';
 import { ConstructionFields } from './ConstructionEditor';
 import {
@@ -38,7 +41,7 @@ import type {
   CeilingTemplate,
 } from '../core/types';
 
-const units: Unit[] = ['scalar', 'ea', 'm', 'mm', 'ft', 'in', 'm2', 'ft2'];
+const units: Unit[] = ['scalar', 'ea', 'ft', 'in', 'ft2'];
 const kinds: GeometryKind[] = ['path', 'area', 'count'];
 const materialKinds: {
   kind: MaterialTemplate['kind'];
@@ -50,14 +53,14 @@ const materialKinds: {
 ];
 
 function newMaterialTemplate(kind: MaterialTemplate['kind']): MaterialTemplate {
-  const member = { materialId: '', width: 0.041275, depth: 0.092075 };
+  const member = { materialId: '', width: 1.625 / 12, depth: 3.625 / 12 };
   if (kind === 'path-surface')
     return { kind, elevation: 0, materialId: '', layers: 1, openings: [] };
   if (kind === 'area-members')
     return {
       kind,
       elevation: 0,
-      spacing: 0.4064,
+      spacing: 16 / 12,
       origin: { x: 0, y: 0 },
       rotation: 0,
       member,
@@ -172,10 +175,10 @@ export default function RecipeEditor(props: {
                   : formulaQuantity({ value: input.default, unit: input.unit });
             }
             if (kind === 'path')
-              values['length'] = formulaQuantity({ value: 1, unit: 'm' });
+              values['length'] = formulaQuantity({ value: 1, unit: 'ft' });
             if (kind === 'area') {
-              values['area'] = formulaQuantity({ value: 1, unit: 'm2' });
-              values['perimeter'] = formulaQuantity({ value: 4, unit: 'm' });
+              values['area'] = formulaQuantity({ value: 1, unit: 'ft2' });
+              values['perimeter'] = formulaQuantity({ value: 4, unit: 'ft' });
             }
             if (kind === 'count')
               values['count'] = formulaQuantity({ value: 1, unit: 'ea' });
@@ -342,9 +345,9 @@ export default function RecipeEditor(props: {
               outputs: [],
               wallTemplate: {
                 baseElevation: 0,
-                studSpacing: 0.4064,
-                stud: { materialId: '', width: 0.041275, depth: 0.092075 },
-                track: { materialId: '', width: 0.092075, depth: 0.03175 },
+                studSpacing: 16 / 12,
+                stud: { materialId: '', width: 1.625 / 12, depth: 3.625 / 12 },
+                track: { materialId: '', width: 3.625 / 12, depth: 1.25 / 12 },
                 finishes: [],
                 backing: [],
               },
@@ -364,7 +367,7 @@ export default function RecipeEditor(props: {
               geometryKinds: ['area'],
               inputs: [],
               outputs: [],
-              ceilingTemplate: { elevation: 2.7432, materialId: '', layers: 1 },
+              ceilingTemplate: { elevation: 9, materialId: '', layers: 1 },
             });
             setDirty(true);
           }}
@@ -622,6 +625,7 @@ export default function RecipeEditor(props: {
                 </button>
               </div>
             </details>
+            <p class="hint">{lengthHint}</p>
             <label class="field">
               Description
               <textarea
@@ -662,7 +666,7 @@ export default function RecipeEditor(props: {
                       <strong>
                         {output.name}:{' '}
                         {output.complete
-                          ? `${output.baseAmount.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${output.unit}`
+                          ? quantityLabel(output.baseAmount, output.unit)
                           : 'Unavailable'}
                       </strong>
                       <For each={output.diagnostics}>
@@ -680,13 +684,12 @@ export default function RecipeEditor(props: {
                   <p class="muted">
                     Assign this assembly to a group of wall paths. Changes here
                     update its walls, quantities and 3D together. Group and wall
-                    overrides keep their entered values. Dimensions below use
-                    metres.
+                    overrides keep their entered values.
                   </p>
                   <ConstructionFields
                     schema={wallTemplateSchema}
                     value={template()}
-                    unit="m"
+
                     controller={props.controller}
                     parent="walls"
                     onChange={(next) => {
@@ -705,13 +708,12 @@ export default function RecipeEditor(props: {
                   <legend>Ceiling assembly</legend>
                   <p class="muted">
                     Assign this assembly to ceiling areas. Its measured surfaces
-                    and grid pieces supply both quantities and 3D. Dimensions
-                    below use metres.
+                    and grid pieces supply both quantities and 3D.
                   </p>
                   <ConstructionFields
                     schema={ceilingTemplateSchema}
                     value={template()}
-                    unit="m"
+
                     parent="ceilings"
                     controller={props.controller}
                     onChange={(next) => {
@@ -738,13 +740,12 @@ export default function RecipeEditor(props: {
                       : template().kind === 'path-members'
                         ? 'Trace the member run in plan. Start and end elevations place sloped members; omit end elevation for a level run. Components use the entered section and offsets.'
                         : 'Trace the framing boundary. Spacing, grid origin and rotation place members inside the area.'}{' '}
-                    Dimensions below use feet. Quantities and 3D use the same
-                    calculated materials.
+                    Quantities and 3D use the same calculated materials.
                   </p>
                   <ConstructionFields
                     schema={materialFieldsSchema(template().kind)}
                     value={{ ...template() }}
-                    unit="ft"
+
                     parent={template().kind}
                     hide={['kind']}
                     controller={props.controller}
@@ -875,19 +876,16 @@ export default function RecipeEditor(props: {
                       >
                         <label class="field">
                           Default
-                          <input
-                            type="number"
-                            step="any"
+                          <QuantityInput
+                            unit={item().unit}
                             value={
                               item().default === undefined
-                                ? ''
+                                ? undefined
                                 : Number(item().default)
                             }
                             disabled={item().default === undefined}
-                            onChange={(event) => {
-                              input(index, {
-                                default: event.currentTarget.valueAsNumber,
-                              });
+                            onChange={(value) => {
+                              input(index, { default: value ?? NaN });
                             }}
                           />
                         </label>
@@ -917,15 +915,10 @@ export default function RecipeEditor(props: {
                       <Show when={item().type === 'number'}>
                         <label class="field">
                           Minimum (optional)
-                          <input
-                            type="number"
-                            step="any"
-                            value={item().minimum ?? ''}
-                            onChange={(event) => {
-                              const minimum =
-                                event.currentTarget.value === ''
-                                  ? undefined
-                                  : event.currentTarget.valueAsNumber;
+                          <QuantityInput
+                            unit={item().unit}
+                            value={item().minimum}
+                            onChange={(minimum) => {
                               change((current) => ({
                                 ...current,
                                 inputs: current.inputs.map((field, at) => {
@@ -1176,7 +1169,7 @@ export default function RecipeEditor(props: {
                       </Show>
                       <div class="button-row">
                         <label class="field">
-                          Waste %
+                          Waste (%)
                           <input
                             type="number"
                             step="any"
@@ -1194,22 +1187,19 @@ export default function RecipeEditor(props: {
                           />
                         </label>
                         <label class="field">
-                          Quantity per package (optional)
-                          <input
-                            type="number"
-                            step="any"
-                            min="0"
-                            value={item().allowance.packageSize ?? ''}
-                            onChange={(event) => {
+                          Quantity per package{' '}
+                          {item().unit === 'ft2' ? '(ft²) ' : ''}(optional)
+                          <QuantityInput
+                            unit={item().unit}
+                            minimum={0}
+                            value={item().allowance.packageSize ?? undefined}
+                            onChange={(value) => {
                               output(index, {
                                 allowance: {
                                   wastePercent: item().allowance.wastePercent,
-                                  ...(event.currentTarget.value === ''
+                                  ...(value === undefined
                                     ? {}
-                                    : {
-                                        packageSize:
-                                          event.currentTarget.valueAsNumber,
-                                      }),
+                                    : { packageSize: value }),
                                 },
                               });
                             }}

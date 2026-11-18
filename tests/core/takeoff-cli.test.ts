@@ -14,7 +14,7 @@ void test('CLI selection persists independently of UI, supports one-request over
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   const app = new Application(false);
   app.session = new ProjectSession(project, { save: () => Promise.resolve() });
@@ -73,12 +73,12 @@ void test('CLI selection persists independently of UI, supports one-request over
     payload: {
       ...project.sheets.s,
       name: 'Shared name',
-      calibration: { metresPerUnit: 2 },
+      calibration: { feetPerUnit: 2 },
     },
     origin: 'cli',
   });
-  assert.equal(app.session.project.sheets.s?.calibration?.metresPerUnit, 2);
-  assert.equal(app.project?.sheets.s?.calibration?.metresPerUnit, 2);
+  assert.equal(app.session.project.sheets.s?.calibration?.feetPerUnit, 2);
+  assert.equal(app.project?.sheets.s?.calibration?.feetPerUnit, 2);
   const main = await app.dispatch(
     parseCli(['takeoff.inspect', '{"takeoffId":"main"}']),
   );

@@ -10,7 +10,6 @@ import type {
   Project,
 } from '../../src/core/types';
 
-const ft = 0.3048;
 const areaFormula = 'length * height * layers';
 type Quantities = Omit<CalculationResult, 'model'>;
 
@@ -36,7 +35,7 @@ function baseProject(): Project {
         owned: {},
       },
     },
-    formatVersion: 6,
+    formatVersion: 7,
     id: 'reuse-project',
     name: 'Calculation reuse',
     revision: 0,
@@ -49,7 +48,7 @@ function baseProject(): Project {
         order: 0,
         width: 100,
         height: 100,
-        calibration: { metresPerUnit: 1 },
+        calibration: { feetPerUnit: 1 },
       },
     },
     geometries: {},
@@ -78,9 +77,9 @@ function modeledProject(): Project {
     kind: 'area',
     points: [
       { x: 0, y: 0 },
-      { x: 8 * ft, y: 0 },
-      { x: 8 * ft, y: 8 * ft },
-      { x: 0, y: 8 * ft },
+      { x: 8, y: 0 },
+      { x: 8, y: 8 },
+      { x: 0, y: 8 },
     ],
   };
   project.groups.walls = {
@@ -129,25 +128,25 @@ function modeledProject(): Project {
           materialId: 'main',
           width: 0.02,
           depth: 0.04,
-          stockLength: 12 * ft,
+          stockLength: 12,
         },
         crossTee4: {
           materialId: 'tee4',
           width: 0.02,
           depth: 0.04,
-          stockLength: 4 * ft,
+          stockLength: 4,
         },
         crossTee2: {
           materialId: 'tee2',
           width: 0.02,
           depth: 0.04,
-          stockLength: 2 * ft,
+          stockLength: 2,
         },
         wallAngle: {
           materialId: 'angle',
           width: 0.02,
           depth: 0.02,
-          stockLength: 10 * ft,
+          stockLength: 10,
         },
       },
     },
@@ -200,7 +199,7 @@ function modeledProject(): Project {
 
 function formulaProject(): Project {
   const project = baseProject();
-  required(project.sheets.plan).calibration = { metresPerUnit: ft };
+  required(project.sheets.plan).calibration = { feetPerUnit: 1 };
   for (const [id, length] of [
     ['wall', 24],
     ['return', 12],
@@ -358,7 +357,7 @@ void test('session snapshots share deeply frozen modeled pieces and formula sour
       modeled.model.pieces.filter((piece) => piece.role === role).length,
       count,
     );
-  near(material(modeled, 'board').baseAmount, 24 / ft ** 2);
+  near(material(modeled, 'board').baseAmount, 24);
   near(material(modeled, 'tile').baseAmount, 64);
   assert.equal(modeled.coverage.complete, true);
   const estimated = fixture(formulaProject()).session.calculation;
@@ -473,19 +472,19 @@ void test('modeled edits refresh geometry, calibration, assignments, templates, 
     result.model.pieces.filter((piece) => piece.role === 'stud').length,
     7,
   );
-  near(material(result, 'board').baseAmount, 36 / ft ** 2);
+  near(material(result, 'board').baseAmount, 36);
   result = await change(session, {
     name: 'sheet.put',
     payload: {
       ...session.project.sheets.plan,
-      calibration: { metresPerUnit: 0.5 },
+      calibration: { feetPerUnit: 0.5 },
     },
   });
   assert.equal(
     result.model.pieces.filter((piece) => piece.role === 'stud').length,
     4,
   );
-  near(material(result, 'board').baseAmount, 18 / ft ** 2);
+  near(material(result, 'board').baseAmount, 18);
   near(material(result, 'tile').baseAmount, 16);
   result = await change(session, {
     name: 'assignment.put',
@@ -494,7 +493,7 @@ void test('modeled edits refresh geometry, calibration, assignments, templates, 
       wallOverrides: { levelId: 'ground', height: 4 },
     },
   });
-  near(material(result, 'board').baseAmount, 24 / ft ** 2);
+  near(material(result, 'board').baseAmount, 24);
   for (const stud of result.model.pieces.filter(
     (piece) => piece.role === 'stud',
   ))
@@ -519,7 +518,7 @@ void test('modeled edits refresh geometry, calibration, assignments, templates, 
     5,
   );
   assert.equal(material(result, 'revised-stud').name, 'Revised partition');
-  near(material(result, 'board').baseAmount, 12 / ft ** 2);
+  near(material(result, 'board').baseAmount, 12);
   const labels = (
     await dispatch(session, {
       name: 'quantities.export',
@@ -540,7 +539,7 @@ void test('modeled edits refresh geometry, calibration, assignments, templates, 
       headerId: 'door',
     },
   });
-  near(material(result, 'board').baseAmount, 10 / ft ** 2);
+  near(material(result, 'board').baseAmount, 10);
   near(
     required(result.model.pieces.find((piece) => piece.role === 'header-web'))
       .cutLength,
@@ -578,7 +577,7 @@ void test('modeled edits refresh geometry, calibration, assignments, templates, 
   near(stud.start.y, 20);
   near(stud.start.z, 3);
   near(stud.cutLength, 4);
-  near(material(result, 'board').baseAmount, 10 / ft ** 2);
+  near(material(result, 'board').baseAmount, 10);
   result = await change(session, {
     name: 'group.members',
     payload: { id: 'walls', geometryIds: [] },
@@ -927,9 +926,9 @@ void test('failed saves, final validation and previews preserve the accepted cal
   await assert.rejects(
     dispatch(session, {
       name: 'sheet.put',
-      payload: { ...initial.sheets.plan, calibration: { metresPerUnit: -1 } },
+      payload: { ...initial.sheets.plan, calibration: { feetPerUnit: -1 } },
     }),
-    /metresPerUnit is outside its valid range/,
+    /feetPerUnit is outside its valid range/,
   );
   const preview = await countAreaParses(async (count) => {
     const result = await dispatch(session, {
@@ -961,7 +960,7 @@ void test('failed saves, final validation and previews preserve the accepted cal
     [19, 37, 18],
   );
   const stockLength = required(studDelta.stockLength);
-  near(stockLength.value, 10 * ft);
+  near(stockLength.value, 10);
   assert.notEqual(
     stockLength,
     material(baseline, 'estimated-stud').stockLength,
@@ -969,17 +968,14 @@ void test('failed saves, final validation and previews preserve the accepted cal
   assert.equal(Object.isFrozen(stockLength), false);
   assert.equal(Reflect.set(stockLength, 'value', 999), true);
   studDelta.after = -1;
-  near(
-    required(material(baseline, 'estimated-stud').stockLength).value,
-    10 * ft,
-  );
+  near(required(material(baseline, 'estimated-stud').stockLength).value, 10);
   near(
     required(
       (preview.data as Quantities[])[1]?.totals.find(
         (total) => total.materialId === 'estimated-stud',
       )?.stockLength,
     ).value,
-    10 * ft,
+    10,
   );
   assert.equal(preview.preview, true);
   assert.equal(session.calculation, baseline);
@@ -992,7 +988,7 @@ void test('failed saves, final validation and previews preserve the accepted cal
   assert.deepEqual(session.calculation, calculateProject(session.project));
   near(
     required(material(session.calculation, 'estimated-stud').stockLength).value,
-    10 * ft,
+    10,
   );
 });
 

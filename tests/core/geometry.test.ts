@@ -125,16 +125,16 @@ void test('invalid geometry and calibration report diagnostics, not zero', () =>
     calibrationFromDistance(
       { x: 0, y: 0 },
       { x: 0, y: 0 },
-      { value: 1, unit: 'm' },
+      { value: 1, unit: 'ft' },
     ),
   );
   assert.throws(
-    () => convertQuantity({ value: 1, unit: 'm2' }, 'm'),
+    () => convertQuantity({ value: 1, unit: 'ft2' }, 'ft'),
     /Cannot convert/,
   );
   const sheet = project.sheets.plan;
   assert.ok(sheet);
-  sheet.calibration = { metresPerUnit: -1 };
+  sheet.calibration = { feetPerUnit: -1 };
   assert.equal(measureGeometry(project, path).length, undefined);
   assert.match(measureGeometry(project, path).diagnostic ?? '', /positive/);
   assert.match(
@@ -158,6 +158,6 @@ void test('projects own fresh starter recipe copies and stable UUID identity', (
   assert.notEqual(a.id, b.id);
   assert.match(a.id, /^[0-9a-f-]{36}$/);
   assert.notEqual(a.recipes, b.recipes);
-  assert.equal(a.formatVersion, 6);
+  assert.equal(a.formatVersion, 7);
   assert.equal(a.revision, 0);
 });

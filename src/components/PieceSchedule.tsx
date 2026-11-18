@@ -1,18 +1,15 @@
+import { formatLength } from '../core/length';
 import { createMemo, For, Show } from 'solid-js';
 import { pieceSchedule } from '../core/calculations';
 import type { Project, Quantity } from '../core/types';
 import type { CalculationSnapshot } from '../core/calculation-state';
 
 export function displayLength(quantity: Quantity | undefined): string {
-  if (!quantity) return '—';
-  // Calculated schedules use metres, displayed in feet and inches.
-  const inches = Math.round((quantity.value / 0.0254) * 1000) / 1000;
-  const feet = Math.floor(inches / 12);
-  const rest = Math.round((inches - feet * 12) * 1000) / 1000;
-  return `${String(feet)}′ ${String(rest)}″`;
-}
-function displayMetres(value: number | null): string {
-  return displayLength(value === null ? undefined : { value, unit: 'm' });
+  return quantity
+    ? formatLength(
+        quantity.unit === 'in' ? quantity.value / 12 : quantity.value,
+      )
+    : '—';
 }
 export default function PieceSchedule(props: {
   project: Project;
@@ -64,8 +61,16 @@ export default function PieceSchedule(props: {
                     {row().materialId} / {row().role}
                   </td>
                   <td>{row().quantity ?? '—'}</td>
-                  <td>{displayMetres(row().cutLength_m)}</td>
-                  <td>{displayMetres(row().stockLength_m)}</td>
+                  <td>
+                    {row().cutLength_ft === null
+                      ? '—'
+                      : formatLength(row().cutLength_ft ?? 0)}
+                  </td>
+                  <td>
+                    {row().stockLength_ft === null
+                      ? '—'
+                      : formatLength(row().stockLength_ft ?? 0)}
+                  </td>
                   <td>
                     {row().complete
                       ? row().pieceId

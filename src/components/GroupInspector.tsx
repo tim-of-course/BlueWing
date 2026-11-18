@@ -1,3 +1,5 @@
+import { lengthHint } from '../core/length';
+import QuantityInput from './QuantityInput';
 import type { Recipe } from '../core/types';
 import { assemblyOutputs } from '../core/systems';
 import AssemblyInputs from './AssemblyInputs';
@@ -351,6 +353,7 @@ export default function GroupInspector(props: Props) {
                 return (
                   <section class="panel-section stack">
                     <h3>{recipe()?.name ?? 'Missing assembly'}</h3>
+                    <p class="hint">{lengthHint}</p>
                     <Show when={recipe()?.description}>
                       <p class="muted">{recipe()?.description}</p>
                     </Show>
@@ -407,7 +410,7 @@ export default function GroupInspector(props: Props) {
                               ? assignment()?.wallOverrides
                               : {}),
                           }}
-                          unit="ft"
+
                           parent="walls"
                           controller={props.controller}
                           onChange={(wall) => {
@@ -455,7 +458,7 @@ export default function GroupInspector(props: Props) {
                               ? assignment()?.ceilingOverrides
                               : {}),
                           }}
-                          unit="ft"
+
                           parent="ceilings"
                           controller={props.controller}
                           onChange={(ceiling) => {
@@ -502,7 +505,7 @@ export default function GroupInspector(props: Props) {
                                   : {},
                               ),
                             }}
-                            unit="ft"
+
                             parent={template().kind}
                             controller={props.controller}
                             onChange={(material) => {
@@ -569,7 +572,7 @@ export default function GroupInspector(props: Props) {
                             {output().name} ({output().unit})
                           </legend>
                           <label class="field">
-                            Waste %
+                            Waste (%)
                             <input
                               type="number"
                               step="any"
@@ -588,23 +591,20 @@ export default function GroupInspector(props: Props) {
                             />
                           </label>
                           <label class="field">
-                            Quantity per package (optional)
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
+                            Quantity per package{' '}
+                            {output().unit === 'ft2' ? '(ft²) ' : ''}(optional)
+                            <QuantityInput
+                              unit={output().unit}
+                              minimum={0}
                               value={
                                 {
                                   ...output().allowance,
                                   ...assignment()?.allowances[output().id],
-                                }.packageSize ?? ''
+                                }.packageSize ?? undefined
                               }
-                              onChange={(event) => {
+                              onChange={(value) => {
                                 setAllowance(id, output().id, {
-                                  packageSize:
-                                    event.currentTarget.value === ''
-                                      ? null
-                                      : event.currentTarget.valueAsNumber,
+                                  packageSize: value ?? null,
                                 });
                               }}
                             />

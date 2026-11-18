@@ -1,3 +1,4 @@
+import { formatLength } from '../core/length';
 import {
   createEffect,
   createMemo,
@@ -71,12 +72,6 @@ export interface ConstructionViewProps {
   /** Optional host isolation; intersects with level, selection and material filters. */
   isolatedGeometryIds?: readonly string[];
   class?: string;
-}
-
-function lengthLabel(metres: number): string {
-  const inches = Math.round((metres / 0.0254) * 16) / 16;
-  const feet = Math.floor(inches / 12);
-  return `${String(feet)} ft ${String(inches - feet * 12)} in (${metres.toFixed(3)} m)`;
 }
 
 export default function ConstructionView(props: ConstructionViewProps) {
@@ -871,8 +866,8 @@ export default function ConstructionView(props: ConstructionViewProps) {
               {(() => {
                 const value = item();
                 return 'cutLength' in value
-                  ? `Cut length: ${lengthLabel(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : lengthLabel(value.stockLength)} · Section ${(value.width * 1000).toFixed(1)} × ${(value.depth * 1000).toFixed(1)} mm. Purchase totals include waste and rounding.`
-                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${value.area.toFixed(3)} m² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${(value.thickness * 1000).toFixed(1)} mm`}`;
+                  ? `Cut length: ${formatLength(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : formatLength(value.stockLength)} · Section ${formatLength(value.width)} × ${formatLength(value.depth)}. Purchase totals include waste and rounding.`
+                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${value.area.toFixed(1)} ft² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${formatLength(value.thickness)}`}`;
               })()}
             </span>
           </aside>

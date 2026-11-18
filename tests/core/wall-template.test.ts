@@ -25,7 +25,7 @@ function fixture() {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   for (const id of ['a', 'b'])
     project.geometries[id] = {
@@ -91,7 +91,7 @@ void test('wall definitions stay independent from the library while applied wall
   wall.stud.width = 0.1;
   assert.equal(assembly.wallTemplate.stud.width, 0.04);
   validateLibrary({
-    version: 2,
+    version: 3,
     revision: 0,
     assemblies: { template: assembly },
   });
@@ -100,7 +100,7 @@ void test('wall definitions stay independent from the library while applied wall
     name: 'assembly.put',
     payload: imported,
   }).project;
-  assert.equal(next.formatVersion, 6);
+  assert.equal(next.formatVersion, 7);
   next = executeCommand(next, {
     name: 'wall.fromAssembly',
     payload: { assemblyId: 'imported', id: 'first', geometryId: 'a' },
@@ -219,7 +219,7 @@ void test('template validation applies to commands, library and persisted projec
   for (const patch of [
     { geometryKinds: ['area'] },
     { components: [] },
-    { inputs: [{ name: 'height', type: 'number', unit: 'm' }] },
+    { inputs: [{ name: 'height', type: 'number', unit: 'ft' }] },
     {
       outputs: [
         {
@@ -258,7 +258,7 @@ void test('template validation applies to commands, library and persisted projec
     });
     assert.throws(() => {
       validateLibrary({
-        version: 2,
+        version: 3,
         revision: 0,
         assemblies: { template: invalid },
       });

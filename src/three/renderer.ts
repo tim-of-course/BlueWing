@@ -124,7 +124,7 @@ export function triangulateFace(face: SceneFace): number[][] {
       ),
     );
   }
-  if (normal.lengthSq() < 1e-20) return [];
+  if (normal.lengthSq() < 1.16e-18) return [];
   normal.normalize();
   const reference =
     Math.abs(normal.z) < 0.9 ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0);
@@ -564,7 +564,7 @@ export class ConstructionRenderer {
         )
       : 0;
     const depthRadius = Math.max(diagonal + target.length(), planRadius);
-    const distance = Math.max(1, depthRadius + state.span);
+    const distance = Math.max(3.28, depthRadius + state.span);
     const direction = new Vector3(
       Math.cos(state.pitch) * Math.cos(state.yaw),
       Math.cos(state.pitch) * Math.sin(state.yaw),
@@ -577,8 +577,8 @@ export class ConstructionRenderer {
     this.camera.quaternion.setFromRotationMatrix(
       new Matrix4().makeBasis(right, up, direction),
     );
-    this.camera.near = Math.max(0.001, distance - depthRadius);
-    this.camera.far = distance + depthRadius + 1;
+    this.camera.near = Math.max(0.00328, distance - depthRadius);
+    this.camera.far = distance + depthRadius + 3.28;
     this.camera.zoom = state.zoom;
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();

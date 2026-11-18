@@ -86,7 +86,7 @@ test('Quantities and CLI share purchased footage and count rows; source/review n
         .getByRole('button', { name: 'Quantities', exact: true })
         .click();
       const totals = page.getByRole('table', { name: 'Material totals' });
-      await expect(totals).toContainText('150 LF');
+      await expect(totals).toContainText("150'");
       await expect(totals).toContainText('75 pc');
       await expect(totals).toContainText('Acoustical ceilings');
       const countRow = totals

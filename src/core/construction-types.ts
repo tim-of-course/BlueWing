@@ -2,7 +2,7 @@ import type { Point } from './types';
 import type { CeilingGridSpec } from './ceiling-grid';
 import type { MaterialApplication } from './material-layout';
 
-/** Physical lengths are metres, rotation is radians, world Z points up. */
+/** Physical lengths are feet, rotation is radians, world Z points up. */
 export interface Vec3 {
   x: number;
   y: number;
@@ -47,14 +47,14 @@ export interface WallFinish {
   face: 'front' | 'back';
   layers: number;
   offset?: number;
-  /** Bottom above the wall base in metres. Omit to start at the base. */
+  /** Bottom above the wall base in feet. Omit to start at the base. */
   startHeight?: number;
-  /** Top above the wall base in metres, clipped by the wall top. Omit to follow the wall top. */
+  /** Top above the wall base in feet, clipped by the wall top. Omit to follow the wall top. */
   height?: number;
   /** Thickness of each layer. */
   thickness?: number;
   wastePercent?: number;
-  /** Square metres per purchased package. */
+  /** Square feet per purchased package. */
   packageSize?: number;
 }
 export interface BackingRun {

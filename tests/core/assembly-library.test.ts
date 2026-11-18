@@ -33,6 +33,8 @@ void test('global library persists independently, rejects stale edits and surviv
   fail = false;
   await store.save(1, assembly.id);
   assert.equal((await store.read()).assemblies[assembly.id], undefined);
+  saved = JSON.stringify({ ...reopened, version: 2 });
+  await assert.rejects(store.read(), /Invalid assembly library/);
   saved = 'broken';
   await assert.rejects(store.read());
 });
@@ -85,7 +87,7 @@ void test('modeled starter additions preserve company settings and independent p
   assert.ok(frp?.materialTemplate?.kind === 'path-surface');
   frp.name = 'Company FRP';
   frp.materialTemplate.materialId = 'company-frp';
-  frp.materialTemplate.height = 1.2192;
+  frp.materialTemplate.height = 4;
   const projectCopy = copyAssembly(frp, 'project-frp');
   const missing = ['steel-joists', 'steel-kick', 'acoustical-wall-surface'];
   for (const id of missing) Reflect.deleteProperty(library.assemblies, id);
@@ -98,12 +100,12 @@ void test('modeled starter additions preserve company settings and independent p
   assert.deepEqual(extended.assemblies['frp-wall'], frp);
   assert.equal((await store.addStarters(1)).revision, 1);
 
-  frp.materialTemplate.height = 2.4384;
+  frp.materialTemplate.height = 8;
   await store.save(1, frp);
   const reopened = (await store.read()).assemblies['frp-wall'];
   assert.ok(reopened?.materialTemplate?.kind === 'path-surface');
-  assert.equal(reopened.materialTemplate.height, 2.4384);
+  assert.equal(reopened.materialTemplate.height, 8);
   assert.ok(projectCopy.materialTemplate?.kind === 'path-surface');
-  assert.equal(projectCopy.materialTemplate.height, 1.2192);
+  assert.equal(projectCopy.materialTemplate.height, 4);
   assert.equal(projectCopy.materialTemplate.materialId, 'company-frp');
 });

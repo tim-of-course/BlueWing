@@ -90,7 +90,7 @@ async function cappedExport() {
           id: 'length',
           name: 'Length',
           materialId: 'overlay',
-          unit: 'm',
+          unit: 'ft',
           formula: 'length',
           allowance: { wastePercent: 0 },
         },

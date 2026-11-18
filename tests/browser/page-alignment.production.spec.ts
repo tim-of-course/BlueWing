@@ -41,7 +41,7 @@ test('built page filtering and numeric alignment persist without a CLI test brid
   await editor
     .getByRole('combobox', { name: 'Moving page', exact: true })
     .selectOption(firstId);
-  await editor.getByLabel('X offset (m)', { exact: true }).fill('4');
+  await editor.getByLabel('X offset', { exact: true }).fill('4');
   await editor.getByLabel('Rotation (degrees)', { exact: true }).fill('90');
   await editor
     .getByRole('button', { name: 'Apply alignment', exact: true })
@@ -59,8 +59,8 @@ test('built page filtering and numeric alignment persist without a CLI test brid
   await editor
     .getByRole('combobox', { name: 'Moving page', exact: true })
     .selectOption(firstId);
-  await expect(editor.getByLabel('X offset (m)', { exact: true })).toHaveValue(
-    '4',
+  await expect(editor.getByLabel('X offset', { exact: true })).toHaveValue(
+    "4'",
   );
   await expect(
     editor.getByLabel('Rotation (degrees)', { exact: true }),
@@ -78,8 +78,8 @@ test('built page filtering and numeric alignment persist without a CLI test brid
   await editor
     .getByRole('combobox', { name: 'Moving page', exact: true })
     .selectOption(firstId);
-  await expect(editor.getByLabel('X offset (m)', { exact: true })).toHaveValue(
-    '0',
+  await expect(editor.getByLabel('X offset', { exact: true })).toHaveValue(
+    "0'",
   );
   await expect(
     editor.getByLabel('Rotation (degrees)', { exact: true }),

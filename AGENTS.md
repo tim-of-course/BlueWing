@@ -1,5 +1,7 @@
 # Bluewing
 
+Bluewing is imperial only. Store lengths in decimal feet and show feet and inches in the UI. Do not add metric units, conversions or options.
+
 YAGNI is a high priority. Add code, checks, and dependencies when they directly support the current product or the requested development tooling.
 
 Read [docs/restart-brief.md](docs/restart-brief.md) for product decisions. Consult [docs/restart-reference-map.md](docs/restart-reference-map.md) only for the old behavior relevant to the task.

@@ -64,7 +64,7 @@ All four workflows reached mechanical completion with successful root outcomes. 
 
 ## Printed-scale follow-up
 
-Set scale (R) now opens presets and custom paper-to-real ratios before offering two-point measurement. Architectural presets use the same fractions as PlanVyper; metric ratios and true 1:1 are also available. New sheets suggest 1/4″ = 1′-0″ without applying it. Reopening shows the saved scale, and the footer uses a matching preset label when available. The explicit `sheet.scale` command shares persistence, revision checks, and Undo with the UI. Existing geometry is unchanged when a scale is applied.
+Set scale (R) now opens presets and custom paper-to-real ratios before offering two-point measurement. Architectural presets use the same fractions as PlanVyper. Use a custom ratio for other printed scales. New sheets suggest 1/4″ = 1′-0″ without applying it. Reopening shows the saved scale, and the footer uses a matching preset label when available. The explicit `sheet.scale` command shares persistence, revision checks, and Undo with the UI. Existing geometry is unchanged when a scale is applied.
 
 Reference: PlanVyper `ModalManager.tsx` scale setup and `store/calibration.ts`. This follows the user's September 17 direction; measurement remains useful when the PDF has been resized or the printed scale is missing.
 

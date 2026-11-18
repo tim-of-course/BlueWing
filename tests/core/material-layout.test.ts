@@ -48,7 +48,7 @@ function fixture(
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.trace = {
     id: 'trace',
@@ -99,7 +99,7 @@ void test('standalone finish subtracts the union of located openings before laye
   const result = generateMaterialLayout(project, application, context);
   assert.equal(result.complete, true);
   assert.equal(result.pieces.length, 0);
-  // 30 m² wall less 6 + 4 - 1 m² overlapping openings, then two layers.
+  // 30 ft² wall less 6 + 4 - 1 ft² overlapping openings, then two layers.
   close(
     result.surfaces.reduce((sum, surface) => sum + surface.area, 0),
     42,
@@ -250,7 +250,7 @@ void test('rotation, calibration, sheet placement and level determine material p
       { x: 2, y: 0 },
     ],
   );
-  present(project.sheets.plan).calibration = { metresPerUnit: 0.5 };
+  present(project.sheets.plan).calibration = { feetPerUnit: 0.5 };
   const context = {
     levels: { floor: { id: 'floor', name: 'Floor', elevation: 4 } },
     placements: {

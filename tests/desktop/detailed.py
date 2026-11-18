@@ -179,13 +179,13 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert database_snapshot(project_path)['assets'] == []
         sheets = call('project.import', {'path': str(ROOT / 'tests/fixtures/assessment-plan.pdf')}, True)
         sheet = sheets[0]['id']
-        # 300 page units = 6 m. Physical dimension edits must preserve these points.
+        # 300 page units = 6 ft. Physical dimension edits must preserve these points.
         call('sheet.calibrate', {'id': sheet, 'start': {'x': 72, 'y': 144},
-                                'end': {'x': 372, 'y': 144}, 'distance': {'value': 6, 'unit': 'm'}}, True)
+                                'end': {'x': 372, 'y': 144}, 'distance': {'value': 6, 'unit': 'ft'}}, True)
         geometry = {'id': 'wall-path', 'name': 'Wall W1', 'sheetId': sheet, 'kind': 'path',
                     'points': [{'x': 72, 'y': 144}, {'x': 372, 'y': 144}]}
         call('geometry.put', geometry, True)
-        assert inspect()['formatVersion'] == 6
+        assert inspect()['formatVersion'] == 7
         member = {'materialId': 'stud-40x90', 'width': 0.04, 'depth': 0.09, 'stockLength': 4}
         wall = {'id': 'wall', 'geometryId': 'wall-path', 'baseElevation': 0, 'height': 3,
                 'studSpacing': 0.5, 'stud': member, 'bottomAllowance': 0.02, 'topAllowance': 0.03,
@@ -199,7 +199,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert inspect()['recipes'][application['recipeId']]['wallTemplate']['height'] == 3
         assert plain['complete'] and not plain['diagnostics'], plain['diagnostics']
         studs = [piece for piece in plain['pieces'] if piece['role'] == 'stud']
-        assert len(studs) == 13  # endpoints plus eleven interior half-metre stations
+        assert len(studs) == 13  # endpoints plus eleven interior half-foot stations
         for index, stud in enumerate(studs):
             near(stud['start']['x'], 72 * 0.02 + index * 0.5)
             near(stud['cutLength'], 3 - 0.02 - 0.03)  # explicitly entered end allowances
@@ -247,7 +247,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
                                                         [piece['end'][axis] for axis in ('x', 'y', 'z')]))
             assert source['value'] == 1
         for material, area in [('front-board', 28), ('back-board', 14)]:
-            near(sum(row['amount'] for row in quantities['totals'] if row['materialId'] == material), area / 0.09290304)
+            near(sum(row['amount'] for row in quantities['totals'] if row['materialId'] == material), area)
 
         # An absent project header is unresolved, never silently treated as complete.
         missing_header = {key: value for key, value in opening.items() if key != 'headerId'}
@@ -268,7 +268,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assignment = preview['project']['assignments'][application['assignmentId']]
         assert assignment['geometryDetails']['wall-path']['wall'] == {'height': 3.5}
         for material, extra_area in [('front-board', 6), ('back-board', 3)]:
-            near(sum(row['delta'] for row in preview['quantityChanges'] if row['materialId'] == material), extra_area / 0.09290304)
+            near(sum(row['delta'] for row in preview['quantityChanges'] if row['materialId'] == material), extra_area)
         assert inspect() == before and database_snapshot(project_path) == saved
         call('history.undo', mutates=True)
         assert settled(call('construction.inspect')) == settled(plain)
@@ -333,10 +333,10 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert len(installed) == len(detailed['pieces'])
         assert len(orders) == sum('packedCount' in p for p in detailed['purchases'])
         for row in orders:
-            near(float(row['purchasedLength_m']), int(row['purchasedCount']) * float(row['stockLength_m']))
+            near(float(row['purchasedLength_ft']), int(row['purchasedCount']) * float(row['stockLength_ft']))
         for row in installed:
             piece = next(p for p in detailed['pieces'] if p['id'] == row['pieceId'])
-            near(float(row['cutLength_m']), piece['cutLength'])
+            near(float(row['cutLength_ft']), piece['cutLength'])
             assert row['geometryId'] == 'wall-path'
         (EVIDENCE / 'pieces.csv').write_text(piece_csv)
         exported = json.loads(call('construction.export', {'format': 'json'}))
@@ -349,7 +349,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         face_b = copy.deepcopy(face_a)
         next(field for field in face_b['inputs'] if field['name'] == 'layers')['default'] = 2
         system = {'id': 'global-system', 'name': 'Two independent faces', 'geometryKinds': ['path'],
-                  'inputs': [{'name': 'height', 'type': 'number', 'unit': 'mm', 'minimum': 1}], 'outputs': [],
+                  'inputs': [{'name': 'height', 'type': 'number', 'unit': 'in', 'minimum': 1}], 'outputs': [],
                   'components': [{'id': 'face-a', 'assembly': face_a, 'bindings': {'height': 'height'}},
                                  {'id': 'face-b', 'assembly': face_b, 'bindings': {'height': 'height'}}]}
         template = {'id': 'global-wall', 'name': 'Reusable positioned wall', 'geometryKinds': ['path'],
@@ -362,10 +362,10 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
                                   points=[{'x': 72, 'y': 260}, {'x': 372, 'y': 260}]), True)
         call('group.put', {'id': 'formula-group', 'name': 'Formula only', 'geometryIds': ['formula-path']}, True)
         call('assignment.put', {'id': 'system-assignment', 'groupId': 'formula-group', 'recipeId': 'local-global-system',
-                                'inputs': {'height': 3000}, 'allowances': {}}, True)
+                                'inputs': {'height': 36}, 'allowances': {}}, True)
         amounts = system_amounts()
-        near(amounts['face-a/board-area'], 18 / 0.09290304)
-        near(amounts['face-b/board-area'], 36 / 0.09290304)
+        near(amounts['face-a/board-area'], 18)
+        near(amounts['face-b/board-area'], 36)
         call('geometry.put', dict(geometry, id='template-path', name='Template instance',
                                   points=[{'x': 72, 'y': 300}, {'x': 372, 'y': 300}]), True)
         call('wall.fromAssembly', {'assemblyId': 'local-global-wall', 'geometryId': 'template-path', 'id': 'template-wall'}, True)
@@ -401,8 +401,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-detailed-') as temporary:
         assert call('construction.inspect')['applications']['walls']['template-wall'] == reset
         local_system['components'][0]['assembly']['outputs'][0]['formula'] = 'length * height * 3'
         call('assembly.put', local_system, True)
-        near(system_amounts()['face-a/board-area'], 54 / 0.09290304)
-        near(system_amounts()['face-b/board-area'], 36 / 0.09290304)
+        near(system_amounts()['face-a/board-area'], 54)
+        near(system_amounts()['face-b/board-area'], 36)
         call('history.undo', mutates=True)
         assert system_amounts() == amounts
 

@@ -14,7 +14,7 @@ export function newId(): string {
 }
 export function createProject(name: string, id = newId()): Project {
   return {
-    formatVersion: 6,
+    formatVersion: 7,
     takeoffs: {
       main: {
         id: 'main',
@@ -35,12 +35,9 @@ export function createProject(name: string, id = newId()): Project {
 }
 
 const units: Record<Unit, { dimension: string; factor: number }> = {
-  m: { dimension: 'length', factor: 1 },
-  mm: { dimension: 'length', factor: 0.001 },
-  ft: { dimension: 'length', factor: 0.3048 },
-  in: { dimension: 'length', factor: 0.0254 },
-  m2: { dimension: 'area', factor: 1 },
-  ft2: { dimension: 'area', factor: 0.3048 ** 2 },
+  ft: { dimension: 'length', factor: 1 },
+  in: { dimension: 'length', factor: 1 / 12 },
+  ft2: { dimension: 'area', factor: 1 },
   ea: { dimension: 'count', factor: 1 },
   scalar: { dimension: 'scalar', factor: 1 },
 };
@@ -67,15 +64,15 @@ export function calibrationFromDistance(
   if (!finitePoint(start) || !finitePoint(end))
     throw new Error('Calibration points must be finite');
   const pageLength = distance(start, end);
-  const metres = convertQuantity(quantity, 'm').value;
-  if (pageLength <= 0 || metres <= 0)
+  const feet = convertQuantity(quantity, 'ft').value;
+  if (pageLength <= 0 || feet <= 0)
     throw new Error(
       'Calibration requires positive page and physical distances',
     );
-  const metresPerUnit = metres / pageLength;
-  if (!Number.isFinite(metresPerUnit) || metresPerUnit <= 0)
+  const feetPerUnit = feet / pageLength;
+  if (!Number.isFinite(feetPerUnit) || feetPerUnit <= 0)
     throw new Error('Calibration scale must be finite and positive');
-  return { metresPerUnit };
+  return { feetPerUnit };
 }
 export function pathLength(points: readonly Point[]): number {
   let result = 0;
@@ -182,14 +179,14 @@ export function measureGeometry(
   if (!sheet) return { diagnostic: 'Geometry sheet is unavailable' };
   if (geometry.kind === 'count')
     return { count: { value: geometry.points.length, unit: 'ea' } };
-  const scale = sheet.calibration?.metresPerUnit;
+  const scale = sheet.calibration?.feetPerUnit;
   if (scale === undefined) return { diagnostic: 'Sheet is not calibrated' };
   if (!Number.isFinite(scale) || scale <= 0)
     return { diagnostic: 'Sheet calibration must be finite and positive' };
   if (geometry.kind === 'path') {
     const length = pathLength(geometry.points) * scale;
     return Number.isFinite(length)
-      ? { length: { value: length, unit: 'm' } }
+      ? { length: { value: length, unit: 'ft' } }
       : { diagnostic: 'Measured length is not finite' };
   }
   const first = geometry.points[0];
@@ -202,8 +199,8 @@ export function measureGeometry(
   if (!Number.isFinite(area) || !Number.isFinite(perimeter))
     return { diagnostic: 'Measured area or perimeter is not finite' };
   return {
-    area: { value: area, unit: 'm2' },
-    perimeter: { value: perimeter, unit: 'm' },
+    area: { value: area, unit: 'ft2' },
+    perimeter: { value: perimeter, unit: 'ft' },
   };
 }
 export function nearestPointOnSegment(point: Point, a: Point, b: Point): Point {

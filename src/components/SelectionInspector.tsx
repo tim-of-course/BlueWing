@@ -1,3 +1,4 @@
+import { formatLength } from '../core/length';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { Observation } from '../app/application';
 import type { WorkspaceController } from '../app/contracts';
@@ -231,7 +232,9 @@ export default function SelectionInspector(props: Props) {
                   <strong>
                     {metric.value === null
                       ? 'Unavailable'
-                      : `${number.format(metric.value)} ${metric.unit === 'ft2' ? 'ft²' : metric.unit}`}
+                      : metric.unit === 'ft'
+                        ? formatLength(metric.value)
+                        : `${number.format(metric.value)} ${metric.unit === 'ft2' ? 'ft²' : metric.unit}`}
                   </strong>
                 </div>
               )}

@@ -37,7 +37,7 @@ function fixture(count = 2) {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   const geometryIds = Array.from(
     { length: count },
@@ -66,7 +66,7 @@ function fixture(count = 2) {
       id: `output${String(index)}`,
       name: 'Length',
       materialId: 'length',
-      unit: 'm',
+      unit: 'ft',
       formula: 'length * multiplier',
       allowance: { wastePercent: 0 },
     })),
@@ -133,7 +133,7 @@ void test('a calculation measures each trace once, prepares inputs per source an
     configurable: true,
     get: () => {
       measurements++;
-      return { metresPerUnit: 1 };
+      return { feetPerUnit: 1 };
     },
   });
   const input = required(recipe.inputs[0]);
@@ -173,7 +173,7 @@ void test('a calculation measures each trace once, prepares inputs per source an
   first.inputs.multiplier = 99;
   assert.equal(result.outputs[1]?.sources[0]?.inputs.multiplier, 3);
   assert.equal(result.outputs[4]?.sources[0]?.inputs.multiplier, 2);
-  Object.defineProperty(sheet, 'calibration', { value: { metresPerUnit: 2 } });
+  Object.defineProperty(sheet, 'calibration', { value: { feetPerUnit: 2 } });
   assert.equal(calculateProject(project).outputs[0]?.baseAmount, 1608);
 });
 
@@ -193,9 +193,9 @@ void test('prepared formulas retain lazy branches, units, errors and fresh evalu
     formulaOutput(
       evaluate({
         enabled: true,
-        length: formulaQuantity({ value: 2, unit: 'm' }),
+        length: formulaQuantity({ value: 2, unit: 'ft' }),
       }),
-      'm',
+      'ft',
     ),
     2,
   );
@@ -222,8 +222,8 @@ void test('shared preparation keeps output diagnostics and piece buckets indepen
       formula: '2',
       piece: { role: 'stud', cutLength: { formula: 'cut', unit: 'ft' } },
     },
-    { ...base, id: 'bad-dimension', unit: 'm2', formula: 'length' },
-    { ...base, id: 'lazy', unit: 'm', formula: 'if(true, length, missing)' },
+    { ...base, id: 'bad-dimension', unit: 'ft2', formula: 'length' },
+    { ...base, id: 'lazy', unit: 'ft', formula: 'if(true, length, missing)' },
     { ...base, id: 'bad-parse', formula: 'length @ 2' },
   ];
   let result = calculateProject(project);
@@ -239,11 +239,11 @@ void test('shared preparation keeps output diagnostics and piece buckets indepen
   );
   assert.deepEqual(
     result.outputs.slice(0, 2).map((output) => output.cutLength?.value),
-    [8 * 0.3048, 10 * 0.3048],
+    [8, 10],
   );
   assert.equal(
     result.outputs[2]?.sources[0]?.diagnostic,
-    'Formula dimension does not match output unit m2',
+    'Formula dimension does not match output unit ft2',
   );
   assert.equal(result.outputs[3]?.baseAmount, 8);
   assert.equal(
@@ -283,7 +283,7 @@ void test('component preparation retains converted shared inputs and independent
   project.recipes.recipe = createSystemAssembly({
     id: 'recipe',
     name: 'System',
-    inputs: [{ name: 'height', type: 'number', unit: 'mm', default: 3048 }],
+    inputs: [{ name: 'height', type: 'number', unit: 'in', default: 120 }],
     components: [
       { id: 'front', assembly: component, bindings: { height: 'height' } },
       {

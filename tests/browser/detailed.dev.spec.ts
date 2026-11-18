@@ -70,16 +70,16 @@ test('component system editing updates both materials without reactive warnings'
   const { artifact } = await captureBrowserArtifact(
     page,
     async () => {
-      await page.getByLabel('height (ft)', { exact: true }).fill('11');
+      await page.getByLabel('height', { exact: true }).fill('11');
       await page
         .getByRole('button', { name: 'Save assignment', exact: true })
         .click();
       await expect(
         page.getByRole('table', { name: 'Material totals' }),
-      ).toContainText('264 ft2');
+      ).toContainText('264 ft²');
       await expect(
         page.getByRole('table', { name: 'Piece schedule' }),
-      ).toContainText('11′ 0″');
+      ).toContainText("11'");
     },
     { scenario: 'shared-system-dimensions' },
   );

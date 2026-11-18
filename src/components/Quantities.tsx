@@ -1,3 +1,5 @@
+import { quantityLabel } from './quantity-label';
+import { formatLength } from '../core/length';
 import PieceSchedule, { displayLength } from './PieceSchedule';
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { presentQuantities } from '../core/quantity-presentation';
@@ -236,9 +238,12 @@ export default function Quantities(props: {
                       </td>
                       <td>
                         {entry.row
-                          ? `${number(entry.row.quantity)} ${entry.row.unit}`
+                          ? quantityLabel(entry.row.quantity, entry.row.unit)
                           : entry.output.complete
-                            ? `${number(entry.output.purchasedAmount)} ${entry.output.unit}`
+                            ? quantityLabel(
+                                entry.output.purchasedAmount,
+                                entry.output.unit,
+                              )
                             : 'Unavailable'}
                         <Show
                           when={
@@ -247,8 +252,10 @@ export default function Quantities(props: {
                         >
                           <br />
                           <small>
-                            {number(entry.output.purchasedAmount)}{' '}
-                            {entry.output.unit}
+                            {quantityLabel(
+                              entry.output.purchasedAmount,
+                              entry.output.unit,
+                            )}
                           </small>
                         </Show>
                       </td>
@@ -316,14 +323,15 @@ export default function Quantities(props: {
                         >
                           {(count) => (
                             <td>
-                              {number(count)}
+                              {total.unit === 'ft' || total.unit === 'in'
+                                ? quantityLabel(count, total.unit)
+                                : number(count)}
                               <Show when={total.stockLength}>
                                 {(stock) => (
                                   <>
                                     {' '}
                                     × {displayLength(stock())} ={' '}
-                                    {number((count * stock().value) / 0.3048)}{' '}
-                                    LF
+                                    {formatLength(count * stock().value)}
                                   </>
                                 )}
                               </Show>
@@ -410,14 +418,15 @@ export default function Quantities(props: {
                             when={entry().row}
                             fallback={
                               output().complete
-                                ? `${number(output().purchasedAmount)} ${output().unit}`
+                                ? quantityLabel(
+                                    output().purchasedAmount,
+                                    output().unit,
+                                  )
                                 : 'Incomplete'
                             }
                           >
                             {(row) => (
-                              <>
-                                {number(row().quantity)} {row().unit}
-                              </>
+                              <>{quantityLabel(row().quantity, row().unit)}</>
                             )}
                           </Show>
                         </Show>
@@ -480,7 +489,7 @@ export default function Quantities(props: {
                           {props.controller.project()?.recipes[item.recipeId]
                             ?.name ?? item.recipeId}{' '}
                           · {number(item.pieceCount)} cuts ·{' '}
-                          {number(item.cutLength.value / 0.3048)} installed LF
+                          {formatLength(item.cutLength.value)} installed
                         </p>
                       )}
                     </For>
@@ -489,19 +498,22 @@ export default function Quantities(props: {
                         <div>
                           <dt>Net / base</dt>
                           <dd>
-                            {number(output().baseAmount)} {output().unit}
+                            {quantityLabel(output().baseAmount, output().unit)}
                           </dd>
                         </div>
                         <div>
                           <dt>Waste ({number(output().wastePercent)}%)</dt>
                           <dd>
-                            {number(output().wasteAmount)} {output().unit}
+                            {quantityLabel(output().wasteAmount, output().unit)}
                           </dd>
                         </div>
                         <div>
                           <dt>With waste</dt>
                           <dd>
-                            {number(output().adjustedAmount)} {output().unit}
+                            {quantityLabel(
+                              output().adjustedAmount,
+                              output().unit,
+                            )}
                           </dd>
                         </div>
                         <Show when={output().packageCount !== null}>
@@ -513,7 +525,10 @@ export default function Quantities(props: {
                         <div>
                           <dt>Purchased</dt>
                           <dd>
-                            {number(output().purchasedAmount)} {output().unit}
+                            {quantityLabel(
+                              output().purchasedAmount,
+                              output().unit,
+                            )}
                           </dd>
                         </div>
                       </dl>
@@ -578,16 +593,26 @@ export default function Quantities(props: {
                               </td>
                               <td>
                                 {Object.entries(source().inputs)
-                                  .map(
-                                    ([key, value]) =>
-                                      `${key}: ${String(value)}`,
-                                  )
+                                  .map(([key, value]) => {
+                                    const unit = entry().inputDefinitions.find(
+                                      (input) => input.name === key,
+                                    )?.unit;
+                                    const text =
+                                      typeof value === 'number' &&
+                                      (unit === 'ft' || unit === 'in')
+                                        ? quantityLabel(value, unit)
+                                        : String(value);
+                                    return key + ': ' + text;
+                                  })
                                   .join(', ') || '—'}
                               </td>
                               <td>
                                 {source().value === null
                                   ? (source().diagnostic ?? 'Unavailable')
-                                  : `${number(source().value ?? 0)} ${output().unit}`}
+                                  : quantityLabel(
+                                      source().value ?? 0,
+                                      output().unit,
+                                    )}
                                 <Show when={source().cutLength}>
                                   {(cut) => <> × {displayLength(cut())}</>}
                                 </Show>

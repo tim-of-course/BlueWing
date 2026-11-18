@@ -23,7 +23,7 @@ function fixture() {
     pageIndex: 0,
     width: 100,
     height: 100,
-    calibration: { metresPerUnit: 1 },
+    calibration: { feetPerUnit: 1 },
   };
   project.geometries.g = {
     id: 'g',
@@ -46,7 +46,7 @@ function fixture() {
         id: 'o',
         name: 'Length',
         materialId: 'steel',
-        unit: 'm',
+        unit: 'ft',
         formula: 'length',
         allowance: { wastePercent: 10, packageSize: 2 },
       },
@@ -215,8 +215,8 @@ void test('takeoffs start empty; independent copies round positive purchases bef
   assert.equal(purchase.takeoff.id, 'co');
   assert.equal(purchase.rows.length, 2);
   assert.equal(purchase.rows[0]?.direction, 'deduct');
-  assert.equal(purchase.rows[0].quantity, -4 / 0.3048);
-  assert.equal(purchase.rows[0].grossQuantity, 4 / 0.3048);
+  assert.equal(purchase.rows[0].quantity, -4);
+  assert.equal(purchase.rows[0].grossQuantity, 4);
   const target = takeoffProject(f.session.project, 'co');
   assert.match(exportQuantities(target, 'csv'), /"co","co","deduct"/);
   const g = required(Object.values(target.geometries)[0]);
@@ -242,13 +242,13 @@ void test('takeoffs start empty; independent copies round positive purchases bef
       id: 's',
       start: { x: 0, y: 0 },
       end: { x: 1, y: 0 },
-      distance: { value: 2, unit: 'm' },
+      distance: { value: 2, unit: 'ft' },
     },
   });
   const after = takeoffProject(f.session.project, 'main');
   assert.deepEqual(after.geometries, main.geometries);
   assert.deepEqual(after.recipes, main.recipes);
-  assert.equal(after.sheets.s?.calibration?.metresPerUnit, 2);
+  assert.equal(after.sheets.s?.calibration?.feetPerUnit, 2);
   assert.equal(f.report('main').totals[0]?.amount, 8);
   await f.copy();
 });
@@ -258,11 +258,11 @@ void test('shared page calibration invalidates every takeoff and undo restores a
   await f.create();
   await f.copy();
   const sheet = required(f.session.project.sheets.s);
-  const putScale = (metresPerUnit: number) =>
+  const putScale = (feetPerUnit: number) =>
     f.call({
       name: 'sheet.put',
       takeoffId: 'co',
-      payload: { ...sheet, calibration: { metresPerUnit } },
+      payload: { ...sheet, calibration: { feetPerUnit } },
     });
   await putScale(2);
   assert.equal(f.session.calculationFor('co').totals[0]?.amount, -8);
@@ -331,7 +331,7 @@ void test('copying floor-area to a phase or change order preserves its output ID
     const output = required(f.report(id).outputs[0]);
     assert.equal(output.direction, direction);
     assert.equal(output.wastePercent, 10);
-    assert.ok(Math.abs(output.purchasedAmount - (9 / 0.09290304) * 1.1) < 1e-9);
+    assert.ok(Math.abs(output.purchasedAmount - 9 * 1.1) < 1e-9);
   }
 });
 
@@ -379,14 +379,13 @@ void test('ownership rejects cross-takeoff writes/references and phases reject d
     takeoffId: 'co',
     payload: {
       ...f.session.project.sheets.s,
-      calibration: { metresPerUnit: 2 },
+      calibration: { feetPerUnit: 2 },
       name: 'Shared name',
     },
   });
-  assert.equal(f.session.project.sheets.s?.calibration?.metresPerUnit, 2);
+  assert.equal(f.session.project.sheets.s?.calibration?.feetPerUnit, 2);
   assert.equal(
-    takeoffProject(f.session.project, 'co').sheets.s?.calibration
-      ?.metresPerUnit,
+    takeoffProject(f.session.project, 'co').sheets.s?.calibration?.feetPerUnit,
     2,
   );
   assert.equal(f.session.project.sheets.s.name, 'Shared name');

@@ -20,7 +20,7 @@ export function applySheetAlignment(
   };
 }
 
-/** Solve a rigid XY transform; distances and residuals are model metres. */
+/** Solve a rigid XY transform; distances and residuals are model feet. */
 export function matchSheetAlignment(
   project: Project,
   payload: MatchSheetAlignmentPayload,
@@ -38,7 +38,7 @@ export function matchSheetAlignment(
       ? project.sheets[id]
       : undefined;
     if (!sheet) throw new Error(`Sheet not found: ${id}`);
-    const scale = sheet.calibration?.metresPerUnit;
+    const scale = sheet.calibration?.feetPerUnit;
     if (!scale || !Number.isFinite(scale) || scale <= 0)
       throw new Error(`Sheet calibration required: ${id}`);
     const placement = Object.values(
@@ -67,7 +67,7 @@ export function matchSheetAlignment(
     const v = { x: reference[1].x - b.x, y: reference[1].y - b.y };
     sourceDistance = Math.hypot(u.x, u.y);
     referenceDistance = Math.hypot(v.x, v.y);
-    if (sourceDistance <= 1e-8 || referenceDistance <= 1e-8)
+    if (sourceDistance <= 3.28e-8 || referenceDistance <= 3.28e-8)
       throw new Error('Alignment point pairs must not coincide');
     rotation = Math.atan2(v.y, v.x) - Math.atan2(u.y, u.x);
     rotation = Math.atan2(Math.sin(rotation), Math.cos(rotation));

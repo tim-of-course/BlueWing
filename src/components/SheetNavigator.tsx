@@ -1,3 +1,4 @@
+import { formatLength } from '../core/length';
 import {
   createEffect,
   createMemo,
@@ -486,10 +487,14 @@ export default function SheetNavigator(props: Props) {
           }, 0);
           return [
             {
-              text: `${unavailable ? '—' : number.format(total)} ${metric.label}`,
+              text: unavailable
+                ? `— ${metric.label}`
+                : metric.unit === 'ft'
+                  ? formatLength(total)
+                  : `${number.format(total)} ${metric.label}`,
               title: unavailable
                 ? `${metric.key} unavailable: ${[...new Set(values.flatMap((item) => (item.value.diagnostic ? [item.value.diagnostic] : [])))].join('; ')}`
-                : `${metric.key}: ${number.format(total)} ${metric.label}`,
+                : `${metric.key}: ${metric.unit === 'ft' ? formatLength(total) : `${number.format(total)} ${metric.label}`}`,
             },
           ];
         });

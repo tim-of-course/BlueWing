@@ -28,6 +28,8 @@ The job is usually one of these:
 
 Other combinations are rare. Infer the package from the user's request and the documents. Ask the user only if it is unclear.
 
+Use decimal feet for construction dimensions, world positions and cut lengths, and square feet for areas. Recipe inputs use their declared units. Drawing points and bounds use page coordinates.
+
 ## Before takeoff
 
 - Read the project notes (notes.read, or notes.search for a topic). Earlier agents and people record job facts there, so use them instead of rediscovering them.
@@ -77,7 +79,7 @@ Read the notes before writing, and keep other people's text. Notes are plain Mar
 
 ## 3D visualization
 
-Include 3D visualization by default; it is a key review metric. Use construction.render for the views in the handoff document.
+Include 3D visualization by default; it is a standard part of review. Use construction.render for the views in the handoff document.
 
 - A single-page view needs no alignment.
 - For a combined view of several pages (for example the floor plan and the reflected ceiling plan), first check whether the pages line up. If they do not, align them with construction.alignment.match, using the same grid line intersections or columns on each page. Report the residual error. Alignment only moves the combined 3D view; it never changes quantities or single-page views.

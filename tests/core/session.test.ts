@@ -13,7 +13,7 @@ function project(): Project {
         owned: {},
       },
     },
-    formatVersion: 6,
+    formatVersion: 7,
     id: 'project',
     name: 'Original',
     revision: 0,

@@ -30,7 +30,11 @@ import {
   pieceSchedule,
   exportPieces,
 } from './calculations';
-import { calibrationFromRatio, type PaperScale } from './scale';
+import {
+  calibrationFromRatio,
+  type PaperScale,
+  type ScaleDistance,
+} from './scale';
 import { assemblyOutputs, validateSystem } from './systems';
 import { validateCategoryColor } from './categories';
 import { validateWallTemplate, validateCeilingTemplate } from './wall-template';
@@ -108,7 +112,7 @@ const translation = {
 const alignmentFields = {
   offset: {
     ...point,
-    description: 'World XY translation in metres after rotation.',
+    description: 'World XY translation in feet after rotation.',
   },
   rotation: {
     ...number,
@@ -121,12 +125,12 @@ const combined3dAlignment = {
 };
 const lengthUnit: PayloadSchema = {
   type: 'string',
-  enum: ['m', 'mm', 'ft', 'in'],
+  enum: ['ft', 'in'],
 };
 const distance = object({ value: positive, unit: lengthUnit });
 const unit: PayloadSchema = {
   type: 'string',
-  enum: ['m', 'mm', 'ft', 'in', 'm2', 'ft2', 'ea', 'scalar'],
+  enum: ['ft', 'in', 'ft2', 'ea', 'scalar'],
 };
 const wastePercent: PayloadSchema = {
   type: 'number',
@@ -171,9 +175,9 @@ const sheet = object(
         'Original PDF to rotated page points: [a,b,c,d,e,f] maps (x,y) to (ax+cy+e,bx+dy+f).',
     },
     calibration: object({
-      metresPerUnit: {
+      feetPerUnit: {
         ...positive,
-        description: 'Real metres per page point, shared by all takeoffs.',
+        description: 'Real feet per page point, shared by all takeoffs.',
       },
     }),
     combined3dAlignment,
@@ -217,7 +221,7 @@ const lengthFormula = object({
   unit: {
     ...lengthUnit,
     description:
-      'Result unit of this expression. Schedules normalize lengths to metres.',
+      'Result unit of this expression. Schedules normalize lengths to feet.',
   },
 });
 const leafAssemblySchema = object(
@@ -311,7 +315,7 @@ export const assemblySchema: PayloadSchema = {
     materialTemplate: {
       ...materialTemplateSchema,
       description:
-        'Positioned material layout. Lengths and world XY origins use metres, rotations use radians.',
+        'Positioned material layout. Lengths and world XY origins use feet, rotations use radians.',
     },
     components: array(
       object({
@@ -406,7 +410,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'construction.alignment.put',
-    'Set a presentation-only combined 3D alignment (metres/radians).',
+    'Set a presentation-only combined 3D alignment (feet/radians).',
     object({ sheetId: string, ...alignmentFields }),
     true,
     { sheetId: 'sheet-1', offset: { x: 0, y: 0 }, rotation: 0 },
@@ -967,7 +971,7 @@ export function validateProject(
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 6
+    input.formatVersion !== 7
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -975,7 +979,7 @@ export function validateProject(
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [6] },
+        formatVersion: { type: 'number', enum: [7] },
         takeoffs: {
           type: 'object',
           additionalProperties: object(
@@ -1389,7 +1393,7 @@ export function executeCommandOnDraft(
         calibrationFromDistance(
           payload.start as { x: number; y: number },
           payload.end as { x: number; y: number },
-          payload.distance as { value: number; unit: 'm' },
+          payload.distance as ScaleDistance,
         );
       break;
     case 'sheet.delete':

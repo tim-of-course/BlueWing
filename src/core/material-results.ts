@@ -204,7 +204,7 @@ export function modeledOutputs(
         const group = installed.get(ids.assignmentId) ?? {
           ...ids,
           pieceCount: 0,
-          cutLength: { value: 0, unit: 'm' as const },
+          cutLength: { value: 0, unit: 'ft' as const },
         };
         group.pieceCount++;
         group.cutLength.value += piece.cutLength;
@@ -212,7 +212,7 @@ export function modeledOutputs(
       }
     }
     const commonCut = members.every(
-      (p) => Math.abs(p.cutLength - first.cutLength) < 1e-8,
+      (p) => Math.abs(p.cutLength - first.cutLength) < 3.28e-8,
     );
     outputs.push({
       ...identity(purchase),
@@ -229,7 +229,7 @@ export function modeledOutputs(
               : { packageSize: purchase.packageSize }),
             installedByAssignment: [...installed.values()],
           }),
-      purchasedLength: { value: purchase.purchasedLength / 0.3048, unit: 'ft' },
+      purchasedLength: { value: purchase.purchasedLength, unit: 'ft' },
       ...(purchase.quantityKey ? { quantityKey: purchase.quantityKey } : {}),
       materialId: purchase.materialId,
       name:
@@ -243,16 +243,16 @@ export function modeledOutputs(
         pieceRole: piece.role,
         inputs: {},
         value: 1,
-        cutLength: { value: piece.cutLength, unit: 'm' },
+        cutLength: { value: piece.cutLength, unit: 'ft' },
         ...(piece.stockLength === undefined
           ? {}
-          : { stockLength: { value: piece.stockLength, unit: 'm' as const } }),
+          : { stockLength: { value: piece.stockLength, unit: 'ft' as const } }),
       })),
       ...(first.stockLength === undefined
         ? {}
-        : { stockLength: { value: first.stockLength, unit: 'm' as const } }),
+        : { stockLength: { value: first.stockLength, unit: 'ft' as const } }),
       ...(commonCut
-        ? { cutLength: { value: first.cutLength, unit: 'm' as const } }
+        ? { cutLength: { value: first.cutLength, unit: 'ft' as const } }
         : {}),
       baseAmount: purchase.requiredCount,
       wastePercent: purchase.wastePercent,
@@ -269,7 +269,7 @@ export function modeledOutputs(
   for (const [index, purchase] of (result.surfacePurchases ?? []).entries()) {
     const patches = purchase.surfaceIds.map((id) => present(surfaces.get(id)));
     const diagnostics = messages(patches);
-    const base = purchase.requiredArea / 0.09290304;
+    const base = purchase.requiredArea;
     outputs.push({
       ...identity(purchase),
       modeling: 'modeled',
@@ -282,14 +282,14 @@ export function modeledOutputs(
         geometryId: surface.geometryId ?? '',
         surfaceId: surface.id,
         inputs: { layers: surface.layers },
-        value: surface.area / 0.09290304,
+        value: surface.area,
       })),
       baseAmount: base,
       wastePercent: purchase.wastePercent,
       wasteAmount: (base * purchase.wastePercent) / 100,
       adjustedAmount: base * (1 + purchase.wastePercent / 100),
       packageCount: purchase.packageCount,
-      purchasedAmount: purchase.purchasedArea / 0.09290304,
+      purchasedAmount: purchase.purchasedArea,
       complete: !diagnostics.length,
       diagnostics,
     });

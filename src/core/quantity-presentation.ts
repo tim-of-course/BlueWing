@@ -1,3 +1,4 @@
+import { convertQuantity } from './geometry';
 import type { CalculationSnapshot } from './calculation-state';
 import type { LengthUnit, Project, Quantity } from './types';
 import { assemblyOutputs } from './systems';
@@ -95,20 +96,14 @@ export interface TakeoffEnvelope {
   rows: TakeoffRow[];
 }
 
-const metres: Record<LengthUnit, number> = {
-  m: 1,
-  mm: 0.001,
-  ft: 0.3048,
-  in: 0.0254,
-};
 export function lengthInFeet(length: Quantity): number | undefined {
   if (
-    !(length.unit in metres) ||
+    (length.unit !== 'ft' && length.unit !== 'in') ||
     !Number.isFinite(length.value) ||
     length.value <= 0
   )
     return undefined;
-  return (length.value * metres[length.unit as LengthUnit]) / metres.ft;
+  return convertQuantity(length, 'ft').value;
 }
 const number = (value: number) => String(Number(value.toPrecision(12)));
 
@@ -121,6 +116,8 @@ export function quantityLabel(project: Project, output: Output) {
       )
     : undefined;
   return {
+    inputDefinitions:
+      definition?.component?.assembly.inputs ?? recipe?.inputs ?? [],
     description:
       definition?.output.name ??
       (output.modeling === 'modeled'
@@ -226,15 +223,13 @@ export function presentQuantities(
         output.role !== undefined ||
         output.stockLength != null ||
         output.cutLength != null);
-    const requiredInputs =
-      definition?.component?.assembly.inputs ?? recipe?.inputs ?? [];
     const missingInput = output.sources.some((entry) =>
-      requiredInputs.some(
+      label.inputDefinitions.some(
         (input) =>
           input.type === 'number' &&
-          (input.unit in metres ||
-            input.unit === 'ft2' ||
-            input.unit === 'm2') &&
+          (input.unit === 'ft' ||
+            input.unit === 'in' ||
+            input.unit === 'ft2') &&
           entry.inputs[input.name] === undefined &&
           input.default === undefined,
       ),
@@ -263,7 +258,7 @@ export function presentQuantities(
       (missingInput || missingCalibration || missingPieceLength)
     ) {
       const unit: TakeoffRow['unit'] =
-        output.unit === 'ft2' || output.unit === 'm2'
+        output.unit === 'ft2'
           ? 'SF'
           : output.unit === 'ea' && !dimensionedPiece
             ? 'count'
@@ -352,16 +347,14 @@ export function presentQuantities(
         pieceLength: { value: length.value, unit: length.unit as LengthUnit },
         cutSchedule: [...schedule.values()],
       };
-    } else if (output.unit in metres) {
-      quantity =
-        (output.purchasedAmount * metres[output.unit as LengthUnit]) /
-        metres.ft;
+    } else if (output.unit === 'ft' || output.unit === 'in') {
+      quantity = convertQuantity(
+        { value: output.purchasedAmount, unit: output.unit },
+        'ft',
+      ).value;
       unit = 'LF';
-    } else if (output.unit === 'm2' || output.unit === 'ft2') {
-      quantity =
-        output.unit === 'm2'
-          ? output.purchasedAmount / 0.09290304
-          : output.purchasedAmount;
+    } else if (output.unit === 'ft2') {
+      quantity = output.purchasedAmount;
       unit = 'SF';
     } else
       return skip(

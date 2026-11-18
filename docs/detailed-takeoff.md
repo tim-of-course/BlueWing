@@ -17,7 +17,7 @@ Formula estimates remain available and explicitly unmodeled. Calculation validit
 - Positioned 2x2/2x4 ACT mains, 4 ft tees, 2 ft tees, wall angle, and tile surfaces clipped to the measured boundary. Grid origin, direction, elevation, sections, and stock are explicit inputs.
 - Unified calculated material sources for desktop/CLI quantities, piece schedules, exports, and 3D; downstream stock, waste, and packages.
 - Source-linked snippets and review dependencies, quantity preview, atomic edits, Undo/Redo, and save/reopen.
-- A clean development format reset: project format 6 and global library version 2 only. Earlier takeoffs are disposable. No old-project migration, compatibility adapters, or automatic upgrade backups.
+- A clean development format reset: project format 7 and global library version 3 only. Earlier takeoffs are disposable. No old-project migration, compatibility adapters, or automatic upgrade backups.
 
 The original blueprint PDFs remain reusable. The private Bingham Elementary School set belongs in ignored `tmp/reference-plans/`; it is never committed.
 
@@ -43,7 +43,7 @@ The passing core suite includes independent framing and header cuts, slope and o
 Native workflow coverage in `tests/desktop/assemblies.py` and `tests/desktop/detailed.py` includes:
 
 - Formula quantities, per-trace overrides, stock/package rounding, required pieces, independent project/global definitions, stale library writes, starter restoration, and two-project reuse.
-- A 6 m wall with 13 studs at 0.5 m stations, cuts of 2.95 m from explicit end allowances, a 2 m opening, two 2.3 m header components, and geometric finish deductions.
+- A 6 ft wall with 13 studs at 0.5 ft stations, cuts of 2.95 ft from explicit end allowances, a 2 ft opening, two 2.3 ft header components, and geometric finish deductions.
 - Piece and surface source IDs shared between construction inspection and ordinary quantity outputs; reported cuts checked against actual endpoints.
 - Project definition edits updating inherited wall settings, sparse local overrides preserving their value, reset, and Undo/Redo.
 - Corner-aligned 8 × 8 ft ACT layouts: one 8 ft main, six 4 ft tees, four 8 ft angles, 64 ft² of tile, and eight 2 ft tees for 2x2 only. Replacing the same assignment removes its previous estimate/layout contribution. Adding 10% tee waste orders seven tees while the model still contains six.
