@@ -10,6 +10,21 @@ import { parseCli } from '../../src/app/cli';
 import { cliCommandIndex, registry } from '../../src/app/registry';
 import { estimatingSkill, projectFolder } from '../../src/app/estimating-skill';
 
+void test('company tracing guidance distinguishes framed openings from open passageways', () => {
+  assert.match(
+    estimatingSkill,
+    /straight through doors, windows and any other opening with wall above/,
+  );
+  assert.match(
+    estimatingSkill,
+    /open hall or cased opening out of the trace when it has no frame and nothing above/,
+  );
+  assert.match(
+    estimatingSkill,
+    /opening once on the framed wall \(opening\.put\)/,
+  );
+});
+
 const project = { id: 'project-1', name: 'Clinic', revision: 3 };
 void test('connection prompts state the selected conversation intent and target the current project', () => {
   const connection = {
