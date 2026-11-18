@@ -89,6 +89,18 @@ function near(actual: number | undefined | null, expected: number) {
   );
 }
 
+void test('count markers have exact default purchases in projects and the shipped catalog', () => {
+  const project = fixture('count', 'count');
+  project.recipes = { ...project.recipes, ...createProject('New').recipes };
+  assignment(project).inputs = {};
+  near(calculateProject(project).outputs[0]?.purchasedAmount, 3);
+  for (const recipe of Object.values(project.recipes)) {
+    if (recipe.geometryKinds.includes('count'))
+      for (const output of recipe.outputs)
+        assert.equal(output.allowance.wastePercent, 0, recipe.id);
+  }
+});
+
 void test('assembly templates and all public command examples validate', () => {
   for (const value of Object.values(starterAssemblies()))
     validateAssembly(value);
