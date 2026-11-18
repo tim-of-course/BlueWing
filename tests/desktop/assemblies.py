@@ -40,6 +40,12 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             time.sleep(0.2)
         raise AssertionError('Desktop did not become ready')
 
+    def settled(value):
+        # Undo, redo and unrelated edits advance the revision; these comparisons are about content.
+        if isinstance(value, dict):
+            return {key: settled(item) for key, item in value.items() if key != 'revision'}
+        return [settled(item) for item in value] if isinstance(value, list) else value
+
     def call(name, payload=None, mutates=False, succeeds=True):
         global project_id, revision
         request = {'payload': payload or {}, 'takeoffId': 'main'}
@@ -111,12 +117,12 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         call('assignment.put', stud_assignment, True)
         assert next(t['amount'] for t in quantities()['totals'] if t['materialId'] == 'steel-stud-unspecified') == 60
         call('history.undo', mutates=True)
-        assert quantities() == totals
+        assert settled(quantities()) == settled(totals)
         # A global edit and deletion cannot change an existing project copy.
         template = library['assemblies']['drywall-face']
         template['inputs'][1]['default'] = 5
         edited = call('library.put', {'assembly': template, 'expectedLibraryRevision': library['revision']})
-        assert quantities() == totals
+        assert settled(quantities()) == settled(totals)
         call('library.put', {'assembly': template, 'expectedLibraryRevision': library['revision']}, succeeds=False)
         # Project default edits preserve explicit per-object overrides and support Undo.
         project = call('project.inspect')
@@ -126,7 +132,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         changed = quantities()
         assert abs(next(t['amount'] for t in changed['totals'] if t['materialId'] == 'drywall-unspecified') - 1014) < 1e-8
         call('history.undo', mutates=True)
-        assert quantities() == totals
+        assert settled(quantities()) == settled(totals)
         call('project.close', mutates=True)
         # Restart proves library durability outside any open project.
         desktop.terminate()
@@ -140,8 +146,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         assert call('project.inspect')['recipes']['new-board']['inputs'][1]['default'] == 5
         call('project.close', mutates=True)
         call('project.open', {'path': project_path})
-        assert quantities() == totals
-        assert schedule() == pieces
+        assert settled(quantities()) == settled(totals)
+        assert settled(schedule()) == settled(pieces)
         # Both ceiling systems use the same measured 24 x 15 ft / 78 LF room.
         call('geometry.put', {'id': 'ceiling', 'name': 'Ceiling room', 'sheetId': sheet, 'kind': 'area', 'points': [{'x': 72, 'y': 144}, {'x': 360, 'y': 144}, {'x': 360, 'y': 324}, {'x': 72, 'y': 324}]}, True)
         call('group.put', {'id': 'ceilings', 'name': 'Ceilings', 'geometryIds': ['ceiling']}, True)
@@ -205,15 +211,15 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
             assert next(row['purchasedCount'] for row in with_waste['purchases']
                         if row['role'] == 'ceiling-tee-4ft') == 7
             call('history.undo', mutates=True)
-            assert call('construction.inspect') == model
+            assert settled(call('construction.inspect')) == settled(model)
         call('construction.render', {'path': str(EVIDENCE / 'ceiling-layout.png'), 'width': 800, 'height': 500,
                                      'geometryIds': ['layout-room']})
         ceiling_totals = quantities()
         ceiling_model = call('construction.inspect')
         call('project.close', mutates=True)
         call('project.open', {'path': project_path})
-        assert quantities() == ceiling_totals
-        assert call('construction.inspect') == ceiling_model
+        assert settled(quantities()) == settled(ceiling_totals)
+        assert settled(call('construction.inspect')) == settled(ceiling_model)
         # Standalone finishes and framing use the same live CLI, persisted model and renderer.
         for ident in ['frp-wall', 'acoustical-wall-surface', 'steel-joists', 'steel-kick', 'steel-box-header']:
             call('assembly.import', {'libraryId': ident, 'id': ident}, True)
@@ -259,8 +265,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         saved_quantities = quantities()
         call('project.close', mutates=True)
         call('project.open', {'path': project_path})
-        assert call('construction.inspect') == model
-        assert quantities() == saved_quantities
+        assert settled(call('construction.inspect')) == settled(model)
+        assert settled(quantities()) == settled(saved_quantities)
         call('sheet.render', {'sheetId': sheet, 'path': str(EVIDENCE / 'assemblies.png'), 'maxDimension': 1224})
         call('project.close', mutates=True)
     finally:
