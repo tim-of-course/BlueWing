@@ -1342,10 +1342,11 @@ export async function captureWorkflow(page: Page) {
   await crop(
     page,
     {
-      x: Math.ceil(canvas.x + canvas.width / 2 - 100),
-      y: Math.ceil(canvas.y + canvas.height / 2 - 100),
-      width: 200,
-      height: 200,
+      // Include the fixture's plan title and linework at different drawing widths.
+      x: Math.ceil(canvas.x + canvas.width * 0.1),
+      y: Math.ceil(canvas.y + canvas.height * 0.1),
+      width: Math.floor(canvas.width * 0.8),
+      height: Math.floor(canvas.height * 0.8),
     },
     true,
   );
