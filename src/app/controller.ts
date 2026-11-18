@@ -46,6 +46,12 @@ export function createWorkspace(
     void app.pdf.clear();
   });
   const [cliConnection, setCliConnection] = createSignal(app.cliConnection);
+  const [lastCliContact, setLastCliContact] = createSignal(app.lastCliContact, {
+    name: 'workspace.lastCliContact',
+  });
+  const [cliExecuting, setCliExecuting] = createSignal(app.cliExecuting, {
+    name: 'workspace.cliExecuting',
+  });
   const [performanceRecording, setPerformanceRecording] = createSignal(
     app.performance.status().active,
     { name: 'workspace.performanceRecording' },
@@ -347,6 +353,8 @@ export function createWorkspace(
   onCleanup(
     app.subscribe(() => {
       setCliConnection(app.cliConnection);
+      setLastCliContact(app.lastCliContact);
+      setCliExecuting(app.cliExecuting);
       setLibrary(app.library);
       setCanUndo(app.session?.canUndo ?? false);
       setCanRedo(app.session?.canRedo ?? false);
@@ -355,7 +363,7 @@ export function createWorkspace(
       if (
         session === publishedSession &&
         revision === publishedRevision &&
-        app.project?.takeoffId === publishedTakeoffId
+        (session ? app.activeTakeoffId : undefined) === publishedTakeoffId
       )
         return;
       const current = app.project;
@@ -536,6 +544,8 @@ export function createWorkspace(
     },
     messaging: app.messaging,
     cliConnection,
+    lastCliContact,
+    cliExecuting,
     setPresentation(presentation) {
       app.presentation = presentation;
     },

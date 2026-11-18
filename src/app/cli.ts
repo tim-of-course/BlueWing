@@ -113,10 +113,11 @@ export async function connectCli(
 
 export async function dispatchCli(
   application: Pick<Application, 'dispatch' | 'messaging' | 'project'> &
-    Partial<Pick<Application, 'performance'>>,
+    Partial<Pick<Application, 'performance' | 'recordCliContact'>>,
   args: string[],
   input?: string,
 ) {
+  application.recordCliContact?.();
   let request: ApplicationRequest | undefined;
   let finish: FinishPerformanceSpan | undefined;
   let success = false;

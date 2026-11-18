@@ -8,11 +8,11 @@ CLI 3D previews retain the render's explicit `sheetIds`, alignment mode, camera,
 
 Choose **Copy AI prompt**, then **Wingman + chat** to talk in either place, or **Chat only** to keep the conversation in your AI's chat. Paste the prompt into your AI's chat. The desktop app supplies the installed command path and current project automatically. No model or provider setup lives in Bluewing. A browser-only workspace explains that connecting needs the desktop app.
 
-Enter sends a chat message; Shift+Enter adds a new line. Confirming composed text does not send it. If copying a prompt is unavailable, select and copy the displayed prompt instead.
+Enter sends a chat message; Shift+Enter adds a new line. Confirming composed text does not send it. Messages are saved here. Your AI sees them on its next Bluewing command. Send your draft or clear its text and remove its screenshots before closing or switching projects. You can keep a draft while drawing, navigating, or swapping views. If copying a prompt is unavailable, select and copy the displayed prompt instead.
 
 Wingman sits in the drawing workspace's lower-right corner, keeping inspector and sheet controls accessible. Expand or collapse the preview independently of Chat. Successful CLI `sheet.render`, `snippet.render`, and `construction.render` calls publish their view quietly. Optional `caption` text describes the view; otherwise the app uses the sheet name or a 3D label. `wingman.flash` expands and briefly glows the preview, including a nonanimated indication when reduced motion is enabled.
 
-Click the preview to swap with the main workspace. Clicking again restores the user's sheet, camera, selection, group context, visibility, workspace mode, and 3D filters. Subsequent agent renders while swapped update the agent view without replacing the saved return view. Draft edits disable swapping; updates that arrive during an edit remain available through **Show latest agent view**. Preview content follows accepted project edits. It is not the original exported PNG. A deleted source is shown as unavailable, and capped 3D previews report omissions.
+Click the preview to swap with the main workspace. Clicking again restores the user's sheet, camera, selection, group context, visibility, workspace mode, and 3D filters. Subsequent agent renders while swapped update the agent view without replacing the saved return view. Draft drawing or editor changes disable swapping. An agent render that arrives during an edit or an in-flight view update remains available through **Show latest agent view**. Preview content follows accepted project edits. It is not the original exported PNG. A deleted source is shown as unavailable, and capped 3D previews report omissions.
 
 Wingman retains the two most recent plan backgrounds across swaps and collapse/reopen. These contain source pixels only; geometry, highlights, and annotations redraw from current state. Prepared page images supply crops when their resolution meets the preview's sampling needs, including images read from the disposable disk cache. Close-up details render directly from the PDF. Switching or closing projects releases retained backgrounds. The main workspace displays a full image already in memory immediately, and transient PDF snapshots skip cache PNG encoding.
 
@@ -25,6 +25,10 @@ Conversations and screenshot files are local application data keyed by project i
 Pause blocks new non-messaging CLI actions and rejects queued actions that have not started. A running atomic action can finish. Resuming never replays rejected actions. Desktop editing and messaging remain available.
 
 **Waiting for your message** appears while a CLI message wait is pending. **End conversation** wakes that wait and prevents it renewing. Neither asks an external host to stop a running task. An agent that cannot remain available should explain that in Wingman. If its process disconnects, the waiting indicator clears when the outstanding application wait expires, within 25 seconds. Bluewing communicates your intent; the external host controls agent availability.
+
+The activity line shows **No AI connected yet** until the first CLI request reaches the open project. It shows **AI is working** during a non-messaging command. Between requests it shows how many seconds or minutes have passed since the last contact, including a rejected request. Closing the project clears this history.
+
+Incoming replies follow the bottom of an open chat. Scroll up to keep your place while reading. Sending your own message returns the chat to the bottom. When you reopen a project, the Chat badge counts only new AI replies.
 
 ## Plan preview verification, October 16, 2026
 
