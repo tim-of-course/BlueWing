@@ -204,6 +204,11 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
+  // The fixture hovered Sheets to inspect Floor. Wait until that peek has closed
+  // before returning to page coordinates that lie under the panel.
+  await expect(
+    page.locator('.workspace-panel[data-side="left"][data-peeking="true"]'),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const floorQuantity = page
     .getByRole('table', { name: 'Material totals' })
