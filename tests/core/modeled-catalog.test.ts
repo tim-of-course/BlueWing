@@ -14,6 +14,7 @@ import { inspectReview } from '../../src/core/review';
 import { generateConstruction } from '../../src/core/construction';
 import { resolveConstruction } from '../../src/core/applied-assemblies';
 import { modeledOutputs } from '../../src/core/material-results';
+import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
 import type {
   CalculationResult,
   GeometryKind,
@@ -170,6 +171,250 @@ void test('new finish starters model measured surfaces and positioned deductions
       ),
     );
   }
+});
+
+function framedTrace() {
+  let project = fixture('steel-framing', 'path', 10);
+  project = command(project, 'assignment.put', {
+    ...applied(project),
+    wallOverrides: { height: 8 * ft },
+  });
+  project = command(
+    project,
+    'assembly.put',
+    starterAssemblies()['steel-box-header'],
+  );
+  project = command(project, 'header.fromAssembly', {
+    assemblyId: 'steel-box-header',
+    id: 'header',
+  });
+  return command(project, 'group.put', {
+    id: 'finishes',
+    name: 'Drywall and insulation',
+    geometryIds: ['trace'],
+  });
+}
+
+const door = {
+  id: 'door',
+  wallId: 'a/trace',
+  distance: 3 * ft,
+  width: 3 * ft,
+  sill: 0,
+  height: 7 * ft,
+  jambCount: 1,
+  headerId: 'header',
+};
+
+function addSurface(
+  project: Project,
+  materialId: string,
+  height: number,
+  elevation = 0,
+  groupId = 'finishes',
+) {
+  project = command(project, 'assembly.put', {
+    id: materialId,
+    name: materialId,
+    geometryKinds: ['path'],
+    inputs: [],
+    outputs: [],
+    materialTemplate: {
+      kind: 'path-surface',
+      materialId,
+      height: height * ft,
+      elevation: elevation * ft,
+      layers: 1,
+      wastePercent: 0,
+    },
+  });
+  return command(project, 'assignment.put', {
+    id: materialId,
+    groupId,
+    recipeId: materialId,
+    inputs: {},
+    allowances: {},
+  });
+}
+
+void test('one framed door cuts independent finish and insulation scopes on its trace and exports the clipped wainscot', () => {
+  let project = framedTrace();
+  const trace = project.geometries.trace;
+  assert.ok(trace);
+  project = command(project, 'geometry.put', { ...trace, id: 'other' });
+  project = command(project, 'group.put', {
+    id: 'finishes',
+    name: 'Drywall and insulation',
+    geometryIds: ['trace', 'other'],
+  });
+  project = addSurface(project, 'drywall', 8);
+  project = addSurface(project, 'cavity-insulation', 8);
+  project = addSurface(project, 'wainscot', 4, 0, 'g');
+  project = command(project, 'opening.put', door);
+  const result = calculateProject(project);
+  linked(result);
+  for (const id of ['drywall', 'cavity-insulation']) {
+    const output = result.outputs.find((row) => row.assignmentId === id);
+    assert.ok(output);
+    for (const [geometry, area] of [
+      ['trace', 59],
+      ['other', 80],
+    ] as const) {
+      near(
+        output.sources
+          .filter((source) => source.geometryId === geometry)
+          .reduce((sum, source) => sum + (source.value ?? 0), 0),
+        area,
+      );
+    }
+  }
+  near(
+    result.outputs.find((row) => row.assignmentId === 'wainscot')?.baseAmount,
+    28,
+  );
+  const exported = estiMakerTakeoff(project, result);
+  assert.equal(exported.calculationComplete, true);
+  near(
+    exported.rows.find((row) => row.source.assignmentId === 'wainscot')
+      ?.quantity,
+    28,
+  );
+
+  project = command(
+    project,
+    'assembly.put',
+    starterAssemblies()['drywall-face'],
+  );
+  project = command(project, 'assignment.put', {
+    id: 'estimate',
+    groupId: 'g',
+    recipeId: 'drywall-face',
+    inputs: { height: 8 },
+    allowances: {},
+  });
+  const estimate = calculateProject(project).outputs.find(
+    (row) => row.assignmentId === 'estimate',
+  );
+  assert.equal(estimate?.modeling, 'estimate');
+  near(estimate.baseAmount, 80);
+});
+
+void test('both faces of a second wall application lose the door once, including previously copied openings', () => {
+  let project = framedTrace();
+  project = command(project, 'assembly.put', starterAssemblies()['steel-wall']);
+  project = command(project, 'assignment.put', {
+    id: 'both-faces',
+    groupId: 'finishes',
+    recipeId: 'steel-wall',
+    inputs: {},
+    allowances: {},
+    wallOverrides: { height: 8 * ft },
+  });
+  project = addSurface(project, 'drywall', 8);
+  const initial = calculateProject(project);
+  const receivingPieces = (result: CalculationResult) =>
+    result.model.pieces.filter((piece) => piece.wallId === 'both-faces/trace');
+  project = command(project, 'opening.put', door);
+  const shared = calculateProject(project);
+  assert.deepEqual(receivingPieces(shared), receivingPieces(initial));
+  // Older projects may contain both a second framed opening and a finish-local cutout.
+  project = command(project, 'opening.put', {
+    ...door,
+    id: 'copy',
+    wallId: 'both-faces/trace',
+  });
+  project = command(project, 'assignment.put', {
+    ...project.assignments.drywall,
+    materialOverrides: {
+      openings: [
+        {
+          id: 'local',
+          distance: door.distance,
+          width: door.width,
+          sill: door.sill,
+          height: door.height,
+        },
+      ],
+    },
+  });
+  for (const result of [shared, calculateProject(project)]) {
+    linked(result);
+    for (const face of ['front', 'back']) {
+      near(
+        result.model.surfaces
+          .filter((s) => s.wallId === 'both-faces/trace' && s.face === face)
+          .reduce((sum, s) => sum + s.area / ft ** 2, 0),
+        59,
+      );
+    }
+    near(
+      result.outputs.find((row) => row.assignmentId === 'drywall')?.baseAmount,
+      59,
+    );
+  }
+});
+
+void test('a raised window intersects each finish at its own elevation', () => {
+  let project = framedTrace();
+  project = command(project, 'level.put', {
+    id: 'floor',
+    name: 'Floor',
+    elevation: 10 * ft,
+  });
+  project = command(project, 'assignment.put', {
+    ...applied(project),
+    wallOverrides: { height: 8 * ft, levelId: 'floor', baseElevation: 2 * ft },
+  });
+  // The window occupies elevations 15–18 ft. These finishes start at 12, 16 and 18 ft.
+  project = addSurface(project, 'full-height', 8, 12);
+  project = addSurface(project, 'raised', 4, 16);
+  project = addSurface(project, 'above-head', 4, 18);
+  project = command(project, 'assignment.put', {
+    ...applied(project),
+    id: 'low-wall',
+    groupId: 'finishes',
+    wallOverrides: {
+      height: 8 * ft,
+      baseElevation: 14 * ft,
+      finishes: [
+        {
+          id: 'low',
+          materialId: 'low-board',
+          face: 'front',
+          layers: 1,
+          height: ft,
+        },
+        { id: 'back', materialId: 'back-board', face: 'back', layers: 1 },
+      ],
+    },
+  });
+  const before = calculateProject(project);
+  project = command(project, 'opening.put', {
+    ...door,
+    width: 2 * ft,
+    sill: 3 * ft,
+    height: 3 * ft,
+  });
+  const result = calculateProject(project);
+  linked(result);
+  for (const [id, area] of [
+    ['full-height', 74],
+    ['raised', 36],
+    ['above-head', 40],
+  ] as const)
+    near(
+      result.outputs.find((row) => row.assignmentId === id)?.baseAmount,
+      area,
+    );
+  near(
+    result.outputs.find((row) => row.materialId === 'back-board')?.baseAmount,
+    74,
+  );
+  const untouched = (snapshot: CalculationResult) =>
+    snapshot.model.surfaces.filter(
+      (s) => s.materialId === 'low-board' || s.materialId === 'above-head',
+    );
+  assert.deepEqual(untouched(result), untouched(before));
 });
 
 void test('finish assignment defaults, local heights and live project edits have explicit precedence', () => {
