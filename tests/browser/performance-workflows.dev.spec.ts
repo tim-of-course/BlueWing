@@ -85,7 +85,7 @@ async function populate(page: Page) {
     payload: {
       ...sheet,
       name: index ? 'Ceiling plan' : 'Floor plan',
-      calibration: { metresPerUnit: 0.01 },
+      calibration: { feetPerUnit: 0.01 },
     },
   }));
   for (let i = 0; i < TRACE_COUNT; i++) {
@@ -117,7 +117,7 @@ async function populate(page: Page) {
           id: 'length',
           name: 'Measured length',
           materialId: 'run',
-          unit: 'm',
+          unit: 'ft',
           formula: 'length',
           allowance: { wastePercent: 0 },
         },

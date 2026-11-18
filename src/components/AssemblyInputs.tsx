@@ -1,4 +1,5 @@
-import { createSignal, For, Show } from 'solid-js';
+import QuantityInput from './QuantityInput';
+import { For, Show } from 'solid-js';
 import type { RecipeInput } from '../core/types';
 
 export default function AssemblyInputs(props: {
@@ -18,9 +19,6 @@ export default function AssemblyInputs(props: {
     <div class="stack">
       <For each={props.inputs} keyed={(input) => input.name}>
         {(input) => {
-          const [editingValue, setEditingValue] = createSignal<string | null>(
-            null,
-          );
           const effective = () =>
             props.values[input().name] ??
             props.inherited?.[input().name] ??
@@ -28,7 +26,12 @@ export default function AssemblyInputs(props: {
           return (
             <div class="stack">
               <label class="field">
-                {input().name} ({input().unit})
+                {input().name}
+                {input().unit === 'ft' || input().unit === 'in'
+                  ? ''
+                  : ' (' +
+                    (input().unit === 'ft2' ? 'ft²' : input().unit) +
+                    ')'}
                 <Show
                   when={input().type === 'number'}
                   fallback={
@@ -52,29 +55,20 @@ export default function AssemblyInputs(props: {
                     </select>
                   }
                 >
-                  <input
-                    type="number"
-                    step="any"
-                    min={input().minimum}
+                  <QuantityInput
+                    unit={input().unit}
+                    minimum={input().minimum}
                     disabled={props.disabled}
                     placeholder={
                       input().default === undefined ? 'Required' : ''
                     }
                     value={
-                      editingValue() ??
-                      (effective() === undefined ? '' : Number(effective()))
+                      effective() === undefined
+                        ? undefined
+                        : Number(effective())
                     }
-                    onBlur={() => {
-                      setEditingValue(null);
-                    }}
-                    onInput={(event) => {
-                      setEditingValue(event.currentTarget.value);
-                      set(
-                        input().name,
-                        event.currentTarget.value === ''
-                          ? undefined
-                          : event.currentTarget.valueAsNumber,
-                      );
+                    onChange={(value) => {
+                      set(input().name, value);
                     }}
                   />
                 </Show>

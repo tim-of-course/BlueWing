@@ -29,13 +29,13 @@ test('assemblies support project copies, object overrides and piece schedules', 
   const { artifact } = await captureBrowserArtifact(
     page,
     async () => {
-      await steel.getByLabel('height (ft)', { exact: true }).fill('11');
+      await steel.getByLabel('height', { exact: true }).fill('11');
       await steel
         .getByRole('button', { name: 'Save assignment', exact: true })
         .click();
       await expect(
         page.getByRole('table', { name: 'Piece schedule', exact: true }),
-      ).toContainText('10′ 11.5″');
+      ).toContainText('10\' 11 1/2"');
     },
     { scenario: 'assembly-object-and-piece-update' },
   );
@@ -65,7 +65,7 @@ test('ceiling estimates restore missing starters and calculate separate grid mat
   const { artifact } = await captureBrowserArtifact(
     page,
     async () => {
-      await page.getByLabel('gridDeduction (ft2)', { exact: true }).fill('40');
+      await page.getByLabel('gridDeduction (ft²)', { exact: true }).fill('40');
       await page
         .getByRole('button', { name: 'Save assignment', exact: true })
         .click();
@@ -111,7 +111,7 @@ test('modeled material starters edit surfaces and copy opening header details', 
     page,
     async () => {
       await page
-        .getByLabel('Surface height (ft) (optional)', { exact: true })
+        .getByLabel('Surface height (optional)', { exact: true })
         .fill('10');
       await page
         .getByRole('button', { name: 'Save assignment', exact: true })
@@ -121,7 +121,7 @@ test('modeled material starters edit surfaces and copy opening header details', 
           .getByRole('table', { name: 'Material totals' })
           .getByRole('row')
           .filter({ hasText: 'frp-unspecified' }),
-      ).toContainText('256 ft2');
+      ).toContainText('256 ft²');
     },
     { scenario: 'modeled-material-local-height' },
   );

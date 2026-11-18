@@ -123,7 +123,7 @@ test('deductions preserve colors with dashed plan strokes and hatched 3D members
       pageIndex: 0,
       width: 100,
       height: 100,
-      calibration: { metresPerUnit: 1 },
+      calibration: { feetPerUnit: 1 },
     };
     const call = (name: string, payload: unknown) => {
       project = executeCommand(project, { name, payload }).project;
@@ -152,7 +152,7 @@ test('deductions preserve colors with dashed plan strokes and hatched 3D members
           materialId: 'gypsum',
           face: 'front',
           layers: 1,
-          thickness: 0.0127,
+          thickness: 0.5 / 12,
         },
       ],
     });

@@ -1,3 +1,4 @@
+import QuantityInput from './QuantityInput';
 import { createSignal, For, Show } from 'solid-js';
 import type { AssemblyComponent, Recipe, RecipeOutput } from '../core/types';
 import { formulaQuantity } from '../core/formula';
@@ -169,26 +170,24 @@ export default function SystemComponents(props: {
                       <Show
                         when={input().type === 'boolean'}
                         fallback={
-                          <input
-                            type="number"
-                            step="any"
+                          <QuantityInput
+                            unit={input().unit}
                             value={
                               typeof input().default === 'number'
-                                ? (input().default as number)
-                                : ''
+                                ? Number(input().default)
+                                : undefined
                             }
-                            onInput={(e) => {
-                              const raw = e.currentTarget.value;
+                            onChange={(raw) => {
+                              const name = input().name;
                               patch(component().id, (c) => ({
                                 ...c,
                                 assembly: {
                                   ...c.assembly,
                                   inputs: c.assembly.inputs.map((field) => {
-                                    if (field.name !== input().name)
-                                      return field;
+                                    if (field.name !== name) return field;
                                     const next = { ...field };
-                                    if (raw === '') delete next.default;
-                                    else next.default = Number(raw);
+                                    if (raw === undefined) delete next.default;
+                                    else next.default = raw;
                                     return next;
                                   }),
                                 },
@@ -274,18 +273,14 @@ export default function SystemComponents(props: {
                       />
                     </label>
                     <label class="field">
-                      Package size
-                      <input
-                        type="number"
-                        step="any"
-                        value={item().allowance.packageSize ?? ''}
-                        onInput={(e) => {
+                      Package size {item().unit === 'ft2' ? '(ft²)' : ''}
+                      <QuantityInput
+                        unit={item().unit}
+                        value={item().allowance.packageSize ?? undefined}
+                        onChange={(value) => {
                           const allowance = { ...item().allowance };
-                          if (e.currentTarget.value === '')
-                            delete allowance.packageSize;
-                          else
-                            allowance.packageSize =
-                              e.currentTarget.valueAsNumber;
+                          if (value === undefined) delete allowance.packageSize;
+                          else allowance.packageSize = value;
                           output(component().id, index, { allowance });
                         }}
                       />

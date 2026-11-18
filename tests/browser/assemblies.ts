@@ -80,19 +80,19 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
-  await expect(page.getByLabel('height (ft)', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('height', { exact: true })).toHaveValue('');
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
   ).toContainText('Incomplete');
-  await page.getByLabel('height (ft)', { exact: true }).fill('10');
-  await page.getByLabel('deduction (ft2)', { exact: true }).fill('21');
+  await page.getByLabel('height', { exact: true }).fill('10');
+  await page.getByLabel('deduction (ft²)', { exact: true }).fill('21');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('219 ft2');
+  ).toContainText('219 ft²');
   const scope = page.getByRole('combobox', {
     name: 'Input scope',
     exact: true,
@@ -106,22 +106,22 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
     .click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('438 ft2');
+  ).toContainText('438 ft²');
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('219 ft2');
+  ).toContainText('219 ft²');
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('438 ft2');
+  ).toContainText('438 ft²');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('438 ft2');
+  ).toContainText('438 ft²');
   await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
   await editor
     .getByRole('button', { name: 'Global library', exact: true })
@@ -171,9 +171,9 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
       exact: true,
     }),
   });
-  await steel.getByLabel('height (ft)', { exact: true }).fill('10');
-  await steel.getByLabel('endAllowance (in)', { exact: true }).fill('0.5');
-  await steel.getByLabel('stockLength (ft)', { exact: true }).fill('12');
+  await steel.getByLabel('height', { exact: true }).fill('10');
+  await steel.getByLabel('endAllowance', { exact: true }).fill('1/2"');
+  await steel.getByLabel('stockLength', { exact: true }).fill('12');
   await steel
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
@@ -183,8 +183,8 @@ export async function assemblyWorkflow(page: Page): Promise<void> {
     exact: true,
   });
   await expect(pieces).toContainText('19');
-  await expect(pieces).toContainText('9′ 11.5″');
-  await expect(pieces).toContainText('12′ 0″');
+  await expect(pieces).toContainText('9\' 11 1/2"');
+  await expect(pieces).toContainText("12'");
   const download = page.waitForEvent('download');
   await page
     .getByRole('button', { name: 'Export piece CSV', exact: true })
@@ -205,7 +205,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   if (!finish) throw new Error('Missing finish starter');
   finish.name = 'Company ceiling finish';
   await page.evaluate((library) => {
-    localStorage.setItem('bluewing.assemblies.v2', JSON.stringify(library));
+    localStorage.setItem('bluewing.assemblies.v3', JSON.stringify(library));
   }, old);
   await startProject(page);
   await drawWall(page);
@@ -267,7 +267,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const totals = page.getByRole('table', { name: 'Material totals' });
   for (const [material, amount] of [
-    ['ceiling-tile-2x2-unspecified', '360 ft2'],
+    ['ceiling-tile-2x2-unspecified', '360 ft²'],
     ['ceiling-tee-2ft-unspecified', '45 ea'],
     ['ceiling-tee-4ft-unspecified', '45 ea'],
     ['ceiling-main-12ft-unspecified', '8 ea'],
@@ -276,11 +276,11 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
     await expect(
       totals.getByRole('row').filter({ hasText: material }),
     ).toContainText(amount);
-  await page.getByLabel('tileDeduction (ft2)', { exact: true }).fill('40');
+  await page.getByLabel('tileDeduction (ft²)', { exact: true }).fill('40');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
-  await expect(totals).toContainText('320 ft2');
+  await expect(totals).toContainText('320 ft²');
   await expect(
     totals.getByRole('row').filter({ hasText: 'ceiling-tee-4ft-unspecified' }),
   ).toContainText('45 ea');
@@ -302,7 +302,7 @@ export async function ceilingWorkflow(page: Page): Promise<void> {
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
-  await expect(totals).toContainText('320 ft2');
+  await expect(totals).toContainText('320 ft²');
   await expect(
     totals
       .getByRole('row')
@@ -357,11 +357,11 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   const totals = page.getByRole('table', { name: 'Material totals' });
   for (const [material, amount] of [
-    ['ceiling-tile-2x2-unspecified', '100.8 ft2'],
-    ['ceiling-main-12ft-unspecified', '24 LF'],
-    ['ceiling-tee-4ft-unspecified', '44 LF'],
-    ['ceiling-tee-2ft-unspecified', '26 LF'],
-    ['ceiling-wall-angle-12ft-unspecified', '60 LF'],
+    ['ceiling-tile-2x2-unspecified', '100.8 ft²'],
+    ['ceiling-main-12ft-unspecified', "24'"],
+    ['ceiling-tee-4ft-unspecified', "44'"],
+    ['ceiling-tee-2ft-unspecified', "26'"],
+    ['ceiling-wall-angle-12ft-unspecified', "60'"],
   ] as const)
     await expect(
       totals.getByRole('row').filter({ hasText: material }),
@@ -378,12 +378,12 @@ export async function ceilingLayoutWorkflow(page: Page): Promise<void> {
   await viewer.getByRole('img').click();
   await expect(
     viewer.getByRole('complementary', { name: 'Selected construction item' }),
-  ).toContainText('Cut length: 12 ft 0 in');
+  ).toContainText("Cut length: 12'");
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await page.getByRole('button', { name: 'Quantities', exact: true }).click();
   await expect(
     totals.getByRole('row').filter({ hasText: 'ceiling-tile-2x2-unspecified' }),
-  ).toContainText('100.8 ft2');
+  ).toContainText('100.8 ft²');
 }

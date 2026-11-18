@@ -481,7 +481,7 @@ async function evictionAndChanges() {
       id: 'renamed-sheet',
       name: 'New takeoff name',
       order: 42,
-      calibration: { metresPerUnit: 0.75 },
+      calibration: { feetPerUnit: 0.75 },
     };
     const renamed = pixels(await images.render(metadata, PAGE_IMAGE_DIMENSION));
     const callsAfterMetadata = fake.calls.length;

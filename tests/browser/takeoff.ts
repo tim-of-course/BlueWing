@@ -111,7 +111,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page
     .getByRole('button', { name: 'Assign assembly', exact: true })
     .click();
-  await page.getByLabel('height (ft)', { exact: true }).fill('8');
+  await page.getByLabel('height', { exact: true }).fill('8');
   await page.getByLabel('layers (scalar)', { exact: true }).fill('2');
   await page.getByLabel('layers (scalar)', { exact: true }).press('Tab');
   await page
@@ -121,21 +121,21 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await expect(advisory).toBeHidden();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('384 ft2');
-  await page.getByLabel('Waste %', { exact: true }).fill('10');
-  await page.getByLabel('Waste %', { exact: true }).press('Tab');
+  ).toContainText('384 ft²');
+  await page.getByLabel('Waste (%)', { exact: true }).fill('10');
+  await page.getByLabel('Waste (%)', { exact: true }).press('Tab');
   await page
-    .getByLabel('Quantity per package (optional)', { exact: true })
+    .getByLabel('Quantity per package (ft²) (optional)', { exact: true })
     .fill('32');
   await page
-    .getByLabel('Quantity per package (optional)', { exact: true })
+    .getByLabel('Quantity per package (ft²) (optional)', { exact: true })
     .press('Tab');
   await page
     .getByRole('button', { name: 'Save assignment', exact: true })
     .click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('448 ft2');
+  ).toContainText('448 ft²');
   await page
     .locator('details.quantity-output > summary')
     .filter({ hasText: 'Wall area' })
@@ -144,12 +144,12 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('384 ft2');
+  ).toContainText('384 ft²');
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('448 ft2');
-  const packageSize = page.getByLabel('Quantity per package (optional)', {
+  ).toContainText('448 ft²');
+  const packageSize = page.getByLabel('Quantity per package (ft²) (optional)', {
     exact: true,
   });
   await packageSize.fill('');
@@ -159,7 +159,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
     .click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('422.4 ft2');
+  ).toContainText('422.4 ft²');
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(packageSize).toHaveValue('32');
   const download = page.waitForEvent('download');
@@ -175,7 +175,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
   await expect(
     page.getByRole('table', { name: 'Material totals' }),
-  ).toContainText('448 ft2');
+  ).toContainText('448 ft²');
   await expect(
     page.getByRole('button', { name: 'Undo', exact: true }),
   ).toBeDisabled();
@@ -208,7 +208,7 @@ export async function calculateAndReopen(page: Page): Promise<void> {
     .filter({ hasText: 'floor-finish' })
     .getByRole('cell')
     .nth(1);
-  await expect(floorQuantity).toContainText('ft2');
+  await expect(floorQuantity).toContainText('ft²');
   // WebKit rounds mouse locations to CSS pixels at fit zoom. Exact page-coordinate
   // arithmetic is checked by the core and native CLI fixtures; this checks drawing.
   expect(

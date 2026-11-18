@@ -1,3 +1,5 @@
+import QuantityInput from './QuantityInput';
+import { formatLength, lengthHint, lengthError } from '../core/length';
 import {
   createEffect,
   createMemo,
@@ -12,11 +14,6 @@ import type { WorkspaceController } from '../app/contracts';
 import type { Combined3dAlignment, Point } from '../core/types';
 import { matchSheetAlignment } from '../core/alignment';
 import DrawingCanvas from './canvas/DrawingCanvas';
-
-const FOOT = 0.3048;
-/** Stored metres as the feet a person reads and types. */
-const feet = (metres: number) =>
-  String(Number((metres / FOOT).toPrecision(12)));
 
 export default function AlignmentEditor(props: {
   controller: WorkspaceController;
@@ -47,10 +44,10 @@ export default function AlignmentEditor(props: {
       '',
   );
   const [x, setX] = createSignal(
-    feet(initial.project.sheets[first]?.combined3dAlignment?.offset.x ?? 0),
+    initial.project.sheets[first]?.combined3dAlignment?.offset.x ?? 0,
   );
   const [y, setY] = createSignal(
-    feet(initial.project.sheets[first]?.combined3dAlignment?.offset.y ?? 0),
+    initial.project.sheets[first]?.combined3dAlignment?.offset.y ?? 0,
   );
   const [angle, setAngle] = createSignal(
     String(
@@ -75,13 +72,14 @@ export default function AlignmentEditor(props: {
   let dialog: HTMLDivElement | undefined;
   const numeric = createMemo(() => {
     if (
-      ![x(), y(), angle()].every(
-        (value) => value.trim() !== '' && Number.isFinite(Number(value)),
-      )
+      !Number.isFinite(x()) ||
+      !Number.isFinite(y()) ||
+      angle().trim() === '' ||
+      !Number.isFinite(Number(angle()))
     )
       return null;
     return {
-      offset: { x: Number(x()) * FOOT, y: Number(y()) * FOOT },
+      offset: { x: x(), y: y() },
       rotation: (Number(angle()) * Math.PI) / 180,
     };
   });
@@ -128,8 +126,8 @@ export default function AlignmentEditor(props: {
     { name: 'construction.alignmentPreview' },
   );
   function setValues(value: Combined3dAlignment) {
-    setX(feet(value.offset.x));
-    setY(feet(value.offset.y));
+    setX(value.offset.x);
+    setY(value.offset.y);
     setAngle(String((value.rotation * 180) / Math.PI));
   }
   function changeSource(id: string) {
@@ -267,8 +265,8 @@ export default function AlignmentEditor(props: {
       >
         <h2 id="alignment-title">Align pages in combined 3D</h2>
         <p>
-          Offsets use feet; rotation uses degrees. Construction placement and
-          takeoff points stay in their original page coordinates.
+          {lengthHint}. Construction placement and takeoff points stay in their
+          original page coordinates.
         </p>
         <fieldset disabled={saving()} class="alignment-fields">
           <label>
@@ -299,25 +297,23 @@ export default function AlignmentEditor(props: {
             </select>
           </label>
           <label>
-            X offset (ft)
-            <input
-              type="number"
-              step="any"
+            X offset
+            <QuantityInput
+              unit="ft"
               value={x()}
-              onInput={(event) => {
-                setX(event.currentTarget.value);
+              onChange={(value) => {
+                setX(value ?? NaN);
                 numericChanged();
               }}
             />
           </label>
           <label>
-            Y offset (ft)
-            <input
-              type="number"
-              step="any"
+            Y offset
+            <QuantityInput
+              unit="ft"
               value={y()}
-              onInput={(event) => {
-                setY(event.currentTarget.value);
+              onChange={(value) => {
+                setY(value ?? NaN);
                 numericChanged();
               }}
             />
@@ -397,13 +393,14 @@ export default function AlignmentEditor(props: {
             <div class="alignment-match" role="status">
               <Show when={result().sourceDistance !== null}>
                 <p>
-                  Moving distance: {result().sourceDistance?.toFixed(4)} m ·
-                  Reference distance: {result().referenceDistance?.toFixed(4)} m
+                  Moving distance: {formatLength(result().sourceDistance ?? 0)}{' '}
+                  · Reference distance:{' '}
+                  {formatLength(result().referenceDistance ?? 0)}
                 </p>
               </Show>
               <p>
-                Maximum residual: {result().residual.toFixed(4)} m. Review these
-                distances before applying; page scale is unchanged.
+                Maximum residual: {formatLength(result().residual)}. Review
+                these distances before applying; page scale is unchanged.
               </p>
             </div>
           )}
@@ -412,11 +409,7 @@ export default function AlignmentEditor(props: {
           <p>Apply will remove the saved alignment for this page.</p>
         </Show>
         <Show when={calibrationError() || error() || !numeric()}>
-          <p role="alert">
-            {error() ||
-              calibrationError() ||
-              'Enter finite numbers for both offsets and rotation.'}
-          </p>
+          <p role="alert">{error() || calibrationError() || lengthError}</p>
         </Show>
         <div class="button-row">
           <button

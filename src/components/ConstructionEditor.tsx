@@ -1,3 +1,6 @@
+import { quantityLabel } from './quantity-label';
+import { formatLength, lengthHint } from '../core/length';
+import QuantityInput from './QuantityInput';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
@@ -7,7 +10,6 @@ import { emptyConstruction } from '../core/construction';
 import { resolveConstruction } from '../core/applied-assemblies';
 import type { ConstructionData } from '../core/construction-types';
 import { wallTemplateFromWall } from '../core/wall-template';
-import { displayLength } from './PieceSchedule';
 import './construction-editor.css';
 
 type Kind = Exclude<keyof ConstructionData, 'materials'>;
@@ -63,7 +65,6 @@ export function ConstructionFields(props: {
   schema: PayloadSchema;
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
-  unit: 'm' | 'ft';
   controller: WorkspaceController;
   parent?: string;
   hide?: string[];
@@ -124,20 +125,6 @@ export function ConstructionFields(props: {
       }));
     return null;
   };
-  const factor = (key: string) => {
-    if (angleKeys.has(key)) return Math.PI / 180;
-    if (
-      scalarKeys.has(key) ||
-      pageKeys.has(props.parent ?? '') ||
-      (key === 'packageSize' && !surfaceKeys.has(props.parent ?? ''))
-    )
-      return 1;
-    return props.unit === 'ft'
-      ? key === 'packageSize' && surfaceKeys.has(props.parent ?? '')
-        ? 0.09290304
-        : 0.3048
-      : 1;
-  };
   const suffix = (key: string) =>
     angleKeys.has(key)
       ? ' (degrees)'
@@ -149,15 +136,18 @@ export function ConstructionFields(props: {
           ? ' (page units)'
           : key === 'packageSize' && !surfaceKeys.has(props.parent ?? '')
             ? ' (pieces)'
-            : ` (${props.unit}${key === 'packageSize' && surfaceKeys.has(props.parent ?? '') ? '²' : ''})`;
+            : key === 'packageSize'
+              ? ' (ft²)'
+              : '';
   return (
     <div class="construction-fields">
       <For
-        each={Object.entries(props.schema.properties ?? {}).filter(
-          ([key]) => !props.hide?.includes(key),
+        each={Object.keys(props.schema.properties ?? {}).filter(
+          (key) => !props.hide?.includes(key),
         )}
       >
-        {([key, schema]) => {
+        {(key) => {
+          const schema = () => props.schema.properties?.[key] ?? {};
           const required = () => props.schema.required?.includes(key) ?? false;
           const value = () =>
             Object.hasOwn(props.value, key)
@@ -165,7 +155,7 @@ export function ConstructionFields(props: {
               : props.inherited?.[key];
           return (
             <Show
-              when={schema.type === 'object' || schema.type === 'array'}
+              when={schema().type === 'object' || schema().type === 'array'}
               fallback={
                 <div class="field">
                   <label class="field">
@@ -182,30 +172,30 @@ export function ConstructionFields(props: {
                                 props.parent === 'path-surface'
                               ? 'Bottom elevation'
                               : title(key)}
-                    {schema.type === 'number' ? suffix(key) : ''}
+                    {schema().type === 'number' ? suffix(key) : ''}
                     {required() ? '' : ' (optional)'}
                     <Show
-                      when={schema.enum || choices(key)}
+                      when={schema().enum || choices(key)}
                       fallback={
-                        schema.type === 'number' ? (
-                          <input
-                            type="number"
-                            step="any"
+                        schema().type === 'number' ? (
+                          <QuantityInput
+                            unit={
+                              suffix(key) || scalarKeys.has(key)
+                                ? 'scalar'
+                                : 'ft'
+                            }
                             value={
                               typeof value() === 'number'
-                                ? Number(
-                                    (
-                                      (value() as number) / factor(key)
-                                    ).toPrecision(12),
-                                  )
-                                : ''
+                                ? (value() as number) *
+                                  (angleKeys.has(key) ? 180 / Math.PI : 1)
+                                : undefined
                             }
-                            onInput={(e) => {
+                            onChange={(next) => {
                               set(
                                 key,
-                                e.currentTarget.value === ''
-                                  ? undefined
-                                  : e.currentTarget.valueAsNumber * factor(key),
+                                next !== undefined && angleKeys.has(key)
+                                  ? (next * Math.PI) / 180
+                                  : next,
                               );
                             }}
                           />
@@ -235,7 +225,7 @@ export function ConstructionFields(props: {
                         </option>
                         <For
                           each={
-                            schema.enum?.map((option) => ({
+                            schema().enum?.map((option) => ({
                               id: String(option),
                               name: title(String(option)),
                             })) ??
@@ -283,7 +273,7 @@ export function ConstructionFields(props: {
                     <button
                       type="button"
                       onClick={() => {
-                        set(key, seed(schema, key));
+                        set(key, seed(schema(), key));
                       }}
                     >
                       Add {title(key).toLowerCase()}
@@ -291,7 +281,7 @@ export function ConstructionFields(props: {
                   }
                 >
                   <Show
-                    when={schema.type === 'object'}
+                    when={schema().type === 'object'}
                     fallback={
                       <>
                         <For
@@ -303,9 +293,8 @@ export function ConstructionFields(props: {
                           {(item, index) => (
                             <div class="construction-array-item">
                               <ConstructionFields
-                                schema={schema.items ?? {}}
+                                schema={schema().items ?? {}}
                                 value={record(item())}
-                                unit={props.unit}
                                 controller={props.controller}
                                 parent={key}
                                 onChange={(next) => {
@@ -340,7 +329,7 @@ export function ConstructionFields(props: {
                               ...(Array.isArray(value())
                                 ? (value() as unknown[])
                                 : []),
-                              seed(schema.items ?? {}),
+                              seed(schema().items ?? {}),
                             ]);
                           }}
                         >
@@ -350,7 +339,7 @@ export function ConstructionFields(props: {
                     }
                   >
                     <ConstructionFields
-                      schema={schema}
+                      schema={schema()}
                       value={record(props.value[key])}
                       inherited={
                         props.inherited && props.value[key] !== null
@@ -358,7 +347,6 @@ export function ConstructionFields(props: {
                           : undefined
                       }
                       controller={props.controller}
-                      unit={props.unit}
                       parent={key}
                       onChange={(next) => {
                         set(key, next);
@@ -395,7 +383,6 @@ export default function ConstructionEditor(props: {
   const [kind, setKind] = createSignal<Kind>('walls');
   const [draft, setDraft] = createSignal<Record<string, unknown> | null>(null);
   const [dirty, setDirty] = createSignal(false);
-  const [unit, setUnit] = createSignal<'ft' | 'm'>('ft');
   const [filter, setFilter] = createSignal('');
   const [templateName, setTemplateName] = createSignal('Wall template');
   const [templateId, setTemplateId] = createSignal('');
@@ -466,9 +453,9 @@ export default function ConstructionEditor(props: {
     setPreview(null);
     const member = {
       materialId: '',
-      width: 0.041275,
-      depth: 0.092075,
-      stockLength: 3.6576,
+      width: 1.625 / 12,
+      depth: 3.625 / 12,
+      stockLength: 12,
     };
     const selected = props.controller
       .selection()
@@ -481,9 +468,14 @@ export default function ConstructionEditor(props: {
           id,
           geometryId: selected.find((g) => g?.kind === 'path')?.id ?? '',
           baseElevation: 0,
-          studSpacing: 0.4064,
+          studSpacing: 16 / 12,
           stud: { ...member },
-          track: { ...member, width: 0.092075, depth: 0.03175, materialId: '' },
+          track: {
+            ...member,
+            width: 3.625 / 12,
+            depth: 1.25 / 12,
+            materialId: '',
+          },
           bottomAllowance: 0,
           topAllowance: 0,
           finishes: [],
@@ -501,9 +493,9 @@ export default function ConstructionEditor(props: {
             Object.keys(data().walls)[0] ??
             '',
           distance: 0,
-          width: 0.9144,
+          width: 3,
           sill: 0,
-          height: 2.1336,
+          height: 7,
           jambCount: 1,
         };
         break;
@@ -519,8 +511,8 @@ export default function ConstructionEditor(props: {
               member: { ...member },
               startExtension: 0,
               endExtension: 0,
-              verticalOffset: 0.0460375,
-              faceOffset: -0.0460375,
+              verticalOffset: 1.8125 / 12,
+              faceOffset: -1.8125 / 12,
             },
             {
               id: 'web-b',
@@ -528,8 +520,8 @@ export default function ConstructionEditor(props: {
               member: { ...member },
               startExtension: 0,
               endExtension: 0,
-              verticalOffset: 0.0460375,
-              faceOffset: 0.0460375,
+              verticalOffset: 1.8125 / 12,
+              faceOffset: 1.8125 / 12,
             },
             {
               id: 'closure',
@@ -537,7 +529,7 @@ export default function ConstructionEditor(props: {
               member: { ...member, materialId: '' },
               startExtension: 0,
               endExtension: 0,
-              verticalOffset: 0.0206375,
+              verticalOffset: 0.8125 / 12,
               faceOffset: 0,
               sectionRotation: Math.PI / 2,
             },
@@ -548,7 +540,7 @@ export default function ConstructionEditor(props: {
         initial = {
           id,
           geometryId: selected.find((g) => g?.kind === 'area')?.id ?? '',
-          elevation: 2.7432,
+          elevation: 9,
           materialId: '',
           layers: 1,
         };
@@ -640,16 +632,7 @@ export default function ConstructionEditor(props: {
         >
           Piece schedule
         </button>
-        <label class="field">
-          Display lengths
-          <select
-            value={unit()}
-            onChange={(e) => setUnit(e.currentTarget.value as 'm' | 'ft')}
-          >
-            <option value="ft">Feet (decimal)</option>
-            <option value="m">Metres</option>
-          </select>
-        </label>
+        <p class="hint">{lengthHint}</p>
       </div>
       <Show when={backupPath()}>
         <p role="status">Recovery copy saved: {backupPath()}</p>
@@ -890,7 +873,7 @@ export default function ConstructionEditor(props: {
                   <ConstructionFields
                     schema={constructionSchemas[kind()]}
                     value={value()}
-                    unit={unit()}
+
                     controller={props.controller}
                     parent={kind()}
                     hide={['id']}
@@ -1025,26 +1008,23 @@ export default function ConstructionEditor(props: {
                               <tr>
                                 <td>{scalarText(change.materialId)}</td>
                                 <td>
-                                  {Number(change.before).toLocaleString(
-                                    undefined,
-                                    { maximumFractionDigits: 3 },
-                                  )}{' '}
-                                  {scalarText(change.unit)}
+                                  {quantityLabel(
+                                    Number(change.before),
+                                    scalarText(change.unit),
+                                  )}
                                 </td>
                                 <td>
-                                  {Number(change.after).toLocaleString(
-                                    undefined,
-                                    { maximumFractionDigits: 3 },
-                                  )}{' '}
-                                  {scalarText(change.unit)}
+                                  {quantityLabel(
+                                    Number(change.after),
+                                    scalarText(change.unit),
+                                  )}
                                 </td>
                                 <td>
                                   {Number(change.delta) > 0 ? '+' : ''}
-                                  {Number(change.delta).toLocaleString(
-                                    undefined,
-                                    { maximumFractionDigits: 3 },
-                                  )}{' '}
-                                  {scalarText(change.unit)}
+                                  {quantityLabel(
+                                    Number(change.delta),
+                                    scalarText(change.unit),
+                                  )}
                                 </td>
                                 <td>
                                   {change.complete
@@ -1125,12 +1105,10 @@ export default function ConstructionEditor(props: {
                   <td>
                     {piece.materialId} / {piece.role}
                   </td>
-                  <td>
-                    {displayLength({ value: piece.cutLength, unit: 'm' })}
-                  </td>
+                  <td>{formatLength(piece.cutLength)}</td>
                   <td>
                     {piece.stockLength
-                      ? displayLength({ value: piece.stockLength, unit: 'm' })
+                      ? formatLength(piece.stockLength)
                       : 'Unspecified'}
                   </td>
                 </tr>

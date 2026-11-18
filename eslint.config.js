@@ -47,7 +47,12 @@ export default tseslint.config(
   {
     files: ['src/**/*.tsx'],
     extends: [a11y.flatConfigs.recommended],
-    settings: { 'jsx-a11y': { attributes: { for: ['for'] } } },
+    settings: {
+      'jsx-a11y': {
+        attributes: { for: ['for'] },
+        components: { QuantityInput: 'input' },
+      },
+    },
   },
   {
     files: ['*.config.{js,ts}', 'tests/**/*.ts', 'scripts/**/*.ts'],

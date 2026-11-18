@@ -1,3 +1,4 @@
+import { parseLength, lengthHint } from '../../core/length';
 import {
   createEffect,
   createMemo,
@@ -787,10 +788,6 @@ export default function DrawingCanvas(props: {
         setFailure(`Add at least ${String(minimum)} points.`);
         return;
       }
-      if (currentDraft.kind === 'calibrate' && !(Number(length()) > 0)) {
-        setFailure('Enter a positive known length.');
-        return;
-      }
     }
     const finish = controller.performanceSpan('canvas.commit', {
       purpose: currentEdit?.kind ?? currentDraft?.kind,
@@ -823,8 +820,8 @@ export default function DrawingCanvas(props: {
               currentDraft.sheetId,
               from,
               to,
-              Number(length()),
-              unit(),
+              parseLength(length(), unit()),
+              'ft',
               currentDraft.expected,
             );
         } else
@@ -1524,9 +1521,7 @@ export default function DrawingCanvas(props: {
                 Known length
                 <input
                   aria-label="Known length"
-                  type="number"
-                  min="0"
-                  step="any"
+                  type="text"
                   value={length()}
                   onInput={(event) => setLength(event.currentTarget.value)}
                 />
@@ -1542,13 +1537,12 @@ export default function DrawingCanvas(props: {
                 >
                   <option value="ft">ft</option>
                   <option value="in">in</option>
-                  <option value="m">m</option>
-                  <option value="mm">mm</option>
                 </select>
               </label>
               <button class="primary" type="submit" disabled={saving()}>
                 Set scale
               </button>
+              <small>{lengthHint}</small>
             </form>
           </Show>
           <Show when={draft()?.kind !== 'calibrate'}>

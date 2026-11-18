@@ -134,13 +134,13 @@ test('assembly preview is lazy while closed and current when reopened', async ({
         .fill('Description edit with preview closed');
       await expect(preview.locator('strong')).toHaveCount(0);
       await preview.locator('summary').click();
-      await expect(preview).toContainText('192 ft2');
+      await expect(preview).toContainText('192 ft²');
       await preview.locator('summary').click();
       await expect(preview.locator('strong')).toHaveCount(0);
       await height.getByLabel('Default', { exact: true }).fill('10');
       await expect(preview.locator('strong')).toHaveCount(0);
       await preview.locator('summary').click();
-      await expect(preview).toContainText('240 ft2');
+      await expect(preview).toContainText('240 ft²');
     },
     { scenario: 'lazy-assembly-preview' },
   );

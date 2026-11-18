@@ -1,3 +1,9 @@
+import {
+  formatLength,
+  parseLength,
+  lengthHint,
+  lengthError,
+} from '../core/length';
 import { createSignal, For, onSettled, Show, untrack } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import type { Observation } from '../app/application';
@@ -26,16 +32,30 @@ export default function SheetScaleDialog(props: {
   const [preset, setPreset] = createSignal(matched?.label ?? '1/4″ = 1′-0″');
   const [paperValue, setPaperValue] = createSignal('1');
   const [paperUnit, setPaperUnit] = createSignal<LengthUnit>('in');
-  const [realValue, setRealValue] = createSignal(
-    initial ? String((initial.metresPerUnit * 72) / 0.3048) : '1',
-  );
+  const [realDraft, setRealValue] = createSignal<string>();
+  const initialReal = initial ? initial.feetPerUnit * 72 : 1;
+  const realValue = () =>
+    realDraft() ?? (initial ? formatLength(initialReal) : '1');
   const [realUnit, setRealUnit] = createSignal<LengthUnit>('ft');
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
-  const valid = () =>
-    [Number(paperValue()), Number(realValue())].every(
-      (value) => Number.isFinite(value) && value > 0,
-    );
+  const ratio = (): PaperScale | undefined => {
+    try {
+      const paper = parseLength(paperValue(), paperUnit());
+      const real =
+        initial && realDraft() === undefined
+          ? initialReal
+          : parseLength(realValue(), realUnit());
+      return paper > 0 && real > 0
+        ? {
+            paper: { value: paper, unit: 'ft' },
+            real: { value: real, unit: 'ft' },
+          }
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   onSettled(() => {
     const focus = document.activeElement;
     dialog?.showModal();
@@ -53,10 +73,7 @@ export default function SheetScaleDialog(props: {
     const scale: PaperScale | undefined =
       method() === 'preset'
         ? scalePresets.find((item) => item.label === preset())
-        : {
-            paper: { value: Number(paperValue()), unit: paperUnit() },
-            real: { value: Number(realValue()), unit: realUnit() },
-          };
+        : ratio();
     if (!scale) return;
     setSaving(true);
     setError('');
@@ -132,9 +149,7 @@ export default function SheetScaleDialog(props: {
             <label class="field">
               Paper distance
               <input
-                type="number"
-                min="0"
-                step="any"
+                type="text"
                 value={paperValue()}
                 disabled={saving()}
                 onInput={(event) => setPaperValue(event.currentTarget.value)}
@@ -150,17 +165,14 @@ export default function SheetScaleDialog(props: {
                 }
               >
                 <option value="in">inches</option>
-                <option value="mm">mm</option>
-                <option value="m">metres</option>
+
                 <option value="ft">feet</option>
               </select>
             </label>
             <label class="field">
               Real distance
               <input
-                type="number"
-                min="0"
-                step="any"
+                type="text"
                 value={realValue()}
                 disabled={saving()}
                 onInput={(event) => setRealValue(event.currentTarget.value)}
@@ -177,14 +189,13 @@ export default function SheetScaleDialog(props: {
               >
                 <option value="ft">feet</option>
                 <option value="in">inches</option>
-                <option value="m">metres</option>
-                <option value="mm">mm</option>
               </select>
             </label>
           </div>
-          <p class="hint">
-            For 1:100, enter 1 mm on paper = 100 mm real distance.
-          </p>
+          <p class="hint">{lengthHint}</p>
+          <Show when={!ratio()}>
+            <p role="alert">{lengthError} Both distances must be positive.</p>
+          </Show>
         </Show>
         <Show when={method() === 'measure'}>
           <p>
@@ -199,7 +210,7 @@ export default function SheetScaleDialog(props: {
           <button
             class="primary"
             type="submit"
-            disabled={saving() || (method() === 'ratio' && !valid())}
+            disabled={saving() || (method() === 'ratio' && !ratio())}
           >
             {saving()
               ? 'Saving…'

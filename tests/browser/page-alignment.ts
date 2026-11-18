@@ -36,12 +36,12 @@ export async function alignmentFixture(page: Page) {
   const first = Object.values(project.sheets)[0];
   if (!first) throw new Error('Missing imported sheet');
   const sheets = [
-    { ...first, name: 'Wall plan', calibration: { metresPerUnit: 0.1 } },
+    { ...first, name: 'Wall plan', calibration: { feetPerUnit: 0.1 } },
     {
       ...first,
       id: 'ceiling-plan',
       name: 'Ceiling plan',
-      calibration: { metresPerUnit: 0.1 },
+      calibration: { feetPerUnit: 0.1 },
     },
   ];
   for (const sheet of sheets) await alignmentMutation(page, 'sheet.put', sheet);
@@ -215,7 +215,7 @@ export async function alignmentDesktopWorkflow(
     name: 'Align pages in combined 3D',
     exact: true,
   });
-  await editor.getByLabel('X offset (ft)', { exact: true }).fill('7');
+  await editor.getByLabel('X offset', { exact: true }).fill('7');
   await editor.getByLabel('Rotation (degrees)', { exact: true }).fill('90');
   expect((await cli<Project>(page, 'project.inspect')).response.revision).toBe(
     before.revision,
@@ -249,7 +249,7 @@ export async function alignmentDesktopWorkflow(
   await pickPagePoint(canvas, 20, 40);
   await expect(editor).toContainText('reference page point 2');
   await pickPagePoint(canvas, 20, 140);
-  await expect(editor).toContainText('Maximum residual: 0.0000 m');
+  await expect(editor).toContainText("Maximum residual: 0'");
   await expect(
     editor.getByLabel('Rotation (degrees)', { exact: true }),
   ).toHaveValue('-90');
@@ -280,7 +280,7 @@ export async function alignmentDesktopWorkflow(
   await expect(
     editor.getByRole('button', { name: 'Pick reference points', exact: true }),
   ).toBeDisabled();
-  await editor.getByLabel('X offset (ft)', { exact: true }).fill('12');
+  await editor.getByLabel('X offset', { exact: true }).fill('12');
   await editor
     .getByRole('button', { name: 'Apply alignment', exact: true })
     .click();
@@ -289,7 +289,7 @@ export async function alignmentDesktopWorkflow(
     (await cli<Project>(page, 'project.inspect')).response.data.sheets[
       second.id
     ]?.combined3dAlignment?.offset.x,
-  ).toBeCloseTo(12 * 0.3048);
+  ).toBeCloseTo(12);
   await viewer
     .getByRole('button', { name: 'Align pages', exact: true })
     .click();

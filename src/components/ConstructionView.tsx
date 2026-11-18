@@ -1,3 +1,4 @@
+import { formatLength } from '../core/length';
 import {
   createEffect,
   createMemo,
@@ -71,14 +72,6 @@ export interface ConstructionViewProps {
   /** Optional host isolation; intersects with level, selection and material filters. */
   isolatedGeometryIds?: readonly string[];
   class?: string;
-}
-
-const inchLabel = (metres: number) =>
-  String(Number((metres / 0.0254).toFixed(3)));
-function lengthLabel(metres: number): string {
-  const inches = Math.round((metres / 0.0254) * 16) / 16;
-  const feet = Math.floor(inches / 12);
-  return `${String(feet)} ft ${String(inches - feet * 12)} in`;
 }
 
 export default function ConstructionView(props: ConstructionViewProps) {
@@ -873,8 +866,8 @@ export default function ConstructionView(props: ConstructionViewProps) {
               {(() => {
                 const value = item();
                 return 'cutLength' in value
-                  ? `Cut length: ${lengthLabel(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : lengthLabel(value.stockLength)} · Section ${inchLabel(value.width)} × ${inchLabel(value.depth)} in. Purchase totals include waste and rounding.`
-                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${(value.area / 0.09290304).toFixed(1)} ft² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${inchLabel(value.thickness)} in`}`;
+                  ? `Cut length: ${formatLength(value.cutLength)} · Stock length: ${value.stockLength === undefined ? 'unspecified' : formatLength(value.stockLength)} · Section ${formatLength(value.width)} × ${formatLength(value.depth)}. Purchase totals include waste and rounding.`
+                  : `${value.face === 'ceiling' ? 'Installed ceiling area' : 'Installed finish area'}: ${value.area.toFixed(1)} ft² · ${String(value.layers)} layer(s)${value.thickness === undefined ? '' : ` · Total thickness ${formatLength(value.thickness)}`}`;
               })()}
             </span>
           </aside>

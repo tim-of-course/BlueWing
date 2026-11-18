@@ -82,7 +82,7 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
               id: 'length',
               name: 'Measured length',
               materialId: 'run',
-              unit: 'm',
+              unit: 'ft',
               formula: 'length * probeFactor',
               allowance: { wastePercent: 0 },
             },
@@ -236,7 +236,7 @@ test('UI, CLI reports and camera renders share one calculation and metadata reta
         ...sheet,
         name: 'Renamed plan',
         calibration: {
-          metresPerUnit: (sheet.calibration?.metresPerUnit ?? 1) * 2,
+          feetPerUnit: (sheet.calibration?.feetPerUnit ?? 1) * 2,
         },
       });
       expect(
