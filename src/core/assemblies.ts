@@ -340,6 +340,31 @@ export function starterAssemblies(): Record<string, Assembly> {
       ],
     },
     {
+      id: 'danback-backing',
+      name: 'Danback backing',
+      category: 'Wood blocking/backing',
+      description:
+        'Unmodeled estimate of backing pieces sized to fit between studs. Trace each run separately. Round each run up to whole pieces, then add 10% waste and order whole pieces of that length.',
+      geometryKinds: ['path'],
+      inputs: [number('studSpacing', 'in', 16, Number.MIN_VALUE)],
+      outputs: [
+        {
+          ...output(
+            'danback',
+            'Danback backing',
+            'danback-backing',
+            'ea',
+            'ceil(length / studSpacing)',
+          ),
+          allowance: { wastePercent: 10 },
+          piece: {
+            role: 'Danback backing',
+            cutLength: { formula: 'studSpacing', unit: 'ft' },
+          },
+        },
+      ],
+    },
+    {
       id: 'blocking-runs',
       name: 'Blocking / backing run estimate',
       category: 'Wood blocking/backing',
