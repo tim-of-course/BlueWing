@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import {
@@ -20,6 +20,8 @@ import {
   viewWorkflow,
   warmSwapWorkflow,
 } from './wingman';
+import { drawWall } from './takeoff';
+import type { Project } from '../../src/core/types';
 import { openPanel } from './panels';
 
 for (const [name, workflow] of [
@@ -70,6 +72,180 @@ for (const [name, workflow] of [
     await page.screenshot({ path: testInfo.outputPath('wingman.png') });
   });
 }
+
+test('plan and 3D views travel inside Wingman messages', async ({
+  page,
+  browserName,
+}) => {
+  await page.setViewportSize({ width: 1490, height: 940 });
+  await startWingmanProject(page, true);
+  await openPanel(page, 'Wingman');
+  await drawWall(page);
+  const project = (await cli<Project>(page, 'project.inspect')).response.data;
+  const geometry = Object.values(project.geometries)[0];
+  if (!geometry) throw new Error('Wall is missing');
+  await mutate(page, 'wall.put', {
+    id: 'header-wall',
+    geometryId: geometry.id,
+    baseElevation: 0,
+    height: 10,
+    studSpacing: 1.333,
+    stud: { materialId: 'stud', width: 0.125, depth: 0.292 },
+    track: { materialId: 'track', width: 0.125, depth: 0.292 },
+    finishes: [],
+  });
+  const before = (await cli(page, 'project.inspect')).response;
+  const render = async (name: string, payload: object) => {
+    const result = await cli<{ viewId: string }>(page, name, payload);
+    expect(result.response.ok, JSON.stringify(result.response)).toBe(true);
+    return result.response.data.viewId;
+  };
+  const plan = await render('sheet.render', {
+    sheetId: geometry.sheetId,
+    path: 'wingman-plan.png',
+    maxDimension: 640,
+  });
+  const model = await render('construction.render', {
+    path: 'wingman-model.png',
+    width: 800,
+    height: 480,
+  });
+  const sheet = project.sheets[geometry.sheetId];
+  const ends = geometry.points;
+  if (!sheet || !ends[0] || !ends[1])
+    throw new Error('Wall endpoints are missing');
+  const wall = {
+    x: (ends[0].x + ends[1].x) / (2 * sheet.width),
+    y: (ends[0].y + ends[1].y) / (2 * sheet.height),
+  };
+  const marks = [
+    { kind: 'arrow', points: [{ x: wall.x + 0.18, y: wall.y + 0.28 }, wall] },
+  ];
+  const framing = [
+    {
+      kind: 'ellipse',
+      points: [
+        { x: 0.39, y: 0.32 },
+        { x: 0.58, y: 0.66 },
+      ],
+    },
+  ];
+  const result = await cli(page, 'messages.send', {
+    text: 'Please check this wall in plan and framing.',
+    views: [
+      { viewId: plan, caption: 'Wall location', annotations: marks },
+      { viewId: model, caption: 'Framing detail', annotations: framing },
+    ],
+  });
+  expect(result.response.ok).toBe(true);
+  const article = page
+    .locator('article')
+    .filter({ hasText: 'Please check this wall' });
+  const planCard = article.getByRole('button', {
+    name: 'Open view: Wall location',
+  });
+  const modelCard = article.getByRole('button', {
+    name: 'Open view: Framing detail',
+  });
+  const pink = (canvas: Locator) =>
+    canvas.evaluate((el) => {
+      const ctx = (el as HTMLCanvasElement).getContext('2d');
+      if (!ctx) return false;
+      const bytes = ctx.getImageData(
+        0,
+        0,
+        ctx.canvas.width,
+        ctx.canvas.height,
+      ).data;
+      for (let i = 0; i < bytes.length; i += 4)
+        if (bytes[i] === 158 && bytes[i + 1] === 23 && bytes[i + 2] === 77)
+          return true;
+      return false;
+    });
+  await expect
+    .poll(() => pink(planCard.getByLabel('View annotations')))
+    .toBe(true);
+  await expect
+    .poll(() => pink(modelCard.getByLabel('View annotations')))
+    .toBe(true);
+  const screenshot = async (name: string) => {
+    if (browserName === 'chromium') {
+      await mkdir('tmp/wingman-views', { recursive: true });
+      await page.screenshot({ path: `tmp/wingman-views/${name}.png` });
+    }
+  };
+  await expect(article.getByRole('status')).toHaveCount(0);
+  await screenshot('agent-reply');
+  await modelCard.click();
+  await expect
+    .poll(() =>
+      pink(
+        page
+          .locator('.construction-viewport')
+          .getByLabel('View annotations', { exact: true }),
+      ),
+    )
+    .toBe(true);
+  const screen = await page
+    .locator('.construction-viewport canvas')
+    .first()
+    .boundingBox();
+  if (!screen) throw new Error('3D canvas is missing');
+  expect(screen.width / screen.height).toBeCloseTo(800 / 480, 1);
+  await page.getByRole('button', { name: 'Return to your view' }).click();
+  const button = (name: string) =>
+    page.getByRole('button', { name, exact: true });
+  await button('Attach view').click();
+  await button('Cancel').click();
+  await expect(button('Send')).toBeDisabled();
+  await page
+    .getByLabel('Workspace view', { exact: true })
+    .selectOption('split');
+  await button('Attach view').click();
+  await button('3D').click();
+  const dialog = page.getByRole('dialog', { name: 'Annotate view' });
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeEnabled();
+  await dialog.getByLabel('View annotation tool').selectOption('freehand');
+  const box = await dialog.getByLabel('View annotation surface').boundingBox();
+  if (!box) throw new Error('View annotation editor is missing');
+  await page.mouse.move(box.x + box.width * 0.48, box.y + box.height * 0.35);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.42, box.y + box.height * 0.47, {
+    steps: 4,
+  });
+  await page.mouse.move(box.x + box.width * 0.52, box.y + box.height * 0.54, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  await expect
+    .poll(() => pink(dialog.getByLabel('View annotation surface')))
+    .toBe(true);
+  await screenshot('annotating-view');
+  await button('Done').click();
+  await page
+    .getByRole('textbox', { name: 'Message', exact: true })
+    .fill('Please check the marked framing.');
+  await button('Send').click();
+  const sentCard = page
+    .locator('article')
+    .filter({ hasText: 'Please check the marked framing.' })
+    .getByRole('button', { name: 'Open view: 3D view' });
+  await expect
+    .poll(() => pink(sentCard.getByLabel('View annotations')))
+    .toBe(true);
+  const row = (await cli(page, 'messages.read')).response.messages.at(-1);
+  if (!row) throw new Error('User message is missing');
+  expect(row.views?.[0]).toMatchObject({
+    view: { kind: '3d' },
+    annotations: [{ kind: 'freehand' }],
+    image: { name: '3D view' },
+  });
+  expect(JSON.stringify(row)).not.toContain('data:image');
+  expect((await cli(page, 'project.inspect')).response.revision).toBe(
+    before.revision,
+  );
+  await screenshot('user-message');
+});
 
 test('turn log, editor continuity and visible saved views', async ({
   page,

@@ -1,6 +1,28 @@
 import { annotationColor, type AnnotationShape } from '../../core/annotations';
 import type { Point } from '../../core/types';
 
+/** Map normalized points to the saved frame, keeping strokes in display pixels. */
+export function paintViewAnnotations(
+  ctx: CanvasRenderingContext2D,
+  shapes: readonly AnnotationShape[],
+  width: number,
+  height: number,
+  unitsPerPixel = 1,
+) {
+  for (const shape of shapes)
+    paintAnnotation(
+      ctx,
+      {
+        ...shape,
+        points: shape.points.map(({ x, y }) => ({
+          x: x * width,
+          y: y * height,
+        })),
+      },
+      unitsPerPixel,
+    );
+}
+
 export function annotationHandles(shape: AnnotationShape): Point[] {
   const [a, b] = shape.points;
   if (!a || !b || shape.kind === 'freehand') return [];

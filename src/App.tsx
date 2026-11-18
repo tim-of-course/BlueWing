@@ -9,7 +9,11 @@ import {
   untrack,
 } from 'solid-js';
 import { createWorkspace } from './app/controller';
-import { annotationKinds, type AnnotationKind } from './core/annotations';
+import {
+  annotationKinds,
+  annotationName,
+  type AnnotationKind,
+} from './core/annotations';
 import type { DrawingTool } from './app/contracts';
 import TakeoffControls from './components/TakeoffControls';
 import DrawingCanvas from './components/canvas/DrawingCanvas';
@@ -144,6 +148,17 @@ export default function App(props: { application?: Application }) {
   const [quantities, setQuantities] = createSignal(false);
   const [view, setView] = createSignal<'plan' | '3d' | 'split'>('plan');
   const [showPlan, setShowPlan] = createSignal(true);
+  const [openedMessageView, setMessageView] =
+    createSignal<WingmanVisual | null>(null);
+  const messageView = createMemo(() => {
+    const current = openedMessageView();
+    if (!current) return null;
+    const project = controller.project();
+    return current.projectId === project?.id &&
+      current.takeoffId === project.takeoffId
+      ? current
+      : null;
+  });
   const [followingAgent, setFollowingAgent] = createSignal(false);
   let planViewport: ViewportPort<PlanView> | undefined;
   let modelViewport: ViewportPort<ModelView> | undefined;
@@ -226,6 +241,7 @@ export default function App(props: { application?: Application }) {
       model: view() !== 'plan' ? (modelViewport?.read() ?? null) : null,
       context: controller.captureContext(),
       quantities: quantities(),
+      showPlan: showPlan(),
       tool: tool(),
     });
   }
@@ -245,10 +261,12 @@ export default function App(props: { application?: Application }) {
       controller.selectTakeoff(next.takeoffId);
       flush();
     }
+    setMessageView('view' in next && next.annotations ? next : null);
     if ('context' in next) {
       controller.restoreContext(next.context);
       setView(next.mode);
       setQuantities(next.quantities);
+      setShowPlan(next.showPlan);
       setTool(next.tool);
       setFollowingAgent(false);
     } else {
@@ -256,8 +274,11 @@ export default function App(props: { application?: Application }) {
       controller.restoreContext({
         ...context,
         sheetId:
-          next.view.kind === 'plan' ? next.view.sheetId : context.sheetId,
-        selection: [],
+          next.view.kind === 'plan'
+            ? next.view.sheetId
+            : (next.view.activeSheetId ?? context.sheetId),
+        selection:
+          next.view.kind === '3d' ? (next.view.selectedGeometryIds ?? []) : [],
         activeGroupId: null,
         drawingGroupId: null,
         visibility: { hiddenSheets: [], hiddenGroups: {} },
@@ -832,6 +853,7 @@ export default function App(props: { application?: Application }) {
                     planViewport = port;
                   }}
                   presentationActive={followingAgent()}
+                  messageView={messageView()}
                   controller={controller}
                   tool={tool()}
                   annotationChoice={annotationChoice()}
@@ -874,6 +896,7 @@ export default function App(props: { application?: Application }) {
                       modelViewport = port;
                     }}
                     presentationActive={followingAgent()}
+                    messageView={messageView()}
                     result={result()}
                     estimateOutputs={
                       controller.quantities()?.coverage.estimateOutputs ?? 0
@@ -1142,9 +1165,7 @@ export default function App(props: { application?: Application }) {
                       setAnnotationMenu(false);
                     }}
                   >
-                    {choice === 'revision-cloud'
-                      ? 'Revision cloud'
-                      : choice.charAt(0).toUpperCase() + choice.slice(1)}
+                    {annotationName(choice)}
                   </button>
                 )}
               </For>
@@ -1239,6 +1260,12 @@ export default function App(props: { application?: Application }) {
           controller={controller}
           openTarget={openActivityTarget}
           captureView={captureView}
+          viewMode={view()}
+          canAttachView={
+            !quantities() &&
+            !hasDraft() &&
+            (view() !== 'plan' || !!controller.activeSheetId())
+          }
           applyView={applyView}
           navigationDisabled={
             hasDraft() ||

@@ -20,7 +20,6 @@ export function activityCategory(call: CommandCall): ActivityCategory {
       'takeoff.select',
       'wingman.inspect',
       'wingman.flash',
-      'wingman.annotate',
       'project.open',
       'project.close',
     ].includes(name)

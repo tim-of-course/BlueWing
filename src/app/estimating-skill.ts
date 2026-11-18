@@ -4,7 +4,7 @@ export const estimatingSkill = `# Bluewing estimating skill
 
 Follow this skill for any takeoff or estimating work in Bluewing. It holds our company standards so you do not need to ask for them. Ask the user only where this skill says to.
 
-Read each sheet’s permanent annotations with annotation.list before starting work on it. Leave location-specific information for future estimators and agents with annotation.add. Use Notes for project-wide information, review snippets for source-linked review tracking, and wingman.annotate for temporary presentation notes.
+Read each sheet’s permanent annotations with annotation.list before starting work on it. Leave location-specific information for future estimators and agents with annotation.add. Use Notes for project-wide information and review snippets for source-linked review tracking. To point something out temporarily, render a sheet, snippet or construction view and pass its returned viewId in the views array of the messages.send payload. Each view accepts a caption and annotations with kind, points, and text for a text mark. Use arrow, text, line, rectangle, ellipse or revision-cloud. Normalize points from the top left of that rendered image: x = pixelX / imageWidth, y = pixelY / imageHeight (0–1). For user-attached views, open the image path on each view and inspect it alongside the saved camera or drawing bounds and annotation data.
 
 ## Our scopes
 

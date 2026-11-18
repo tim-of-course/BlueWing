@@ -56,6 +56,20 @@
   touch-action: none;
   cursor: grab;
 }
+.construction-framed {
+  container-type: size;
+}
+.construction-framed canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(100cqw, calc(100cqh * var(--frame-ratio)));
+  height: min(100cqh, calc(100cqw / var(--frame-ratio)));
+}
+.construction-view-ink {
+  pointer-events: none;
+}
 .construction-viewport canvas:active {
   cursor: grabbing;
 }

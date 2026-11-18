@@ -279,7 +279,32 @@ Every CLI request accepts one optional envelope cursor, `messagesAfter`. Parsed 
 
 The UI's pause control rejects all non-messaging CLI commands with `WINGMAN_PAUSED`, including inspection and rendering. Commands queued before a pause remain rejected after resume; submit a new request to retry. Commands already executing may finish. UI operations and messages continue while paused.
 
-Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. Wingman logs the saved position under **Rendered**. A render for a different takeoff leaves the main workspace in place. The result includes `notShownToUser` with both takeoff names and the log location. Clicking the thumbnail opens that takeoff. `wingman.inspect` reads the presentation, `wingman.flash` reveals and briefly highlights the sidebar, and `wingman.annotate` replaces local plan annotations with `{ "annotations": [{ "points": [{ "x": 10, "y": 20 }], "label": "Check", "color": "#ff8800" }], "highlightIds": [] }`. These commands do not edit the estimate.
+Successful CLI `sheet.render`, `snippet.render`, and `construction.render` exports publish their view to Wingman. Each accepts an optional `caption`. Wingman logs the saved position under **Rendered**. A render for a different takeoff leaves the main workspace in place. The result includes `notShownToUser` with both takeoff names and the log location. Clicking the thumbnail opens that takeoff. `wingman.inspect` reads the presentation and `wingman.flash` briefly highlights the sidebar. Each render returns a `viewId`. Pass one or more of those IDs to `messages.send` to place independent, live views inside the reply. Copy the ID while its render is still in the local activity history.
+
+```json
+{
+  "payload": {
+    "text": "Check the header here.",
+    "views": [
+      {
+        "viewId": "RENDER_VIEW_ID",
+        "caption": "Header detail",
+        "annotations": [
+          {
+            "kind": "arrow",
+            "points": [
+              { "x": 0.3, "y": 0.2 },
+              { "x": 0.6, "y": 0.5 }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Coordinates start at the top left of the image for that viewId. Use x = pixelX / imageWidth and y = pixelY / imageHeight, both from 0 to 1. Arrow and line take two endpoints. Rectangle, ellipse and revision-cloud take opposite corners. Text takes one anchor and a nonblank `text`. Users can also draw freehand. On delivery, each message view includes its project, takeoff, revision, drawing or camera position, frame dimensions and annotations. User views include `image.path` on desktop for the annotated PNG. Reads and waits omit image bytes.
 
 For ordinary work, include the most recent received message ID in the next command. There is no separate acknowledgement command or destructive inbox read:
 

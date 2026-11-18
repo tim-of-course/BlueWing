@@ -22,6 +22,32 @@ test('built Wingman keyboard and desktop connection guidance', async ({
   expect(errors).toEqual([]);
 });
 
+test('built Wingman sends a marked plan view and reopens it', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = await captureErrors(page);
+  await startWingmanProject(page);
+  await openPanel(page, 'Wingman');
+  await page.getByRole('button', { name: 'Attach view', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Annotate view' });
+  await expect(dialog.getByRole('button', { name: 'Done' })).toBeEnabled();
+  await dialog.getByLabel('View annotation tool').selectOption('text');
+  await dialog
+    .getByLabel('View annotation surface')
+    .click({ position: { x: 100, y: 120 } });
+  await dialog.getByLabel('Annotation text').fill('Verify dimension');
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const card = page
+    .getByRole('log')
+    .getByRole('button', { name: /^Open view:/ });
+  await expect(card.getByLabel('View annotations')).toBeVisible();
+  await card.click();
+  await page.getByRole('button', { name: 'Return to your view' }).click();
+  expect(errors).toEqual([]);
+});
+
 test('built Wingman captures pixels and preserves messages across reopen', async ({
   page,
 }) => {

@@ -518,31 +518,6 @@ export async function viewWorkflow(page: Page) {
   const preview = page.getByRole('img', { name: 'Live workspace preview' });
   await expect(preview).toBeVisible();
   await expect(page.getByText('Loading plan…', { exact: true })).toBeHidden();
-  const pixels = await preview.evaluate((element) =>
-    (element as HTMLCanvasElement).toDataURL(),
-  );
-  expect(
-    (
-      await cli(page, 'wingman.annotate', {
-        annotations: [
-          {
-            points: [
-              { x: 90, y: 160 },
-              { x: 180, y: 220 },
-            ],
-            color: '#ff0000',
-            label: 'Check opening',
-          },
-        ],
-        highlightIds: [],
-      })
-    ).exitCode,
-  ).toBe(0);
-  await expect
-    .poll(() =>
-      preview.evaluate((element) => (element as HTMLCanvasElement).toDataURL()),
-    )
-    .not.toBe(pixels);
   const annotated = await inspect(page);
   expect(annotated.revision).toBe(before.revision);
   expect(annotated.data.main).toEqual(before.data.main);
@@ -744,20 +719,6 @@ export async function warmSwapWorkflow(page: Page) {
       (element as HTMLCanvasElement).toDataURL(),
     ),
   ).toBe(pixels);
-  await cli(page, 'wingman.annotate', {
-    annotations: [
-      {
-        points: [{ x: 100, y: 170 }],
-        color: '#ff0000',
-        label: 'Live annotation',
-      },
-    ],
-  });
-  await expect
-    .poll(() =>
-      preview.evaluate((element) => (element as HTMLCanvasElement).toDataURL()),
-    )
-    .not.toBe(pixels);
   expect(await work()).toEqual({ regions: 0, pdf: 0 });
   const after = (await inspect(page)).data.main;
   expect(after.context).toEqual(before.data.main.context);

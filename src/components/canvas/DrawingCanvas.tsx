@@ -25,7 +25,8 @@ import {
 } from '../../core/geometry';
 import type { AnnotationKind } from '../../core/annotations';
 import { createAnnotationEditor } from './annotation-editor';
-import { paintAnnotation } from './annotations';
+import type { WingmanVisual } from '../../app/wingman-types';
+import { paintAnnotation, paintViewAnnotations } from './annotations';
 import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
@@ -184,6 +185,7 @@ export default function DrawingCanvas(props: {
   onPickPoint?: (point: Point) => void;
   interactionDisabled?: boolean;
   presentationActive?: boolean;
+  messageView?: WingmanVisual | null;
   active?: boolean;
   onViewport?: (port: ViewportPort<PlanView>) => void;
 }) {
@@ -570,6 +572,7 @@ export default function DrawingCanvas(props: {
         snapped: isSnapped,
         selectionBox: selectionBox(),
         presentation: activePresentation(),
+        messageView: props.presentationActive ? props.messageView : null,
       };
     },
     { name: 'canvas.paintState' },
@@ -666,6 +669,24 @@ export default function DrawingCanvas(props: {
         pixel,
         state.selectedAnnotation === annotation.id,
       );
+    }
+    const marked = state.messageView;
+    if (
+      marked?.view.kind === 'plan' &&
+      marked.view.sheetId === state.sheet.id &&
+      marked.annotations
+    ) {
+      const bounds = marked.view.bounds;
+      ctx.save();
+      ctx.translate(bounds.x, bounds.y);
+      paintViewAnnotations(
+        ctx,
+        marked.annotations,
+        bounds.width,
+        bounds.height,
+        pixel,
+      );
+      ctx.restore();
     }
     if (state.annotationPreview)
       paintAnnotation(ctx, state.annotationPreview, pixel);

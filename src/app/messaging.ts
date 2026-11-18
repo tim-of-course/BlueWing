@@ -1,4 +1,12 @@
-import type { WingmanActivity } from './wingman-types';
+import {
+  validateAnnotationShape,
+  type AnnotationShape,
+} from '../core/annotations';
+import type {
+  WingmanVisual,
+  ViewFrame,
+  WingmanActivity,
+} from './wingman-types';
 import { boundActivity } from './wingman-activity';
 
 export interface Attachment {
@@ -10,12 +18,33 @@ export interface Attachment {
   path?: string;
   unavailable?: true;
 }
+export interface ReplyView {
+  viewId: string;
+  caption?: string;
+  annotations?: AnnotationShape[];
+}
+export interface MessageView extends WingmanVisual {
+  frame: ViewFrame;
+  annotations: AnnotationShape[];
+  image?: Attachment;
+}
 export interface Message {
   id: number;
   sender: 'user' | 'agent';
   text: string;
   createdAt: string;
   attachments: Attachment[];
+  views?: MessageView[];
+}
+function wireImage({ id, name, width, height, path, unavailable }: Attachment) {
+  return {
+    id,
+    name,
+    width,
+    height,
+    ...(path === undefined ? {} : { path }),
+    ...(unavailable ? { unavailable } : {}),
+  };
 }
 export function wireMessage(message: Message) {
   return {
@@ -23,14 +52,15 @@ export function wireMessage(message: Message) {
     sender: message.sender,
     text: message.text,
     createdAt: message.createdAt,
-    attachments: message.attachments.map((attachment) => ({
-      id: attachment.id,
-      name: attachment.name,
-      width: attachment.width,
-      height: attachment.height,
-      ...(attachment.path === undefined ? {} : { path: attachment.path }),
-      ...(attachment.unavailable ? { unavailable: true } : {}),
-    })),
+    attachments: message.attachments.map(wireImage),
+    ...(message.views
+      ? {
+          views: message.views.map(({ image, ...view }) => ({
+            ...structuredClone(view),
+            ...(image ? { image: wireImage(image) } : {}),
+          })),
+        }
+      : {}),
   };
 }
 type MessagingChange = 'bind' | 'message' | 'status' | 'activity';
@@ -256,25 +286,55 @@ export class Messaging {
       }).then(resolve, reject);
     });
   }
+  resolveViews(requests: ReplyView[]): MessageView[] {
+    return requests.map(({ viewId, caption, annotations = [] }) => {
+      const visual = this.activity.find((entry) => entry.id === viewId)?.visual;
+      if (!visual?.frame || visual.projectId !== this.projectId)
+        throw new Error(`Unknown rendered view: ${viewId}`);
+      for (const shape of annotations) {
+        if (
+          shape.kind === 'freehand' ||
+          shape.points.some(
+            ({ x, y }) =>
+              ![x, y].every((n) => Number.isFinite(n) && n >= 0 && n <= 1),
+          )
+        )
+          throw new Error(
+            'Reply annotations require normalized coordinates from 0 to 1 and an agent-supported shape',
+          );
+        validateAnnotationShape(shape);
+      }
+      return {
+        ...visual,
+        frame: visual.frame,
+        ...(caption === undefined ? {} : { caption }),
+        annotations,
+      };
+    });
+  }
   send(
     text: string,
     attachments: Attachment[],
     sender: 'user' | 'agent',
+    views: MessageView[] = [],
   ): Promise<Message> {
     const projectId = this.projectId;
     const copies = structuredClone(attachments);
+    const savedViews = structuredClone(views);
     return this.schedule(async () => {
       if (!projectId || projectId !== this.projectId)
         throw new Error('Open a project before sending a message');
       if (this.loadError) throw new Error(this.loadError);
-      if (!text.trim() && copies.length === 0)
+      if (savedViews.some((view) => view.projectId !== projectId))
+        throw new Error('View belongs to another project');
+      if (!text.trim() && copies.length === 0 && !savedViews.length)
         throw new Error('A message needs text or an attachment');
       if (
-        copies.length > 8 ||
-        copies.reduce(
-          (size, attachment) => size + attachment.dataUrl.length,
-          0,
-        ) >
+        copies.length + savedViews.length > 8 ||
+        [
+          ...copies,
+          ...savedViews.flatMap((view) => (view.image ? [view.image] : [])),
+        ].reduce((size, attachment) => size + attachment.dataUrl.length, 0) >
           32 * 1024 * 1024
       )
         throw new Error(
@@ -283,12 +343,16 @@ export class Messaging {
       const exported = await Promise.all(
         copies.map((a) => this.storage.exportAttachment(a)),
       );
+      for (const view of savedViews)
+        if (view.image)
+          view.image = await this.storage.exportAttachment(view.image);
       const message: Message = {
         id: (this.messages.at(-1)?.id ?? 0) + 1,
         sender,
         text,
         createdAt: new Date().toISOString(),
         attachments: exported,
+        ...(savedViews.length ? { views: savedViews } : {}),
       };
       const messages = [...this.messages, message];
       await this.storage.write(projectId, messages);

@@ -9,7 +9,12 @@ import {
   Show,
   untrack,
 } from 'solid-js';
-import type { ModelView, ViewportPort } from '../app/wingman-types';
+import ViewInk from './ViewInk';
+import type {
+  ModelView,
+  ViewportPort,
+  WingmanVisual,
+} from '../app/wingman-types';
 import type { WorkspaceController } from '../app/contracts';
 import type { ConstructionSnapshot } from '../core/calculation-state';
 import type { SheetPlacement } from '../core/construction-types';
@@ -26,6 +31,7 @@ import {
   prepareConstructionScene,
   defaultCamera,
   fitCamera,
+  resolveCamera,
   orbitCamera,
   sheetPlanCorners,
   viewPresets,
@@ -60,6 +66,7 @@ export interface ConstructionViewProps {
   onViewport?: (port: ViewportPort<ModelView>) => void;
   interactionDisabled?: boolean;
   presentationActive?: boolean;
+  messageView?: WingmanVisual | null;
   selectedGeometryIds: string[];
   onSelect: (geometryId: string, pieceId?: string) => void;
   levels?: readonly {
@@ -103,6 +110,16 @@ export default function ConstructionView(props: ConstructionViewProps) {
     height: 480,
     pixelRatio: 1,
   });
+  const framed = () =>
+    props.presentationActive && props.messageView?.view.kind === '3d'
+      ? props.messageView
+      : null;
+  const frameStyle = () => {
+    const size = framed()?.frame;
+    return size
+      ? { '--frame-ratio': String(size.width / size.height) }
+      : undefined;
+  };
   const [presentation, setPresentation] = createSignal<ModelView | null>(null);
   const [pageMode, setPageMode] = createSignal<
     'current' | 'combined' | 'explicit'
@@ -191,22 +208,22 @@ export default function ConstructionView(props: ConstructionViewProps) {
           a.sheet.rotation === b.sheet.rotation),
     },
   );
-  const plan = createMemo(() => {
-    const loaded = planImage();
+  const planCorners = createMemo(() => {
     const sheet = planVisible() ? scopedSheet() : undefined;
-    if (!loaded || loaded.request !== imageRequest() || !sheet)
-      return undefined;
+    if (!sheet) return undefined;
     const matching =
       props.levels?.filter((level) => level.sheetIds.includes(sheet.id)) ?? [];
     const level =
       props.levels?.find((item) => item.id === levelId()) ??
       (matching.length === 1 ? matching[0] : undefined);
-    const corners = sheetPlanCorners(
-      sheet,
-      scopedPlacement(),
-      level?.elevation,
-    );
-    return corners ? { image: loaded.image, corners } : undefined;
+    return sheetPlanCorners(sheet, scopedPlacement(), level?.elevation);
+  });
+  const plan = createMemo(() => {
+    const loaded = planImage(),
+      corners = planCorners();
+    return loaded && loaded.request === imageRequest() && corners
+      ? { image: loaded.image, corners }
+      : undefined;
   });
   const [selectedOnly, setSelectedOnly] = createSignal(false);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
@@ -465,13 +482,23 @@ export default function ConstructionView(props: ConstructionViewProps) {
     },
     { name: 'construction.render' },
   );
+  const activeMarks = () => {
+    const message = framed();
+    return message?.view.kind === '3d' &&
+      JSON.stringify(message.view.camera) === JSON.stringify(camera())
+      ? message.annotations
+      : undefined;
+  };
   onSettled(() => {
     props.onViewport?.({
       read: () => ({
         kind: '3d',
-        camera: { ...camera() },
+        frame: { width: viewport().width, height: viewport().height },
+        ...(props.sheet ? { activeSheetId: props.sheet.id } : {}),
+        camera: resolveCamera(scene(), camera()),
         displayMode: displayMode(),
         showPlan: props.showPlan,
+        planCorners: planCorners() ?? undefined,
         sheetIds: [...scopedIds()],
         alignment: alignment(),
         pageMode: pageMode(),
@@ -771,7 +798,10 @@ export default function ConstructionView(props: ConstructionViewProps) {
           Reset / fit
         </button>
       </div>
-      <div class="construction-viewport">
+      <div
+        class={['construction-viewport', framed() && 'construction-framed']}
+        style={frameStyle()}
+      >
         <Show when={aligning() ? props.alignmentController : undefined}>
           {(controller) => (
             <AlignmentEditor
@@ -799,6 +829,11 @@ export default function ConstructionView(props: ConstructionViewProps) {
           aria-label="Construction model. Left-drag to orbit; middle-drag or Shift-drag to pan; right-drag or scroll to zoom. Arrow keys orbit, plus and minus zoom, Home resets. Click a member to select its source."
           onKeyDown={keydown}
         />
+        <Show when={activeMarks()}>
+          {(shapes) => (
+            <ViewInk shapes={shapes()} class="construction-view-ink" />
+          )}
+        </Show>
         <Show when={rendererStatus()}>
           <p class="construction-empty" role="status">
             {rendererStatus()}

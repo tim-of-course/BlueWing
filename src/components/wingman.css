@@ -247,6 +247,107 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.wingman-message-view {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  margin-top: 6px;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+.wingman-message-view:hover {
+  background: transparent;
+}
+.wingman-message-view .wingman-caption {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #b2c0ce;
+  padding: 3px 0 0;
+}
+.wingman-message-user .wingman-message-view {
+  width: calc(220px * var(--view-ratio));
+  max-width: 100%;
+}
+.wingman-view-media {
+  position: relative;
+  width: min(100%, calc(220px * var(--view-ratio)));
+  aspect-ratio: var(--view-ratio);
+  --wingman-preview-height: 220px;
+}
+.wingman-view-media .wingman-preview,
+.wingman-view-media .wingman-preview canvas {
+  height: 100%;
+}
+.wingman-thumbnail-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.wingman-view-action {
+  position: relative;
+}
+.wingman-view-choice,
+.view-editor-tools {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  padding: 4px;
+  background: #1b212c;
+  border: 1px solid #53677a;
+  border-radius: 5px;
+}
+.wingman-view-choice {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 2;
+}
+.view-editor {
+  padding: 0;
+  border: 1px solid #53677a;
+  background: #0f1218;
+  overflow: visible;
+  max-width: 95vw;
+  max-height: 90vh;
+}
+.view-editor::backdrop {
+  background: #080c12b8;
+}
+.view-editor-frame {
+  position: relative;
+  width: min(86vw, calc(78vh * var(--ratio)));
+  aspect-ratio: var(--ratio);
+  --wingman-preview-height: none;
+}
+.view-editor-frame .wingman-preview,
+.view-editor-frame .wingman-preview canvas {
+  height: 100%;
+}
+.view-editor-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+.view-editor-tools {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+}
+.view-editor-text {
+  position: absolute;
+  max-width: 25%;
+  min-width: 5em;
+}
 .wingman-message-images {
   display: flex;
   gap: 5px;

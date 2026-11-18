@@ -1,5 +1,6 @@
+import type { AnnotationShape } from '../core/annotations';
 import type { PlanSnippet } from '../core/review';
-import type { DisplayMode, SceneCamera } from '../three/scene';
+import type { DisplayMode, Point3, SceneCamera } from '../three/scene';
 import type { DrawingTool, WorkspaceContext } from './contracts';
 import type { CategoryFilter } from '../core/categories';
 
@@ -19,7 +20,14 @@ export interface PlanView {
   visibleGeometryIds?: string[];
   categories?: CategoryFilter;
 }
+export interface ViewFrame {
+  width: number;
+  height: number;
+}
 export interface ModelView {
+  frame?: ViewFrame;
+  activeSheetId?: string;
+  planCorners?: readonly [Point3, Point3, Point3, Point3] | undefined;
   kind: '3d';
   camera: SceneCamera;
   sheetIds?: string[];
@@ -43,6 +51,8 @@ export interface WingmanVisual {
   revision: number;
   view: WingmanView;
   caption?: string;
+  annotations?: AnnotationShape[];
+  frame?: ViewFrame;
 }
 export type ActivityCategory = 'Looked at' | 'Read' | 'Changed' | 'Rendered';
 export const constructionTargets = {
@@ -88,6 +98,7 @@ export interface WorkspaceViewSnapshot {
   model: ModelView | null;
   context: WorkspaceContext;
   quantities: boolean;
+  showPlan: boolean;
   tool: DrawingTool;
 }
 export interface ViewportPort<T> {
@@ -101,8 +112,4 @@ export interface WingmanPresentation {
   publish(visual: WingmanVisual): boolean;
   inspect(): unknown;
   flash(): void;
-  annotate(
-    annotations: PlanSnippet['annotations'],
-    highlightIds?: string[],
-  ): void;
 }
