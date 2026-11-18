@@ -443,6 +443,10 @@
 .wingman-prompts p {
   margin: 6px 0 10px;
 }
+.wingman-prompt-choices {
+  display: flex;
+  gap: 6px;
+}
 .wingman-prompts textarea {
   width: 100%;
   min-height: 120px;

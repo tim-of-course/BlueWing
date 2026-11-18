@@ -361,21 +361,25 @@ export async function promptWorkflow(page: Page) {
       },
     });
   });
-  await expect(
-    page.getByText('Talk here or in your AI’s chat.', { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText('Keep the conversation in your AI’s chat.', { exact: true }),
-  ).toBeVisible();
+  const panel = page.getByRole('region', { name: 'Connect your AI' });
+  const reopen = () =>
+    page.getByRole('button', { name: 'Copy AI prompt', exact: true }).click();
+  await expect(panel).toContainText(
+    'Wingman + chat: talk here or in your AI’s chat.',
+  );
   await page
     .getByRole('button', { name: 'Wingman + chat', exact: true })
     .click();
+  // A successful copy closes the setup panel and leaves a short status line.
+  await expect(panel).toBeHidden();
   await expect(
     page.getByText('Prompt copied. Paste it into your AI’s chat.', {
       exact: true,
     }),
   ).toBeVisible();
+  await reopen();
   await page.getByRole('button', { name: 'Chat only', exact: true }).click();
+  await expect(panel).toBeHidden();
   await expect
     .poll(() =>
       page.evaluate(
@@ -403,6 +407,7 @@ export async function promptWorkflow(page: Page) {
       value: undefined,
     }),
   );
+  await reopen();
   await page
     .getByRole('button', { name: 'Wingman + chat', exact: true })
     .click();
@@ -425,6 +430,10 @@ export async function promptWorkflow(page: Page) {
   );
   await page.getByRole('button', { name: 'Chat only', exact: true }).click();
   await expect(fallback).toHaveValue(prompts[1] ?? '');
+  // Once the AI makes contact, the setup panel gets out of the way.
+  await expect(panel).toBeVisible();
+  expect((await cli(page, 'project.inspect')).exitCode).toBe(0);
+  await expect(panel).toBeHidden();
 }
 export async function draftWorkflow(page: Page) {
   await page.getByRole('button', { name: 'Close', exact: true }).click();
