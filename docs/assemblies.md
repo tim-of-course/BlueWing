@@ -74,7 +74,9 @@ Input precedence is per-trace override, then group override, then project assemb
 
 These are editable starters, not a complete company catalog. Required heights and other project details must come from the plans. Starter sections and ceiling elevation are examples to replace with the specified values.
 
-The catalog contains 29 starters, including 17 new modeled options. Existing explicitly named estimates remain available for incomplete layout information. **Add missing starters** adds the new definitions to an existing library without replacing company edits or changing project copies.
+The catalog contains 30 starters, including 17 new modeled options. Existing explicitly named estimates remain available for incomplete layout information. **Add missing starters** adds the new definitions to an existing library without replacing company edits or changing project copies.
+
+**Danback backing** orders pieces one stud bay long (16 in by default). Each traced run rounds up to whole pieces. The total for each size takes 10% waste and rounds up to whole pieces again. EstiMaker receives the ordered count, piece length and purchased LF. Use **Wood blocking pieces** for material cut from longer stock.
 
 ## Standalone material layouts
 

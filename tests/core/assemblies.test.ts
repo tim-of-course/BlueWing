@@ -16,6 +16,7 @@ import {
 } from '../../src/core/calculations';
 import { copyAssembly, starterAssemblies } from '../../src/core/assemblies';
 import { registry } from '../../src/app/registry';
+import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
 import type { Assembly, Project } from '../../src/core/types';
 
 function fixture(
@@ -137,7 +138,9 @@ void test('starters distinguish modeled material layouts from unmodeled quick es
       recipe.materialTemplate
     )
       continue;
-    assert.match(recipe.name, /estimate/i);
+    if (recipe.id === 'danback-backing')
+      assert.equal(recipe.name, 'Danback backing');
+    else assert.match(recipe.name, /estimate/i);
     assert.match(recipe.description ?? '', /Unmodeled/);
   }
 });
@@ -314,6 +317,40 @@ void test('FRP, acoustical ceilings, blocking and acoustical panels have indepen
   near(calculateProject(panels).outputs[0]?.baseAmount, 3);
   near(calculateProject(panels).outputs[1]?.baseAmount, 24);
 });
+void test('Danback orders whole stud-bay pieces and exports their purchased footage', () => {
+  const project = fixture('danback-backing');
+  const a = project.geometries.a;
+  const group = project.groups.g;
+  assert.ok(a && group);
+  a.points = [
+    { x: 0, y: 0 },
+    { x: 9 + 4 / 12, y: 0 },
+  ];
+  project.geometries.b = {
+    ...a,
+    id: 'b',
+    points: [
+      { x: 0, y: 0 },
+      { x: 3 + 1 / 12, y: 0 },
+    ],
+  };
+  group.geometryIds.push('b');
+  const row = calculateProject(project).outputs[0];
+  assert.ok(row?.complete);
+  near(row.sources[0]?.value, 7);
+  near(row.sources[1]?.value, 3);
+  near(row.purchasedAmount, 11);
+  assert.equal(row.stockLength, undefined);
+  const exported = estiMakerTakeoff(project, calculateProject(project)).rows[0];
+  assert.equal(exported?.unit, 'LF');
+  assert.equal(exported.pieceCount, 11);
+  near(exported.pieceLength?.value, 16 / 12);
+  near(exported.quantity, 14 + 8 / 12);
+  assignment(project).inputs.studSpacing = 24;
+  near(calculateProject(project).outputs[0]?.baseAmount, 7);
+  near(calculateProject(project).outputs[0]?.purchasedAmount, 8);
+});
+
 function ceilingAmounts(project: Project, purchased = true) {
   const result = calculateProject(project);
   assert.equal(result.complete, true, JSON.stringify(result.outputs));
