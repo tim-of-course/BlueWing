@@ -3,6 +3,7 @@ import type {
   ConstructionResult,
   ConstructionSource,
   ConstructionSurface,
+  FaceRequirement,
   ConstructionDiagnostic,
 } from './construction-types';
 import { packedStickCount, purchaseAmount } from './purchasing';
@@ -121,26 +122,46 @@ export function summarizeMaterials(
       packageCount: amounts.packageCount,
     });
   }
-  const surfaces = new Map<string, ConstructionSurface[]>();
+  const surfaces = new Map(
+    result.surfaces.map((surface) => [surface.id, surface]),
+  );
+  const faces = result.faceRequirements ?? [];
+  const covered = new Set(faces.flatMap((face) => face.surfaceIds));
+  const requirements = [...faces];
   for (const surface of result.surfaces) {
     surface.geometricArea = surfaceArea(surface.points);
     surface.area = surface.geometricArea * surface.layers;
-    const key = JSON.stringify([
-      surface.assignmentId ?? surface.wallId ?? surface.ceilingId,
-      surface.finishId ?? 'ceiling',
-      surface.materialId,
-      surface.wastePercent ?? 0,
-      surface.packageSize ?? null,
-    ]);
-    const bucket = surfaces.get(key) ?? [];
-    bucket.push(surface);
-    surfaces.set(key, bucket);
+    if (!covered.has(surface.id))
+      requirements.push({
+        ...surface,
+        grossArea: surface.area,
+        wastePercent: surface.wastePercent ?? 0,
+        surfaceIds: [surface.id],
+      });
   }
-  for (const [key, patches] of surfaces) {
-    const first = present(patches[0]);
-    const requiredArea = patches.reduce((sum, p) => sum + p.area, 0);
-    const amounts = purchaseAmount(requiredArea, {
-      wastePercent: first.wastePercent ?? 0,
+  const buckets = new Map<string, FaceRequirement[]>();
+  for (const face of requirements) {
+    const key = JSON.stringify([
+      face.assignmentId ?? face.wallId ?? face.ceilingId,
+      face.finishId ?? 'ceiling',
+      face.materialId,
+      face.wastePercent,
+      face.packageSize ?? null,
+    ]);
+    const bucket = buckets.get(key) ?? [];
+    bucket.push(face);
+    buckets.set(key, bucket);
+  }
+  for (const [key, faces] of buckets) {
+    const first = present(faces[0]);
+    const surfaceIds = faces.flatMap((f) => f.surfaceIds);
+    const requiredArea = surfaceIds.reduce(
+      (sum, id) => sum + present(surfaces.get(id)).area,
+      0,
+    );
+    const grossArea = faces.reduce((sum, f) => sum + f.grossArea, 0);
+    const amounts = purchaseAmount(grossArea, {
+      wastePercent: first.wastePercent,
       ...(first.packageSize === undefined
         ? {}
         : { packageSize: first.packageSize }),
@@ -149,7 +170,10 @@ export function summarizeMaterials(
       quantityKey: JSON.stringify(['surface', key]),
       ...provenance(first),
       materialId: first.materialId,
-      surfaceIds: patches.map((p) => p.id),
+      surfaceIds,
+      ...(first.finishId
+        ? { grossArea, openingArea: Math.max(0, grossArea - requiredArea) }
+        : {}),
       requiredArea,
       wastePercent: amounts.wastePercent,
       ...(first.packageSize === undefined
@@ -268,7 +292,7 @@ export function modeledOutputs(
   }
   for (const [index, purchase] of (result.surfacePurchases ?? []).entries()) {
     const patches = purchase.surfaceIds.map((id) => present(surfaces.get(id)));
-    const diagnostics = messages(patches);
+    const diagnostics = messages([purchase, ...patches]);
     const base = purchase.requiredArea;
     outputs.push({
       ...identity(purchase),
@@ -285,9 +309,16 @@ export function modeledOutputs(
         value: surface.area,
       })),
       baseAmount: base,
+      ...(purchase.grossArea === undefined
+        ? {}
+        : {
+            grossArea: purchase.grossArea,
+            openingArea: purchase.openingArea ?? 0,
+          }),
       wastePercent: purchase.wastePercent,
-      wasteAmount: (base * purchase.wastePercent) / 100,
-      adjustedAmount: base * (1 + purchase.wastePercent / 100),
+      wasteAmount: ((purchase.grossArea ?? base) * purchase.wastePercent) / 100,
+      adjustedAmount:
+        (purchase.grossArea ?? base) * (1 + purchase.wastePercent / 100),
       packageCount: purchase.packageCount,
       purchasedAmount: purchase.purchasedArea,
       complete: !diagnostics.length,

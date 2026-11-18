@@ -42,6 +42,9 @@ export interface TakeoffRow {
   cutSchedule?: { count: number; length: PhysicalLength }[];
   provenance: {
     basis: 'purchased';
+    grossArea?: number;
+    openingArea?: number;
+    openingWastePercent?: number;
     packedCount?: number;
     wastePercent?: number;
     wasteAmount?: number;
@@ -381,6 +384,15 @@ export function presentQuantities(
       provenance: {
         basis: 'purchased',
         originalAmount: output.purchasedAmount,
+        ...(output.grossArea === undefined
+          ? {}
+          : {
+              grossArea: output.grossArea,
+              openingArea: output.openingArea ?? 0,
+              openingWastePercent: output.grossArea
+                ? ((output.openingArea ?? 0) * 100) / output.grossArea
+                : 0,
+            }),
         ...(output.packedCount === undefined
           ? {}
           : {

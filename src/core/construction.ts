@@ -1327,6 +1327,8 @@ export function generateConstruction(
             .flatMap((o) => [o.distance, o.distance + o.width])
             .filter((s) => s > 0 && s < line.length),
         ]);
+        let grossArea = 0;
+        const firstSurface = result.surfaces.length;
         let wallAboveStart = false;
         for (let i = 1; i < faceBreaks.length; i++) {
           const a = present(faceBreaks[i - 1]);
@@ -1353,6 +1355,12 @@ export function generateConstruction(
             const y = present(xs[j]);
             const hx = ha + ((hb - ha) * (x - a)) / (b - a);
             const hy = ha + ((hb - ha) * (y - a)) / (b - a);
+            grossArea +=
+              (((y - x) *
+                (Math.max(0, Math.min(hx, topHeight) - startHeight) +
+                  Math.max(0, Math.min(hy, topHeight) - startHeight))) /
+                2) *
+              finish.layers;
             const bands = subtract(
               startHeight,
               Math.max(hx, hy),
@@ -1400,6 +1408,18 @@ export function generateConstruction(
             }
           }
         }
+        if (grossArea > 0)
+          (result.faceRequirements ??= []).push({
+            ...source,
+            finishId: finish.id,
+            materialId: finish.materialId,
+            grossArea,
+            wastePercent: finish.wastePercent ?? 0,
+            ...(finish.packageSize === undefined
+              ? {}
+              : { packageSize: finish.packageSize }),
+            surfaceIds: result.surfaces.slice(firstSurface).map((s) => s.id),
+          });
         if (!wallAboveStart)
           diagnostic(
             { ...source, finishId: finish.id },
@@ -1526,6 +1546,8 @@ export function generateConstruction(
     );
     result.pieces.push(...generated.pieces);
     result.surfaces.push(...generated.surfaces);
+    if (generated.faceRequirements)
+      (result.faceRequirements ??= []).push(...generated.faceRequirements);
     result.diagnostics.push(...generated.diagnostics);
     result.complete &&= generated.complete;
     budget -= generated.pieces.length + generated.surfaces.length;

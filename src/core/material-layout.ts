@@ -735,6 +735,19 @@ export function generateMaterialLayout(
       }
       station = high;
     }
+    result.faceRequirements = [
+      {
+        ...source,
+        finishId: 'Wall finish',
+        materialId: present(template.materialId),
+        grossArea: length * height * layers,
+        wastePercent: template.wastePercent ?? 0,
+        ...(template.packageSize === undefined
+          ? {}
+          : { packageSize: template.packageSize }),
+        surfaceIds: result.surfaces.map((s) => s.id),
+      },
+    ];
   } else {
     const rise =
       (template.endElevation ?? template.elevation) - template.elevation;

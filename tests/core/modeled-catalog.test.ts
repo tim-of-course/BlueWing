@@ -385,7 +385,7 @@ void test('new finish starters model measured surfaces and positioned deductions
     const result = calculateProject(project);
     linked(result);
     assert.equal(result.model.pieces.length, 0, id);
-    assert.ok(result.outputs.every((output) => output.wastePercent === 5));
+    assert.ok(result.outputs.every((output) => output.wastePercent === 0));
     assert.ok(result.model.surfaces.length > 0, id);
     near(
       result.outputs.reduce((sum, output) => sum + output.baseAmount, 0),
@@ -505,7 +505,7 @@ void test('one framed door cuts independent finish and insulation scopes on its 
   near(
     exported.rows.find((row) => row.source.assignmentId === 'wainscot')
       ?.quantity,
-    28,
+    40,
   );
 
   project = command(
@@ -573,14 +573,16 @@ void test('high drywall on the same face has its own modeled quantity, purchase 
     ] as const) {
       const purchase = purchases.find((p) => p.materialId === material);
       near(purchase?.requiredArea, area);
-      near(purchase?.purchasedArea, area);
+      const gross = material === 'board-A' ? 100 : 40;
+      near(purchase?.purchasedArea, gross);
+      near(purchase?.openingArea, gross - area);
       near(
         outputs.find((row) => row.materialId === material)?.baseAmount,
         area,
       );
       near(
         rows.find((row) => row.source.materialId === material)?.quantity,
-        area,
+        gross,
       );
     }
     const high = result.model.surfaces.filter(

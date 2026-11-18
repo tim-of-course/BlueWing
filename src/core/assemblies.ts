@@ -216,7 +216,7 @@ export function starterAssemblies(): Record<string, Assembly> {
         finishes: ['front', 'back'].map((face) => ({
           id: face,
           materialId: 'drywall-5-8-unspecified',
-          wastePercent: 5,
+          wastePercent: 0,
           face: face as 'front' | 'back',
           layers: 1,
           thickness: 0.625 / 12,
