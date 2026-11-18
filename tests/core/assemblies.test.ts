@@ -160,7 +160,8 @@ void test('steel wall starters use company framing and drywall purchasing defaul
     near(wall.stud.depth, 3.625 / 12);
     assert.equal(wall.stud.materialId, 'steel-stud-3-5-8-20eq');
     assert.equal(wall.stud.stockLength, undefined);
-    near(wall.track.stockLength, 10);
+    assert.equal(wall.track.stockLength, undefined);
+    assert.equal(project.standardSizes.trackLengths[0], 10);
     const result = calculateProject(project);
     const rows = estiMakerTakeoff(project, result).rows;
     const stud = rows.find(

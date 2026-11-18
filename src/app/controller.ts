@@ -641,6 +641,8 @@ export function createWorkspace(
     },
     native: app.native,
     library,
+    saveLibrarySizes: (sizes, expectedLibraryRevision) =>
+      command('library.sizes.put', { sizes, expectedLibraryRevision }),
     refreshLibrary: () => command('library.inspect'),
     addLibraryStarters: (expectedLibraryRevision) =>
       command('library.addStarters', { expectedLibraryRevision }),

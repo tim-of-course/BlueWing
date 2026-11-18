@@ -68,6 +68,10 @@ export interface WorkspaceController {
   project: Accessor<Project | null>;
   quantities: Accessor<CalculationSnapshot | null>;
   library: Accessor<AssemblyLibrary | null>;
+  saveLibrarySizes(
+    sizes: AssemblyLibrary['standardSizes'],
+    expectedLibraryRevision: number,
+  ): Promise<void>;
   refreshLibrary(): Promise<void>;
   addLibraryStarters(expectedLibraryRevision: number): Promise<void>;
   saveLibraryAssembly(

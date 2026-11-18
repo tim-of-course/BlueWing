@@ -1,12 +1,10 @@
 import type { OutputAllowance } from './types';
 
-export const standardStudStock = [8, 9, 10, 12, 14, 16, 18, 20] as const;
-
 /** Equal-length kickers use the least leftover fraction. Sorted stock breaks ties shorter. */
-export function kickerStockLength(cut: number): number {
-  let selected: number = 20;
+export function kickerStockLength(cut: number, lengths: number[]): number {
+  let selected = Math.max(...lengths);
   let best = Infinity;
-  for (const stock of standardStudStock) {
+  for (const stock of [...lengths].sort((a, b) => a - b)) {
     const ratio = stock / cut;
     const count = Math.floor(ratio + Number.EPSILON * ratio * 8);
     if (!count) continue;

@@ -93,7 +93,13 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
         records.map((record) => [record.id, record]),
       );
     }
-    for (const key of ['construction', 'review', 'categoryColors', 'notes']) {
+    for (const key of [
+      'construction',
+      'review',
+      'categoryColors',
+      'notes',
+      'standardSizes',
+    ]) {
       const value: unknown = await request(
         transaction.objectStore('records').get([this.path, 'extensions', key]),
       );

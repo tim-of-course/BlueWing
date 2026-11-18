@@ -1307,3 +1307,44 @@ void test('new member layouts and existing ceiling surfaces share one generation
       1,
     );
 });
+
+void test('project standard sizes drive automatic stock independently of the company table', () => {
+  let project = fixture('steel-framing');
+  applied(project).wallOverrides = { height: 9.5 };
+  const sizes = {
+    ...project.standardSizes,
+    studLengths: [16, 11],
+    trackLengths: [8, 12],
+  };
+  project = command(project, 'project.sizes.put', { sizes });
+  const model = calculateProject(project).model;
+  assert.deepEqual(
+    [
+      ...new Set(
+        model.pieces.filter((p) => p.role === 'stud').map((p) => p.stockLength),
+      ),
+    ],
+    [11],
+  );
+  assert.deepEqual(
+    [
+      ...new Set(
+        model.pieces
+          .filter((p) => p.role === 'top-track')
+          .map((p) => p.stockLength),
+      ),
+    ],
+    [8],
+  );
+  sizes.studLengths.push(10);
+  assert.deepEqual(
+    executeCommand(project, { name: 'project.sizes.inspect' }).data,
+    project.standardSizes,
+  );
+  assert.deepEqual(project.standardSizes.studLengths, [16, 11]);
+  assert.throws(() =>
+    command(project, 'project.sizes.put', {
+      sizes: { ...sizes, trackLengths: [] },
+    }),
+  );
+});

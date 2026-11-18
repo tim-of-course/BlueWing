@@ -1,3 +1,4 @@
+import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
@@ -28,7 +29,8 @@ function fixture(
         owned: {},
       },
     },
-    formatVersion: 8,
+    formatVersion: 9,
+    standardSizes: companySizes(),
     id: 'project',
     name: 'Estimate',
     revision: 0,

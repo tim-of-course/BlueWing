@@ -1,3 +1,4 @@
+import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { calculateProject, pieceSchedule } from '../../src/core/calculations';
@@ -35,7 +36,8 @@ function baseProject(): Project {
         owned: {},
       },
     },
-    formatVersion: 8,
+    formatVersion: 9,
+    standardSizes: companySizes(),
     id: 'reuse-project',
     name: 'Calculation reuse',
     revision: 0,

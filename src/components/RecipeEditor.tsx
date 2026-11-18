@@ -1,5 +1,7 @@
 import { quantityLabel } from './quantity-label';
 import { lengthHint } from '../core/length';
+import StandardSizesDialog from './StandardSizesDialog';
+import type { StandardSizes } from '../core/standard-sizes';
 import QuantityInput from './QuantityInput';
 import SystemComponents from './SystemComponents';
 import { ConstructionFields } from './ConstructionEditor';
@@ -93,6 +95,7 @@ export default function RecipeEditor(props: {
   });
   const [dirty, setDirty] = createSignal(false);
   const [scope, setScope] = createSignal<'project' | 'global'>('project');
+  const [sizes, setSizes] = createSignal<StandardSizes | null>(null);
   let libraryRevision = 0;
   const [error, setError] = createSignal('');
   const [saving, setSaving] = createSignal(false);
@@ -196,7 +199,7 @@ export default function RecipeEditor(props: {
   );
   let observation: Observation | undefined;
   createEffect(
-    () => ({ dirty: dirty(), notify: props.onDraftChange }),
+    () => ({ dirty: dirty() || !!sizes(), notify: props.onDraftChange }),
     ({ dirty, notify }) => {
       notify?.(dirty);
     },
@@ -228,6 +231,15 @@ export default function RecipeEditor(props: {
         at === index ? { ...value, ...patch } : value,
       ),
     }));
+  };
+  const saveSizes = async (value: StandardSizes) => {
+    if (scope() === 'global')
+      await props.controller.saveLibrarySizes(value, libraryRevision);
+    else
+      await props.controller.execute(
+        { name: 'project.sizes.put', payload: { sizes: value } },
+        observation,
+      );
   };
   const report = (cause: unknown) => {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -462,6 +474,42 @@ export default function RecipeEditor(props: {
         >
           Refresh library
         </button>
+        <button
+          type="button"
+          disabled={
+            dirty() ||
+            saving() ||
+            !(scope() === 'global'
+              ? props.controller.library()
+              : props.controller.project())
+          }
+          onClick={() => {
+            observation = props.controller.observe();
+            libraryRevision = props.controller.library()?.revision ?? 0;
+            setSizes(
+              (scope() === 'global'
+                ? props.controller.library()
+                : props.controller.project()
+              )?.standardSizes ?? null,
+            );
+          }}
+        >
+          Standard sizes
+        </button>
+        <Show when={sizes()}>
+          {(table) => (
+            <StandardSizesDialog
+              title={
+                scope() === 'global'
+                  ? 'Company standard sizes'
+                  : 'Project standard sizes'
+              }
+              sizes={table()}
+              close={() => setSizes(null)}
+              save={saveSizes}
+            />
+          )}
+        </Show>
         <Show when={scope() === 'global'}>
           <button
             type="button"

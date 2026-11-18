@@ -7,14 +7,20 @@ import type {
   Quantity,
   Unit,
 } from './types';
+import { companySizes } from './standard-sizes';
 import { starterRecipes } from './calculations';
 
 export function newId(): string {
   return crypto.randomUUID();
 }
-export function createProject(name: string, id = newId()): Project {
+export function createProject(
+  name: string,
+  id = newId(),
+  standardSizes = companySizes(),
+): Project {
   return {
-    formatVersion: 8,
+    formatVersion: 9,
+    standardSizes: structuredClone(standardSizes),
     takeoffs: {
       main: {
         id: 'main',

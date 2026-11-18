@@ -1,3 +1,4 @@
+import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
@@ -27,7 +28,7 @@ for (const browserType of [chromium, firefox, webkit]) {
         );
       });
       await page.goto('http://bluewing.test');
-      const result = await page.evaluate(async () => {
+      const result = await page.evaluate(async (standardSizes) => {
         const modulePath = '/storage.js';
         const { BrowserStorage } = (await import(
           modulePath
@@ -42,7 +43,8 @@ for (const browserType of [chromium, firefox, webkit]) {
               owned: {},
             },
           },
-          formatVersion: 8 as const,
+          formatVersion: 9 as const,
+          standardSizes,
           id: 'p',
           name: 'Original',
           revision: 0,
@@ -133,7 +135,7 @@ for (const browserType of [chromium, firefox, webkit]) {
           createConflict,
           saved,
         };
-      });
+      }, companySizes());
       assert.deepEqual(result.bytes, [0, 255, 128]);
       assert.deepEqual(result.retainedBytes, [0, 255, 128]);
       assert.ok(result.conflict && result.duplicate && result.createConflict);
@@ -146,7 +148,7 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
       assert.equal(result.saved.sheets.s.assetId, 'pdf');
       assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
-      assert.equal(result.saved.formatVersion, 8);
+      assert.equal(result.saved.formatVersion, 9);
       assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
     } finally {
       await browser.close();

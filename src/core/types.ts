@@ -140,8 +140,10 @@ export interface AssemblyComponent {
 }
 /** Assemblies extend the existing project recipe records without duplicating calculations. */
 export type Assembly = Recipe;
+import type { StandardSizes } from './standard-sizes';
 export interface AssemblyLibrary {
-  version: 4;
+  version: 5;
+  standardSizes: StandardSizes;
   revision: number;
   assemblies: Record<string, Assembly>;
 }
@@ -184,7 +186,8 @@ export interface Takeoff {
   }[];
 }
 export interface Project {
-  formatVersion: 8;
+  formatVersion: 9;
+  standardSizes: StandardSizes;
   takeoffs: Record<string, Takeoff>;
   /** Derived view context; never written by the session. */
   takeoffId?: string;
