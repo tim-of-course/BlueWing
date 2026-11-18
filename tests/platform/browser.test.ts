@@ -43,7 +43,18 @@ for (const browserType of [chromium, firefox, webkit]) {
               owned: {},
             },
           },
-          formatVersion: 9 as const,
+          annotations: {
+            detail: {
+              id: 'detail',
+              kind: 'text' as const,
+              sheetId: 's',
+              author: 'agent' as const,
+              createdAt: '2026-11-18T00:00:00.000Z',
+              points: [{ x: 2, y: 3 }],
+              text: 'Verify head detail',
+            },
+          },
+          formatVersion: 10 as const,
           standardSizes,
           allowSpecialOrderStuds: true,
           id: 'p',
@@ -140,6 +151,7 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.deepEqual(result.bytes, [0, 255, 128]);
       assert.deepEqual(result.retainedBytes, [0, 255, 128]);
       assert.ok(result.conflict && result.duplicate && result.createConflict);
+      assert.equal(result.saved.annotations.detail?.text, 'Verify head detail');
       assert.equal(result.saved.name, 'Saved');
       assert.equal(result.saved.revision, 1);
       assert.equal(result.saved.takeoffs.co?.name, 'CO 1');
@@ -149,7 +161,7 @@ for (const browserType of [chromium, firefox, webkit]) {
       assert.deepEqual(result.saved.takeoffs.co.owned.geometries, ['copy']);
       assert.equal(result.saved.sheets.s.assetId, 'pdf');
       assert.deepEqual(result.saved.categoryColors, { Special: '#8236DC' });
-      assert.equal(result.saved.formatVersion, 9);
+      assert.equal(result.saved.formatVersion, 10);
       assert.equal(result.saved.notes, '# Scratchpad\n😀 detail');
     } finally {
       await browser.close();

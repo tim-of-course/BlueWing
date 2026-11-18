@@ -9,6 +9,7 @@ import {
   untrack,
 } from 'solid-js';
 import { createWorkspace } from './app/controller';
+import { annotationKinds, type AnnotationKind } from './core/annotations';
 import type { DrawingTool } from './app/contracts';
 import TakeoffControls from './components/TakeoffControls';
 import DrawingCanvas from './components/canvas/DrawingCanvas';
@@ -49,6 +50,7 @@ const tools: { id: DrawingTool; label: string; key: string; icon: string }[] = [
   { id: 'area', label: 'Area', key: 'F', icon: '◇' },
   { id: 'count', label: 'Count', key: 'C', icon: '⊕' },
   { id: 'calibrate', label: 'Set scale', key: 'R', icon: '↔' },
+  { id: 'annotations', label: 'Annotations', key: 'A', icon: '✎' },
 ];
 const groupColors = [
   '#3b82f6',
@@ -95,6 +97,11 @@ export default function App(props: { application?: Application }) {
   const [tool, setTool] = createSignal<DrawingTool>('select', {
     name: 'workspace.tool',
   });
+  const [annotationChoice, setAnnotationChoice] = createSignal<
+    AnnotationKind | 'edit'
+  >('edit');
+  let lastAnnotationChoice: AnnotationKind | 'edit' = 'edit';
+  const [annotationMenu, setAnnotationMenu] = createSignal(false);
   const [quantities, setQuantities] = createSignal(false);
   const [view, setView] = createSignal<'plan' | '3d' | 'split'>('plan');
   const [showPlan, setShowPlan] = createSignal(true);
@@ -152,6 +159,8 @@ export default function App(props: { application?: Application }) {
     { name: 'workspace.unfinishedEdits' },
   );
   const chooseTool = (id: DrawingTool) => {
+    setAnnotationMenu(false);
+    if (id === 'annotations') setAnnotationChoice(lastAnnotationChoice);
     if (id === 'calibrate') {
       const sheet =
         controller.project()?.sheets[controller.activeSheetId() ?? ''];
@@ -163,7 +172,8 @@ export default function App(props: { application?: Application }) {
     setTool(id);
     if (id === 'select') controller.setActiveGroupId(null);
     setQuantities(false);
-    if (id !== 'select') setInspectorPeek((value) => value + 1);
+    if (id !== 'select' && id !== 'annotations')
+      setInspectorPeek((value) => value + 1);
   };
   function captureView(): WorkspaceViewSnapshot | null {
     const project = controller.project();
@@ -304,7 +314,12 @@ export default function App(props: { application?: Application }) {
       } else if ((event.metaKey || event.ctrlKey) && key === 'z') {
         event.preventDefault();
         run(() => (event.shiftKey ? controller.redo() : controller.undo()));
-      } else if ((event.metaKey || event.ctrlKey) && key === 'd' && !draft()) {
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        key === 'd' &&
+        tool() !== 'annotations' &&
+        !draft()
+      ) {
         event.preventDefault();
         run(() => controller.copySelection());
       } else if (
@@ -315,8 +330,12 @@ export default function App(props: { application?: Application }) {
       ) {
         const match = tools.find((item) => item.key.toLowerCase() === key);
         if (match) chooseTool(match.id);
+        if (key === 'escape') setAnnotationMenu(false);
         if (key === 'q') setQuantities((current) => !current);
-        if (key === 'delete' || key === 'backspace') {
+        if (
+          tool() !== 'annotations' &&
+          (key === 'delete' || key === 'backspace')
+        ) {
           event.preventDefault();
           run(() => controller.deleteSelection());
         }
@@ -654,6 +673,18 @@ export default function App(props: { application?: Application }) {
                 Review
               </button>
               <label class="view-select">
+                <input
+                  type="checkbox"
+                  aria-label="Show annotations"
+                  checked={controller.annotationsVisible()}
+                  disabled={draft()}
+                  onChange={(e) => {
+                    controller.setAnnotationsVisible(e.currentTarget.checked);
+                  }}
+                />
+                Annotations
+              </label>
+              <label class="view-select">
                 View
                 <select
                   aria-label="Workspace view"
@@ -699,6 +730,8 @@ export default function App(props: { application?: Application }) {
                   presentationActive={followingAgent()}
                   controller={controller}
                   tool={tool()}
+                  annotationChoice={annotationChoice()}
+                  onAnnotationCreated={() => setAnnotationChoice('edit')}
                   onError={setError}
                   onDraftChange={setDraft}
                   interactionDisabled={
@@ -955,13 +988,27 @@ export default function App(props: { application?: Application }) {
             </Show>
           </div>
         </WorkspacePanel>
-        <nav class="tool-rail" aria-label="Drawing tools">
+        <nav
+          class="tool-rail"
+          aria-label="Drawing tools"
+          onFocusOut={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+              setAnnotationMenu(false);
+          }}
+        >
           <For each={tools}>
             {(item) => (
               <button
                 type="button"
                 class={tool() === item.id ? 'active' : ''}
                 aria-label={`${item.label} (${item.key})`}
+                aria-expanded={
+                  item.id === 'annotations'
+                    ? annotationMenu()
+                      ? 'true'
+                      : 'false'
+                    : undefined
+                }
                 aria-pressed={tool() === item.id ? 'true' : 'false'}
                 title={
                   item.id === 'select'
@@ -975,13 +1022,42 @@ export default function App(props: { application?: Application }) {
                   !controller.project()
                 }
                 onClick={() => {
+                  const open = !annotationMenu();
                   chooseTool(item.id);
+                  if (item.id === 'annotations') setAnnotationMenu(open);
                 }}
               >
                 <ToolIcon tool={item.id} />
               </button>
             )}
           </For>
+          <Show when={annotationMenu() && tool() === 'annotations'}>
+            <div
+              class="annotation-choices"
+              role="group"
+              aria-label="Annotation tools"
+            >
+              <For each={['edit', ...annotationKinds] as const}>
+                {(choice) => (
+                  <button
+                    type="button"
+                    aria-pressed={
+                      annotationChoice() === choice ? 'true' : 'false'
+                    }
+                    onClick={() => {
+                      lastAnnotationChoice = choice;
+                      setAnnotationChoice(choice);
+                      setAnnotationMenu(false);
+                    }}
+                  >
+                    {choice === 'revision-cloud'
+                      ? 'Revision cloud'
+                      : choice.charAt(0).toUpperCase() + choice.slice(1)}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
         </nav>
       </div>
       <footer>

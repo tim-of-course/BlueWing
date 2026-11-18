@@ -47,6 +47,9 @@ export function changesCalculation(
   const payload = (call.payload ?? {}) as Record<string, unknown>;
   const id = payload.id as string;
   switch (call.name) {
+    case 'annotation.add':
+    case 'annotation.update':
+    case 'annotation.delete':
     case 'notes.write':
     case 'project.rename':
     case 'project.category.put':

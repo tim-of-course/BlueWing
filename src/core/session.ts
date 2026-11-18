@@ -21,6 +21,7 @@ import type {
 const collections = [
   'takeoffs',
   'sheets',
+  'annotations',
   'geometries',
   'groups',
   'recipes',
@@ -332,7 +333,13 @@ export class ProjectSession {
         calculationChanged = true;
         calculation = undefined;
       }
-      return executeCommandOnDraft(next, call, validateResult, readCalculation);
+      return executeCommandOnDraft(
+        next,
+        call,
+        validateResult,
+        readCalculation,
+        request.origin,
+      );
     };
     if (request.name === 'batch' || preview) {
       next = structuredClone(next);

@@ -205,7 +205,8 @@ const project = (): Project => ({
       owned: {},
     },
   },
-  formatVersion: 9,
+  annotations: {},
+  formatVersion: 10,
   allowSpecialOrderStuds: true,
   standardSizes: companySizes(),
   id: 'p',
@@ -289,7 +290,7 @@ void test('combined 3D sheet alignment persists and clears without format migrat
   database.close();
 });
 
-void test('PDF bytes and records roll back together; staged bytes survive a failed save', async () => {
+void test('PDF bytes and sheet annotations roll back together and survive retry', async () => {
   const { storage, transactions, setFailure, database } = fixture();
   await storage.open('test', true);
   const initial = project();
@@ -297,9 +298,22 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   const bytes = new Uint8Array([0, 255, 128]);
   storage.stageAsset({ id: 'pdf', name: 'plan.pdf', data: bytes });
   bytes[0] = 99;
-  const next = {
+  const next: Project = {
     ...initial,
     revision: 1,
+    annotations: {
+      a: {
+        id: 'a',
+        kind: 'freehand',
+        sheetId: 's',
+        points: [
+          { x: 2, y: 3 },
+          { x: 5, y: 9 },
+        ],
+        author: 'user',
+        createdAt: '2026-11-18T00:00:00.000Z',
+      },
+    },
     sheets: {
       s: {
         id: 's',
@@ -317,6 +331,7 @@ void test('PDF bytes and records roll back together; staged bytes survive a fail
   await assert.rejects(storage.readAsset('pdf'), /Missing/);
   setFailure(false);
   await storage.save(initial, next);
+  assert.deepEqual((await storage.load()).annotations, next.annotations);
   assert.deepEqual(
     await storage.readAsset('pdf'),
     new Uint8Array([0, 255, 128]),
@@ -331,7 +346,7 @@ void test('assembly fields save atomically and survive reopen', async () => {
   await storage.open('assemblies', true);
   const initial = project();
   await storage.initialize(initial);
-  assert.equal((await storage.load()).formatVersion, 9);
+  assert.equal((await storage.load()).formatVersion, 10);
   const next: Project = {
     ...initial,
     revision: 1,

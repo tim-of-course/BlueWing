@@ -27,6 +27,7 @@ export interface ProjectStorage extends PersistencePort {
 export const collections = [
   'takeoffs',
   'sheets',
+  'annotations',
   'geometries',
   'groups',
   'recipes',

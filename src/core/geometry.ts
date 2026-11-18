@@ -19,7 +19,8 @@ export function createProject(
   standardSizes = companySizes(),
 ): Project {
   return {
-    formatVersion: 9,
+    formatVersion: 10,
+    annotations: {},
     allowSpecialOrderStuds: true,
     standardSizes: structuredClone(standardSizes),
     takeoffs: {

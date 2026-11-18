@@ -65,7 +65,7 @@ The 3D viewer uses Three.js with WebGL 2 for depth-correct rendering and selecti
 
 Use **Review** for source-linked snippets, geometry highlights, annotations, and review marks. Relevant dependency changes flag previously reviewed sources as changed. Generation shares a 50,000-piece/surface budget and reports incomplete results when exhausted. The 3D viewer displays all generated objects matching its filters; CSV retains all generated pieces regardless of scene filters or selection.
 
-Only project format 9 is supported. Bluewing is pre-alpha; incompatible projects must be recreated, with no backward compatibility or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 8, which adds immutable saved-asset snapshots for fast PDF reads. Rebuild the native binaries when updating from an older checkout.
+Only project format 10 is supported. Bluewing is pre-alpha; incompatible projects must be recreated, with no backward compatibility or migration paths. The global library also starts fresh with the current catalog. `project.backup` remains an explicit recovery-copy command. Current web releases require native bridge 8, which adds immutable saved-asset snapshots for fast PDF reads. Rebuild the native binaries when updating from an older checkout.
 
 The CLI operates the running desktop app:
 
@@ -169,7 +169,7 @@ Edit the vector master at [`assets/brand/bluewing.svg`](assets/brand/bluewing.sv
 
 ## Development
 
-Named independent Main, phase and change-order takeoffs use project format 9. Recreate older development projects. See [takeoff workflows and CLI/handoff contracts](docs/named-takeoffs.md).
+Named independent Main, phase and change-order takeoffs use project format 10. Recreate older development projects. See [takeoff workflows and CLI/handoff contracts](docs/named-takeoffs.md).
 
 The [Solid 2 repo skill](.agents/skills/solidjs-2/SKILL.md) covers RC-specific APIs and diagnostics. Solid is pinned to `2.0.0-rc.8` with its compatible compiler, renderer, diagnostics, and Vite integration. Keep `bun.lock` and `src-tauri/Cargo.lock` committed. Upgrade the Solid package set deliberately.
 

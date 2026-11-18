@@ -184,6 +184,7 @@ export function createWorkspace(
     null,
     { name: 'workspace.drawingGroup' },
   );
+  const [annotationsVisible, setAnnotationsVisible] = createSignal(true);
   const [visibility, setVisibility] = createSignal<DrawingVisibility>(
     { hiddenSheets: [], hiddenGroups: {} },
     { name: 'workspace.drawingVisibility' },
@@ -374,6 +375,7 @@ export function createWorkspace(
       setProject(current);
       if (publishedId !== (current?.id ?? null) || switchedTakeoff) {
         resetHistory();
+        setAnnotationsVisible(app.annotationsVisible);
         setVisibility(readVisibility(current?.id ?? null));
         let savedCategories: CategoryFilter;
         try {
@@ -687,6 +689,11 @@ export function createWorkspace(
     visibleCategoryTags: visibleTags,
     categoryFilter,
     setCategoryFilter,
+    annotationsVisible,
+    setAnnotationsVisible(visible) {
+      app.annotationsVisible = visible;
+      setAnnotationsVisible(visible);
+    },
     isSheetVisible: (sheetId) => !visibility().hiddenSheets.includes(sheetId),
     setSheetVisible,
     isGroupVisible: (groupId, sheetId) =>
