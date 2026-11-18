@@ -43,7 +43,7 @@ A failed child is identified by its zero-based `commands` index and command name
 
 Geometry points use unzoomed, rotated PDF viewport coordinates: origin at the top left, positive x rightward, positive y downward. Import stores the original PDF-to-page transform. Calibration changes physical measurements, never the authored points. `sheet.calibrate` accepts two page points and a known distance in `ft` or `in`.
 
-Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ "id": "SHEET_ID", "paper": { "value": 0.25, "unit": "in" }, "real": { "value": 1, "unit": "ft" } }` for 1/4″ = 1′-0″. Each distance supports `ft` or `in`. Both scale commands save through the same session and support Undo.
+Prefer `sheet.scale` when the sheet states its printed scale. Its payload is `{ "id": "SHEET_ID", "paper": { "value": 0.25, "unit": "in" }, "real": { "value": 1, "unit": "ft" } }` for 1/4″ = 1′-0″. Each distance supports `ft` or `in`. Both commands store `calibration.feetPerUnit`, the real length in decimal feet of one page point, and support Undo.
 
 `sheet.render` writes a PNG and returns its sheet ID, revision, pixel dimensions, page bounds, `pageToPixel`, and `pixelToPage` transforms. Supply `sheetId`, an output `path`, and optionally `maxDimension` (capped at 4096), `mode` (`plan`, `takeoff`, or `combined`), and page-coordinate `bounds`. It shares the takeoff painter with the drawing canvas. Use the returned inverse transform when turning an observed pixel position into a geometry edit.
 
@@ -178,7 +178,7 @@ The structured Construction and Review panels use the same commands below. Consu
 | `review.mark`, `review.inspect`                   | Store review status and inspect effective status, unreviewed sources, and snippets.                                                                                                                |
 | `project.backup`                                  | Create a recovery copy of the open desktop project, optionally at `path`; returns the saved path and never overwrites an existing file.                                                            |
 
-Construction physical lengths and world positions use feet, areas use square feet, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Recipe inputs still use their declared units.
+Construction physical lengths and world positions use decimal feet, areas use square feet, and rotations use radians. World Z points upward. Geometry, snippet bounds/annotation points, and placement `pageOrigin` use page coordinates. A placement's `worldOffset` and rotation align calibrated sheets. Numeric recipe inputs and outputs use their declared units (`ft`, `in`, `ft2`, `ea` or `scalar`). Piece schedules return decimal feet in `cutLength_ft` and `stockLength_ft`.
 
 `construction.render` uses the same Three.js renderer as the interactive 3D view and Wingman. Its payload supports:
 
@@ -202,8 +202,8 @@ Match points are corresponding source and reference **page coordinates**, in the
 | `geometryIds`, `levelId`, `materialId`, `role` | Filter the displayed construction. These never change calculations or schedules.                                                                           |
 | `view`                                         | `isometric`, `top`, `front`, `back`, `left`, or `right`. Defaults to isometric.                                                                            |
 | `azimuth`, `elevation`                         | Explicit camera angles in radians, instead of a named `view`. Elevation must be between −π/2 and π/2. Supplying both approaches is an error.               |
-| `target`                                       | Camera focus point `{ "x": 0, "y": 0, "z": 0 }` in world feet. Defaults to the filtered model's centre.                                                  |
-| `span`                                         | World span in feet across the shorter image axis at zoom 1. Defaults to fitting the filtered model.                                                      |
+| `target`                                       | Camera focus point `{ "x": 0, "y": 0, "z": 0 }` in world feet. Defaults to the filtered model's centre.                                                    |
+| `span`                                         | World span in feet across the shorter image axis at zoom 1. Defaults to fitting the filtered model.                                                        |
 | `zoom`                                         | Magnification from 0.01 to 10000, default 1. Larger values move closer without changing the target.                                                        |
 | `displayMode`                                  | `solid` (default) respects depth for all materials; `framing` hides finish and tile surfaces; `xray` shows finish outlines through framing.                |
 | `caption`                                      | Optional user-facing description of the view published to Wingman.                                                                                         |

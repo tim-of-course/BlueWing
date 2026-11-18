@@ -29,7 +29,7 @@ Each row contains:
 
 EstiMaker imports supplied descriptions and numeric quantities. It does not judge guesses, calculation completeness, model coverage or fractional footage, and does not infer rows from diagnostics. Its normal numeric rounding applies. No extra preview, approval or unresolved-item workflow is required.
 
-- Purchased lengths convert to LF and areas to SF: 1 ft = 0.3048 m, 1 SF = 0.09290304 square metres.
+- Purchased lengths are reported in LF and areas in SF.
 - Sized pieces use purchased count times explicit valid stock length, or valid cut length when no stock exists. Example: `Tee - 2ft (75pc)`, quantity 150 LF. Structured count/length remain available.
 - Intentional count-only material is a normal row: `Door Frames (count)`, quantity 75, unit count.
 - Known material lacking required physical input/calibration or piece dimension is prepared by Bluewing as `5/8 Gyp (missing quantity)`, actual quantity **0**, unit SF. EstiMaker does not infer that zero or maintain an unresolved state.

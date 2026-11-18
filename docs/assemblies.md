@@ -78,7 +78,7 @@ The catalog contains 29 starters, including 17 new modeled options. Existing exp
 
 ## Standalone material layouts
 
-`materialTemplate` has three kinds. They emit the same material records used by walls and ceilings; there is no separate visualization formula. All physical settings use metres or square metres internally, with radians for rotation. The desktop editor displays feet/metres and degrees.
+`materialTemplate` has three kinds. They emit the same material records used by walls and ceilings; there is no separate visualization formula. All physical settings use feet or square feet internally, with radians for rotation. The desktop editor shows lengths in feet and inches and angles in degrees.
 
 - `path-surface`: a path defines the actual horizontal width and direction. `elevation` is the bottom, `height` must be entered before quantities resolve, and `offset` moves the back face left of the directed world-space trace. Thickness extends from that face; layers multiply both installed area and thickness. Wall openings on the trace apply automatically. The surface can also have local `openings` with `distance`, `width`, `sill` above the surface bottom, and `height`. Overlapping rectangles remove their union. A local opening beyond the trace length raises a diagnostic.
 - `path-members`: each component produces a member along each path segment. `elevation` and optional `endElevation` define endpoint centrelines, interpolated along plan length. Component vertical/face offsets place the section. End extensions follow the true 3D axis at the outer path ends. Internal bends create separate pieces without automatic joint details. `sectionRotation` rotates the rectangular section about its member axis.
@@ -113,9 +113,9 @@ A wall assembly's `wallTemplate` supplies dimensions, member specifications, fin
 
 `wall.fromAssembly` applies a live project definition using `assemblyId`, `geometryId`, `id`, and optional local `height`. `ceiling.fromAssembly` does the same for an area trace. Reapplying a wall preserves its level, top profile, conditions, and openings; an explicit height removes the old top profile. `wall.put`/`ceiling.put` create a local definition and application for a new item, or record the changed local settings for an existing application. `wall.reset`/`ceiling.reset` clear per-trace material overrides so inherited settings apply again.
 
-Construction lengths use metres, areas use square metres, and rotations use radians. World Z points upward. Drawing coordinates and placement `pageOrigin` remain in page coordinates. Calibration, placement `worldOffset`, and rotation align sheets. Wall base elevation plus level elevation locate the wall vertically; sheet placement may add a world Z offset.
+Construction lengths use feet, areas use square feet, and rotations use radians. World Z points upward. Drawing coordinates and placement `pageOrigin` remain in page coordinates. Calibration, placement `worldOffset`, and rotation align sheets. Wall base elevation plus level elevation locate the wall vertically; sheet placement may add a world Z offset.
 
-To price high drywall separately on one face of a 10 ft long, 14 ft high wall, give the lower finish the material ID `board-A` and set `height` to 3.048 m (10 ft). Give the upper finish the material ID `board-B-above-10ft`, set `startHeight` to 3.048 m, and leave `height` blank so it follows the wall top. One layer gives two installed lines of 100 SF and 40 SF. A 3 × 7 ft door at the base reduces the lower line to 79 SF and leaves the upper line at 40 SF.
+To price high drywall separately on one face of a 10 ft long, 14 ft high wall, give the lower finish the material ID `board-A` and set `height` to 10 ft. Give the upper finish the material ID `board-B-above-10ft`, set `startHeight` to 10 ft, and leave `height` blank so it follows the wall top. One layer gives two installed lines of 100 SF and 40 SF. A 3 × 7 ft door at the base reduces the lower line to 79 SF and leaves the upper line at 40 SF.
 
 Stud and jamb cuts use the local flat, sloped, or stepped top, less entered top/bottom allowances. Channel flange envelopes do not impose a cut deduction. End/corner/junction conditions replace regular studs at their station; shared conditions name `ownerWallId`. Multiple members require explicit offsets. The app does not infer connection design from intersecting traces.
 
@@ -135,7 +135,7 @@ A flat component system holds `components: [{id, assembly, bindings}]`. Each com
 
 ## CLI and storage
 
-`quantities.inspect` and quantity JSON list each stock order once in `outputs`. `baseAmount` counts installed cuts, `installedByAssignment` gives installed count and length for each assignment, and `sources` identifies individual pieces. `packedCount`, `wastePercent`, `adjustedAmount`, `purchasedAmount`, `stockLength` and `purchasedLength` describe the order. Quantity CSV carries the same stock figures and installed assignment breakdown. Piece schedules and their exports distinguish installed rows from `stock-purchase` rows. Construction JSON lists `purchases`, and each construction CSV schedule includes one row per stock order. Construction and piece schedule lengths are metres. The quantity report and EstiMaker give purchased footage in feet.
+`quantities.inspect` and quantity JSON list each stock order once in `outputs`. `baseAmount` counts installed cuts, `installedByAssignment` gives installed count and length for each assignment, and `sources` identifies individual pieces. `packedCount`, `wastePercent`, `adjustedAmount`, `purchasedAmount`, `stockLength` and `purchasedLength` describe the order. Quantity CSV carries the same stock figures and installed assignment breakdown. Piece schedules and their exports distinguish installed rows from `stock-purchase` rows. Construction JSON lists `purchases`, and each construction CSV schedule includes one row per stock order. Construction and piece schedule lengths are feet. The quantity report and EstiMaker give purchased footage in feet.
 
 Use `bluewing help <command>` or `commands.list` for complete schemas. Commands use the usual `payload` envelope; project mutations also require the observed `projectId` and `expectedRevision`.
 
@@ -157,7 +157,7 @@ Use `bluewing help <command>` or `commands.list` for complete schemas. Commands 
 
 A copied junction keeps its shared members when the owning wall application is also on the duplicated trace. When another trace owns the members, the copy leaves that junction behind and frames the station as a free-standing wall would: an ordinary stud at a wall end, or the regular spacing elsewhere. The original owner continues to supply the original's members.
 
-Project format 6 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 2 in `data/assemblies-v2.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 7 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
+Project format 7 is the only supported format. Older development takeoffs must be recreated; there is no migration. The global catalog uses version 3 in `data/assemblies-v3.json` on desktop and a separate browser namespace. It starts fresh without reading earlier catalog files. `project.backup` creates an explicitly requested copy without overwriting another file. Native bridge 7 supplies generic backups, bounded file/BLOB transfer, and Wingman attachment export.
 
 ## Review and verification
 

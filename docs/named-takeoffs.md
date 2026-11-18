@@ -1,6 +1,6 @@
 # Named independent takeoffs
 
-A format-6 project contains one automatically created Main (`main`), plus independently named phases and change orders. Main can be renamed but cannot be deleted. A change order records its Main reference; it contains only its own work. New phases and change orders start empty. No rollups, replacement snapshots, merging, accounting, or migration are implemented. Format-4/5 development projects must be recreated. No compatibility/migration code is provided. PR #3 merged first with format 5; this PR therefore uses format 6. Recreate incompatible development files; no adapter is provided.
+A format-7 project contains one automatically created Main (`main`), plus independently named phases and change orders. Main can be renamed but cannot be deleted. A change order records its Main reference; it contains only its own work. New phases and change orders start empty. No rollups, replacement snapshots, merging, accounting, or migration are implemented. Recreate older development projects in the current format.
 
 PDF assets, page identity/metadata, calibration and source-pixel caches are shared. Editing a page's scale updates derived measurements in every takeoff; geometry and applied definitions remain independent. Geometry, group memberships, assignments, applied definitions, construction context and review belong to one takeoff. Existing record collections hold the entities; takeoff records hold ownership ID lists, local context, and copy provenance. Unlisted records belong to Main. One project revision, transaction queue, undo/redo history and incremental record persistence serve all takeoffs. Undo can therefore affect a different takeoff from the one currently displayed.
 
@@ -57,6 +57,6 @@ After integration with main at `4ff0273`, Windows verification passed:
 - All 20 focused development workflows across Chromium/Firefox: takeoffs, deduction pixels, categories, scratchpad, handoff viewer and page alignment. Page alignment initially exposed unstable material/role arrays; shallow equality fixed those diagnostics and both browser reruns passed.
 - All 46 production browser tests across Chromium/Firefox, with one worker.
 
-Core integration regressions confirm that project notes/category palettes remain shared when edited from another takeoff, and category projection preserves deduction direction and color. Format 6 is reflected in code, fixtures, documentation and release declarations; older formats are rejected without migration.
+Core integration regressions confirm that project notes/category palettes remain shared when edited from another takeoff, and category projection preserves deduction direction and color. Format 7 is reflected in code, fixtures, documentation and release declarations; older formats are rejected without migration.
 
 An additional existing Wingman live-3D development scenario still fails in both browsers: main's fixture performs middle-drag (pan) but asserts that zoom changed. That gesture/assertion mismatch is unchanged by this integration and is not counted as a pass. Native runtime and other operating systems were not tested.

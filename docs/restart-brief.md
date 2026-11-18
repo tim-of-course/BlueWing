@@ -61,13 +61,17 @@ Use stable page coordinates independent of zoom, pixel density, and physical cal
 
 The geometry module answers geometric questions: segment length in page units, polygon area, hit tests, intersections needed by current tools, and valid edits. It does not decide construction quantities. Start with simple valid polygons; holes and shared junctions can become explicit additions when required.
 
+## Units
+
+Bluewing is imperial only. Store physical lengths in decimal feet and areas in square feet. Display lengths in feet and inches to the nearest 1/16 inch. Bare input means feet. Keep full precision for calculations and saved data.
+
 ## Measurement: convert drawing into physical facts
 
 Measurement combines geometry with sheet calibration. It supplies typed length, area, perimeter, and count metrics to both the UI and calculations. Keep units explicit, convert through a consistent internal convention, and round for display or a specified calculation rule rather than during each geometric step.
 
 Changing calibration changes derived measurements, not stored points or object IDs. Uncalibrated geometry is still drawable and editable. Counts remain valid; physical lengths and areas are unavailable until calibrated. An unavailable measurement is not zero.
 
-Sheet scale setup defaults to the printed scale: architectural/metric presets, then a custom paper-to-real ratio. Two-point measurement is the secondary choice for a known dimension. Opening setup never changes calibration; apply the selected scale explicitly. Reopening shows the existing scale, including custom or measured values. Ratio conversion uses the imported PDF's paper size, independent of canvas zoom.
+Sheet scale setup defaults to the printed scale: architectural presets, then a custom paper-to-real ratio. Two-point measurement is the secondary choice for a known dimension. Opening setup never changes calibration; apply the selected scale explicitly. Reopening shows the existing scale, including custom or measured values. Ratio conversion uses the imported PDF's paper size, independent of canvas zoom.
 
 A later scale-region implementation can extend measurement without changing geometry ownership. That boundary is the preparation needed now; region partitioning and precedence rules can wait.
 
@@ -121,7 +125,7 @@ Store the current project, not an event-sourced reconstruction of every past ent
 
 SQLite is a reasonable proposed container for current records and imported source assets. Keep SQL mapping and project-format validation in TypeScript; Rust executes generic, bounded transactions on an opened project connection. Ordinary edits update affected records without copying PDFs or all history. Use one writable application session per project in the MVP. Opening the same project in another writer is outside that scope.
 
-The implementation uses a `.bluewing` SQLite container. Only project format 6 is supported. Bluewing is pre-alpha and changes may be breaking; incompatible development projects must be recreated. Backward compatibility and migrations are deferred until production use is declared. `project.backup` creates an explicitly requested recovery copy of a current project. Generic native bridge 8 supplies backups, bounded file/BLOB transfers, immutable BLOB-to-tempfile snapshots for fast PDF reads, and local image exports for Wingman messages. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
+The implementation uses a `.bluewing` SQLite container. Only project format 7 is supported. Bluewing is pre-alpha and changes may be breaking; incompatible development projects must be recreated. Backward compatibility and migrations are deferred until production use is declared. `project.backup` creates an explicitly requested recovery copy of a current project. Generic native bridge 8 supplies backups, bounded file/BLOB transfers, immutable BLOB-to-tempfile snapshots for fast PDF reads, and local image exports for Wingman messages. TypeScript maps project metadata, individual records, and separately stored PDF assets. Native file locking enforces one writer. Browser development uses IndexedDB through the same persistence interface; the desktop file remains the deliverable project format.
 
 The device-local global library uses its own current format and namespace. This development reset starts it with the new built-in catalog rather than upgrading old definitions. Recovery during development comes from useful Git checkpoints; it does not require preserving obsolete takeoff data.
 
@@ -221,7 +225,7 @@ Keep the project in Git and save useful working checkpoints after the relevant c
 
 ## Detailed construction and review
 
-Construction dimensions use metres and rotations use radians, with world Z upward. Drawing points, snippet bounds/annotations, and sheet placement `pageOrigin` stay in page coordinates; calibrated sheet placement maps them into the model. Exact stud/jamb cuts use the local wall top less explicit top and bottom allowances. Track channel flanges are display envelopes and impose no automatic cut deductions. Header component cuts use rough opening width plus entered end extensions; vertical and face offsets and section rotation position each component. Jamb centres sit outside the rough opening width by half their rotated section width, plus explicit offsets.
+Construction dimensions use feet and rotations use radians, with world Z upward. Drawing points, snippet bounds/annotations, and sheet placement `pageOrigin` stay in page coordinates; calibrated sheet placement maps them into the model. Exact stud/jamb cuts use the local wall top less explicit top and bottom allowances. Track channel flanges are display envelopes and impose no automatic cut deductions. Header component cuts use rough opening width plus entered end extensions; vertical and face offsets and section rotation position each component. Jamb centres sit outside the rough opening width by half their rotated section width, plus explicit offsets.
 
 Shared conditions name their owning wall and multiple members need explicit positions. Sizes, gauges, connections, and engineering come from the project. Rectangular section envelopes support placement and quantities, not metal-profile fabrication. Bent or stepped track joints still need project joint/end-cut details; diagnostics keep schedules incomplete. Ceiling surfaces always contribute their measured area. ACT grids use positioned members clipped to the boundary; factor estimates remain unmodeled. A located wall opening automatically deducts its geometric intersection from every modeled finish face and cavity insulation surface on the same trace, so the drawn surface and reported area agree.
 
