@@ -10,9 +10,13 @@ Choose **Copy AI prompt**, then **Wingman + chat** to talk in either place, or *
 
 Enter sends a chat message; Shift+Enter adds a new line. Confirming composed text does not send it. Messages are saved here. Your AI sees them on its next Bluewing command. Send your draft or clear its text and remove its screenshots before closing or switching projects. You can keep a draft while drawing, navigating, or swapping views. If copying a prompt is unavailable, select and copy the displayed prompt instead.
 
-Wingman sits in the drawing workspace's lower-right corner, keeping inspector and sheet controls accessible. Expand or collapse the preview independently of Chat. Successful CLI `sheet.render`, `snippet.render`, and `construction.render` calls publish their view quietly. Optional `caption` text describes the view; otherwise the app uses the sheet name or a 3D label. `wingman.flash` expands and briefly glows the preview, including a nonanimated indication when reduced motion is enabled.
+Wingman opens at the far right, beside the drawing tools. Resize its inner edge or use the bottom control to collapse, peek, or pin it. When space is tight, Bluewing temporarily collapses the least recently opened pinned panels to leave about 600 px for drawing. They can peek over the workspace and return to their saved widths when the window grows. Wingman’s strip shows unread replies. Your transcript and composer stay available beside Quantities and the Assembly, Construction, and Review editors.
 
-Click the preview to swap with the main workspace. Clicking again restores the user's sheet, camera, selection, group context, visibility, workspace mode, and 3D filters. Subsequent agent renders while swapped update the agent view without replacing the saved return view. Draft drawing or editor changes disable swapping. An agent render that arrives during an edit or an in-flight view update remains available through **Show latest agent view**. Preview content follows accepted project edits. It is not the original exported PNG. A deleted source is shown as unavailable, and capped 3D previews report omissions.
+While the agent works, expand **Looked at**, **Read**, **Changed**, or **Rendered** to inspect individual commands. Failed attempts carry their error. Changed items link to the workspace when their sources still exist. The latest render appears beneath the categories. A saved agent reply folds the turn into **Worked for** with its elapsed time. A user follow-up keeps the turn open. Explicit message reads count as activity. Waiting and its renewals use the waiting indicator.
+
+Successful CLI sheet, snippet, and 3D renders log their saved positions. A caption describes the view when provided. `wingman.flash` reveals and briefly highlights the sidebar.
+
+Click a thumbnail to open its position, including one on another takeoff. **Return to your view** restores the original takeoff, sheet, camera, selection, group context, visibility, workspace mode, and 3D filters. Opening another entry keeps that return point. Following live renders on the current takeoff preserves it as well. Draft drawing or editor changes disable navigation. **Show latest agent view** catches up after an edit or in-flight view update. Thumbnails redraw from current accepted project data when visible. Deleted sources remain in history as unavailable.
 
 Wingman retains the two most recent plan backgrounds across swaps and collapse/reopen. These contain source pixels only; geometry, highlights, and annotations redraw from current state. Prepared page images supply crops when their resolution meets the preview's sampling needs, including images read from the disposable disk cache. Close-up details render directly from the PDF. Switching or closing projects releases retained backgrounds. The main workspace displays a full image already in memory immediately, and transient PDF snapshots skip cache PNG encoding.
 
@@ -20,7 +24,7 @@ Wingman retains the two most recent plan backgrounds across swaps and collapse/r
 
 CLI messages are delivered as text with image paths, including on application errors. Message reads do not remove history. Read top-level `messages` on every result in ID order, then pass the highest processed ID for that project as the envelope’s `messagesAfter`. On connection, earlier messages appear as `messageHistory`. The agent reads them for context and asks about requests whose status is unclear. Chat saves separately from estimate revision and Undo.
 
-Conversations and screenshot files are local application data keyed by project identity. They survive reopening on the same device but are not included when copying the `.bluewing` file to another computer. No model, provider, external message service, or agent runtime is embedded. See [CLI examples and cursor rules](cli.md#wingman-messages-and-presentation).
+Activity is stored separately from messages and screenshots, with up to 500 entries and 2 MiB per project. Older completed turns are evicted first. Conversations and screenshot files are local application data keyed by project identity. They survive reopening on the same device but are not included when copying the `.bluewing` file to another computer. No model, provider, external message service, or agent runtime is embedded. See [CLI examples and cursor rules](cli.md#wingman-messages-and-presentation).
 
 Pause blocks new non-messaging CLI actions and rejects queued actions that have not started. A running atomic action can finish. Resume CLI wakes a pending message wait even if the user sends no text. Rejected actions require a new request. Desktop editing and messaging remain available.
 
@@ -28,7 +32,7 @@ Pause blocks new non-messaging CLI actions and rejects queued actions that have 
 
 The activity line shows **No AI connected yet** until the first CLI request reaches the open project. It shows **AI is working** during a non-messaging command. Between requests it shows how many seconds or minutes have passed since the last contact, including a rejected request. Closing the project clears this history.
 
-Incoming replies follow the bottom of an open chat. Scroll up to keep your place while reading. Sending your own message returns the chat to the bottom. When you reopen a project, the Chat badge counts only new AI replies.
+Incoming replies follow the bottom of an open chat. Scroll up to keep your place while reading. Sending your own message returns the chat to the bottom. When you reopen a project, the collapsed strip counts only new AI replies.
 
 ## Plan preview verification, October 16, 2026
 

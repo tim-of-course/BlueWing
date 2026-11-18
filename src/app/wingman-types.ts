@@ -44,6 +44,42 @@ export interface WingmanVisual {
   view: WingmanView;
   caption?: string;
 }
+export type ActivityCategory = 'Looked at' | 'Read' | 'Changed' | 'Rendered';
+export const constructionTargets = {
+  wall: 'walls',
+  opening: 'openings',
+  header: 'headers',
+  ceiling: 'ceilings',
+  level: 'levels',
+  placement: 'placements',
+} as const;
+export interface ActivityTarget {
+  kind:
+    | 'sheet'
+    | 'geometry'
+    | 'group'
+    | 'takeoff'
+    | 'assembly'
+    | 'snippet'
+    | keyof typeof constructionTargets;
+  id: string;
+  label: string;
+}
+export interface WingmanActivity {
+  id: string;
+  startedAt: number;
+  turnStartedAt?: number;
+  afterMessageId: number;
+  command: string;
+  category: ActivityCategory;
+  description: string;
+  outcome: 'working' | 'succeeded' | 'failed';
+  takeoffId?: string;
+  takeoffName?: string;
+  visual?: WingmanVisual;
+  targets?: ActivityTarget[];
+}
+
 export interface WorkspaceViewSnapshot {
   projectId: string;
   takeoffId: string;

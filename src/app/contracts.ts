@@ -42,6 +42,8 @@ export interface WorkspaceContext {
 }
 export interface WorkspaceController {
   takeoffSources(): Project[];
+  projectForTakeoff(id: string): Project | null;
+  constructionForTakeoff(id: string): ConstructionSnapshot | null;
   selectTakeoff(id: string): void;
   preparationStatus: Accessor<PreparationStatus>;
   setPreparationPaused(paused: boolean): void;

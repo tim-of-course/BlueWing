@@ -20,7 +20,7 @@ interface CliResult<T = unknown> {
     error?: { code: string };
   };
 }
-async function mutate(page: Page, name: string, payload: unknown) {
+export async function mutate(page: Page, name: string, payload: unknown) {
   const current = (await cli(page, 'project.inspect')).response;
   const result = await page.evaluate(
     async ({ name, request }) => {
@@ -167,8 +167,6 @@ export async function startWingmanProject(page: Page, harness = false) {
   ).toHaveAttribute('aria-busy', 'false');
 }
 export async function sendText(page: Page, text: string) {
-  const chat = page.getByRole('button', { name: 'Wingman chat', exact: true });
-  if ((await chat.getAttribute('aria-expanded')) !== 'true') await chat.click();
   await page.getByLabel('Message', { exact: true }).fill(text);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByRole('log', { name: 'Messages' })).toContainText(text);
@@ -176,8 +174,6 @@ export async function sendText(page: Page, text: string) {
 export async function activityWorkflow(page: Page) {
   const noContact = page.getByText('No AI connected yet', { exact: true });
   const working = page.getByText('AI is working', { exact: true });
-  await expect(noContact).toBeVisible();
-  await page.getByRole('button', { name: 'Wingman chat' }).click();
   await expect(noContact).toBeVisible();
   const start = Date.now() + 60_000;
   await page.clock.setFixedTime(start);
@@ -222,7 +218,6 @@ export async function activityWorkflow(page: Page) {
 }
 
 export async function keyboardWorkflow(page: Page) {
-  await page.getByRole('button', { name: 'Wingman chat', exact: true }).click();
   const input = page.getByLabel('Message', { exact: true });
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log).toHaveText(
@@ -254,28 +249,29 @@ export async function keyboardWorkflow(page: Page) {
 }
 
 export async function unreadWorkflow(page: Page) {
-  const chat = page.getByRole('button', { name: 'Wingman chat' });
+  const chat = page.getByRole('button', { name: /^(Pin|Collapse) Wingman/ });
+  await chat.click();
+  await page.mouse.move(0, 0);
   expect(
     (await cli(page, 'messages.send', { text: 'Previous reply' })).exitCode,
   ).toBe(0);
-  await expect(chat).toHaveText('Chat (1)');
+  await expect(chat).toHaveAccessibleName('Pin Wingman (1 unread)');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
-  await expect(chat).toHaveText('Chat');
+  await expect(chat).toHaveAccessibleName('Pin Wingman');
   expect(
     (await cli(page, 'messages.send', { text: 'New reply' })).exitCode,
   ).toBe(0);
-  await expect(chat).toHaveText('Chat (1)');
+  await expect(chat).toHaveAccessibleName('Pin Wingman (1 unread)');
   await chat.click();
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log).toContainText('Previous reply');
   await expect(log).toContainText('New reply');
   await chat.click();
-  await expect(chat).toHaveText('Chat');
+  await expect(chat).toHaveAccessibleName('Pin Wingman');
 }
 
 export async function transcriptWorkflow(page: Page) {
-  await page.getByRole('button', { name: 'Wingman chat' }).click();
   const log = page.getByRole('log', { name: 'Messages' });
   const reply = async (text: string) => {
     expect((await cli(page, 'messages.send', { text })).exitCode).toBe(0);
@@ -425,8 +421,7 @@ export async function draftWorkflow(page: Page) {
   await expect(
     page.getByRole('button', { name: 'Wingman fixture', exact: true }),
   ).toBeVisible();
-  const chat = page.getByRole('button', { name: 'Wingman chat' });
-  await chat.click();
+  const chat = page.getByRole('button', { name: /^(Pin|Collapse) Wingman/ });
   const input = page.getByLabel('Message', { exact: true });
   await input.fill('Keep this correction');
   await chat.click();
@@ -454,10 +449,9 @@ export async function draftWorkflow(page: Page) {
       })
     ).exitCode,
   ).toBe(0);
-  await page.getByRole('button', { name: 'Expand Wingman view' }).click();
+  await chat.click();
   await page.getByRole('button', { name: 'Swap to agent view' }).click();
   await page.getByRole('button', { name: 'Return to your view' }).click();
-  await chat.click();
   await expect(input).toHaveValue('Keep this correction');
   await input.fill('');
   await recent.selectOption({ label: 'Second job' });
@@ -490,7 +484,7 @@ export async function viewWorkflow(page: Page) {
     ).exitCode,
   ).toBe(0);
   const quiet = await inspect(page);
-  expect(quiet.data.expanded).toBe(false);
+  expect(quiet.data.expanded).toBe(true);
   expect(quiet.data.main).toEqual(before.data.main);
   expect(quiet.data.agent?.view).toMatchObject({
     kind: 'plan',
@@ -629,6 +623,22 @@ export async function viewWorkflow(page: Page) {
   expect(unseen.response.data.path).toBeTruthy();
   expect(unseen.response.data.notShownToUser).toContain('different takeoff');
   expect((await inspect(page)).data.agent).toEqual(agentView);
+  expect(unseen.response.data.notShownToUser).toMatch(
+    /Elsewhere.*Main.*Rendered/,
+  );
+  const original = (await inspect(page)).data.main;
+  await page.getByRole('button', { name: 'Swap to agent view' }).click();
+  await expect(page.getByLabel('Active takeoff')).toHaveValue('elsewhere');
+  await page.getByRole('button', { name: /^Rendered/ }).click();
+  await page
+    .getByRole('button', { name: 'Swap to agent view' })
+    .filter({ hasText: 'Check this detail' })
+    .click();
+  await expect(page.getByLabel('Active takeoff')).toHaveValue('main');
+  await page.getByRole('button', { name: 'Return to your view' }).click();
+  await expect
+    .poll(async () => (await inspect(page)).data.main)
+    .toEqual(original);
 }
 export async function warmSwapWorkflow(page: Page) {
   const canvas = page.getByLabel('Drawing canvas', { exact: true });
@@ -651,7 +661,7 @@ export async function warmSwapWorkflow(page: Page) {
       })
     ).exitCode,
   ).toBe(0);
-  expect((await cli(page, 'performance.start')).exitCode).toBe(0);
+
   await cli(page, 'wingman.flash');
   const preview = page.getByRole('img', { name: 'Live workspace preview' });
   const ready = async () => {
@@ -679,12 +689,13 @@ export async function warmSwapWorkflow(page: Page) {
       };
     });
   await ready();
-  expect(await work()).toEqual({ regions: 1, pdf: 0 });
+  expect((await cli(page, 'performance.start')).exitCode).toBe(0);
+  expect(await work()).toEqual({ regions: 0, pdf: 0 });
   await page
     .getByRole('button', { name: 'Swap to agent view', exact: true })
     .click();
   await ready();
-  expect(await work()).toEqual({ regions: 2, pdf: 0 });
+  expect(await work()).toEqual({ regions: 0, pdf: 0 });
   await page
     .getByRole('button', { name: 'Return to your view', exact: true })
     .click();
@@ -703,12 +714,10 @@ export async function warmSwapWorkflow(page: Page) {
     await ready();
   }
   await page
-    .getByRole('button', { name: 'Collapse Wingman view', exact: true })
+    .getByRole('button', { name: 'Collapse Wingman', exact: true })
     .click();
   await expect(preview).toBeHidden();
-  await page
-    .getByRole('button', { name: 'Expand Wingman view', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Pin Wingman', exact: true }).click();
   await ready();
   expect(
     await preview.evaluate((element) =>
@@ -729,7 +738,7 @@ export async function warmSwapWorkflow(page: Page) {
       preview.evaluate((element) => (element as HTMLCanvasElement).toDataURL()),
     )
     .not.toBe(pixels);
-  expect(await work()).toEqual({ regions: 2, pdf: 0 });
+  expect(await work()).toEqual({ regions: 0, pdf: 0 });
   const after = (await inspect(page)).data.main;
   expect(after.context).toEqual(before.data.main.context);
   expect(after.plan?.sheetId).toBe(before.data.main.plan?.sheetId);
@@ -1404,8 +1413,6 @@ export async function captureWorkflow(page: Page) {
   ).toBeEnabled();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Open project', exact: true }).click();
-  const chat = page.getByRole('button', { name: 'Wingman chat', exact: true });
-  if ((await chat.getAttribute('aria-expanded')) !== 'true') await chat.click();
   const log = page.getByRole('log', { name: 'Messages' });
   await expect(log).toContainText('Screenshot review');
   await expect(log).toContainText('Two captured details');

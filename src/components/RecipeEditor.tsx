@@ -85,11 +85,13 @@ function newMaterialTemplate(kind: MaterialTemplate['kind']): MaterialTemplate {
   };
 }
 export default function RecipeEditor(props: {
+  initialId?: string | undefined;
   controller: WorkspaceController;
   onClose: () => void;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
 }) {
+  const initialId = untrack(() => props.initialId);
   const [draft, setDraft] = createSignal<Recipe | null>(null, {
     name: 'recipe.editorDraft',
   });
@@ -282,6 +284,8 @@ export default function RecipeEditor(props: {
       .finally(() => setSaving(false));
   };
   onSettled(() => {
+    const recipe = initialId && props.controller.project()?.recipes[initialId];
+    if (recipe) begin(recipe);
     void props.controller.refreshLibrary().catch(report);
   });
   const definitions = () =>

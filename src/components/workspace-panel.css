@@ -88,3 +88,29 @@
 .workspace-panel[data-resizing='true'] {
   user-select: none;
 }
+
+.workspace-panel[data-collapsed-strip] {
+  background: #161b24;
+}
+.workspace-panel[data-bottom-control] {
+  background: #161b24;
+  border-left: 1px solid #242c3b;
+  z-index: 25;
+}
+.workspace-panel[data-bottom-control] .workspace-panel-content {
+  padding: 0 0 40px;
+  overflow: hidden;
+}
+.workspace-panel[data-bottom-control] .workspace-panel-control {
+  top: auto;
+  bottom: 6px;
+}
+.panel-unread {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #71c5ff;
+}

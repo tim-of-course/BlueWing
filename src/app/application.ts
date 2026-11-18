@@ -59,7 +59,12 @@ import {
   type ConversationMode,
 } from './cli-guide';
 import { messagingStorage } from '../platform/messaging-storage';
-import type { WingmanPresentation, WingmanVisual } from './wingman-types';
+import { activityCategory, changedTargets } from './wingman-activity';
+import type {
+  WingmanActivity,
+  WingmanPresentation,
+  WingmanVisual,
+} from './wingman-types';
 import type { PlanSnippet } from '../core/review';
 import type { acquireConstructionSnapshot } from '../three/renderer';
 import { PerformanceRecorder } from '../performance/recorder';
@@ -79,6 +84,18 @@ export interface ApplicationResult {
   data: unknown;
   projectId: string | null;
   revision: number | null;
+}
+
+function isTakeoffScoped(request: ApplicationRequest) {
+  return (
+    !/^(project\.|takeoff\.(list|create|rename|delete|select)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
+      request.name,
+    ) ||
+    (request.name === 'sheet.put' &&
+      typeof request.payload === 'object' &&
+      request.payload !== null &&
+      'calibration' in request.payload)
+  );
 }
 
 export class Application {
@@ -185,13 +202,15 @@ export class Application {
   }
   /** Publish a CLI render to Wingman and tell the caller when it was not shown. */
   private shown(data: object, visual: WingmanVisual): object {
-    return this.presentation?.publish(visual) === false
-      ? {
-          ...data,
-          notShownToUser:
-            'The user is viewing a different takeoff, so this view did not appear in Wingman. The image file was still written.',
-        }
-      : data;
+    this.presentation?.publish(visual);
+    if (visual.takeoffId === this.activeTakeoffId) return data;
+    const takeoffs = this.session?.project.takeoffs;
+    const viewed = takeoffs?.[this.activeTakeoffId ?? '']?.name;
+    const rendered = takeoffs?.[visual.takeoffId]?.name;
+    return {
+      ...data,
+      notShownToUser: `You rendered ${rendered ?? visual.takeoffId}. The estimator is viewing a different takeoff (${viewed ?? 'unknown'}). The view is logged under Rendered in Wingman and can be opened there.`,
+    };
   }
   recordCliContact(): void {
     if (!this.session) return;
@@ -231,8 +250,108 @@ export class Application {
         'Project changed. The requested Wingman project is no longer open.',
       );
   }
-  dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
+  async dispatch(submitted: ApplicationRequest): Promise<ApplicationResult> {
     const request = structuredClone(submitted);
+    if (
+      request.origin !== 'cli' ||
+      ['messages.wait', 'messages.send'].includes(request.name)
+    )
+      return this.execute(request);
+    const definition = registry.find((entry) => entry.name === request.name);
+    const payload = (request.payload ?? {}) as Record<string, unknown>;
+    const category = activityCategory(request);
+    const editsTakeoff = [
+      'takeoff.create',
+      'takeoff.rename',
+      'takeoff.delete',
+    ].includes(request.name);
+    const context = () => {
+      const id =
+        editsTakeoff && typeof payload.id === 'string'
+          ? payload.id
+          : request.name.startsWith('wingman.')
+            ? this.activeTakeoffId
+            : isTakeoffScoped(request)
+              ? (request.takeoffId ?? this.cliTakeoffId)
+              : null;
+      const name = id && this.session?.takeoffName(id);
+      return id && name ? { takeoffId: id, takeoffName: name } : {};
+    };
+    const entry: WingmanActivity = {
+      id: crypto.randomUUID(),
+      startedAt: Date.now(),
+      afterMessageId: this.messaging.lastMessageId,
+      command: request.name,
+      category,
+      outcome: 'working',
+      description: (
+        [payload.caption, payload.name, payload.id].find(
+          (value): value is string => typeof value === 'string',
+        ) ??
+        definition?.description ??
+        request.name
+      ).slice(0, 240),
+      ...context(),
+    };
+    let finish = this.messaging.startActivity(entry);
+    let visual: WingmanVisual | undefined;
+    let result: ApplicationResult;
+    try {
+      result = await this.execute(request, (next) => {
+        visual = next;
+      });
+    } catch (error) {
+      await finish?.({
+        outcome: 'failed',
+        description: (error instanceof Error
+          ? error.message
+          : String(error)
+        ).slice(0, 480),
+        ...context(),
+      });
+      throw error;
+    }
+    // Opening a project establishes its conversation during execution.
+    if (!finish && result.projectId)
+      finish = this.messaging.startActivity({
+        ...entry,
+        afterMessageId: this.messaging.lastMessageId,
+      });
+    if (finish) {
+      const project =
+        category === 'Changed' &&
+        (!request.takeoffId || this.session?.takeoffName(request.takeoffId))
+          ? this.projectFor(request.takeoffId)
+          : null;
+      const targets = project
+        ? changedTargets(request, result.data, project)
+        : [];
+      const changedTakeoff = targets.find(
+        (target) => target.kind === 'takeoff',
+      );
+      const takeoff =
+        editsTakeoff && changedTakeoff
+          ? { id: changedTakeoff.id, name: changedTakeoff.label }
+          : result.takeoff;
+      await finish({
+        outcome: 'succeeded',
+        ...(takeoff
+          ? { takeoffId: takeoff.id, takeoffName: takeoff.name }
+          : {}),
+        ...(targets.length ? { targets } : {}),
+        ...(visual ? { visual } : {}),
+      });
+    }
+    return result;
+  }
+  private execute(
+    request: ApplicationRequest,
+    onVisual?: (visual: WingmanVisual) => void,
+  ): Promise<ApplicationResult> {
+    const shown = (data: object, visual: WingmanVisual) => {
+      onVisual?.(visual);
+      return this.shown(data, visual);
+    };
     if (
       request.name === 'messages.read' ||
       request.name === 'messages.send' ||
@@ -281,14 +400,7 @@ export class Application {
         (!definition.mutates || !request.name.startsWith('library.'))
       )
         this.check(request, definition.mutates && this.session !== null);
-      const scoped =
-        !/^(project\.|takeoff\.(list|create|rename|delete|select)$|sheet\.(put|delete|naming\.)|library\.|messages\.|performance\.|wingman\.|help$|connect$|commands\.list$|history\.|web\.)/.test(
-          request.name,
-        ) ||
-        (request.name === 'sheet.put' &&
-          typeof request.payload === 'object' &&
-          request.payload !== null &&
-          'calibration' in request.payload);
+      const scoped = isTakeoffScoped(request);
       if (scoped && this.session) {
         const root = this.session.project;
         const selected =
@@ -524,7 +636,7 @@ export class Application {
             );
             data = { path, snippetId: snippet.id, ...image.metadata };
             if (request.origin === 'cli')
-              data = this.shown(data as object, {
+              data = shown(data as object, {
                 projectId: project.id,
                 takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
@@ -714,7 +826,7 @@ export class Application {
               omittedObjects: scene.omitted,
             };
             if (request.origin === 'cli')
-              data = this.shown(data as object, {
+              data = shown(data as object, {
                 projectId: project.id,
                 takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,
@@ -878,7 +990,7 @@ export class Application {
             );
             data = { path, ...rendered.metadata };
             if (request.origin === 'cli')
-              data = this.shown(data as object, {
+              data = shown(data as object, {
                 projectId: project.id,
                 takeoffId: project.takeoffId ?? mainId(project),
                 revision: project.revision,

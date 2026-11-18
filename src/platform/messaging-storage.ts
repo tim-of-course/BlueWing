@@ -1,14 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Message, MessagingStorage } from '../app/messaging';
 
-function browserMessages(
+import type { WingmanActivity } from '../app/wingman-types';
+
+function browserRecord<T>(
+  storeName: 'conversations' | 'activity',
   projectId: string,
-  messages?: Message[],
-): Promise<Message[]> {
+  messages?: T[],
+): Promise<T[]> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open('bluewing-messages', 1);
+    const open = indexedDB.open('bluewing-wingman', 1);
     open.onupgradeneeded = () => {
       open.result.createObjectStore('conversations');
+      open.result.createObjectStore('activity');
     };
     open.onerror = () => {
       reject(open.error ?? new Error('Could not open conversation storage'));
@@ -16,10 +20,10 @@ function browserMessages(
     open.onsuccess = () => {
       const db = open.result;
       const transaction = db.transaction(
-        'conversations',
+        storeName,
         messages ? 'readwrite' : 'readonly',
       );
-      const store = transaction.objectStore('conversations');
+      const store = transaction.objectStore(storeName);
       const request = messages
         ? store.put(messages, projectId)
         : store.get(projectId);
@@ -27,7 +31,7 @@ function browserMessages(
         db.close();
         resolve(
           messages ??
-            (request.result === undefined ? [] : (request.result as Message[])),
+            (request.result === undefined ? [] : (request.result as T[])),
         );
       };
       transaction.onabort = () => {
@@ -39,22 +43,23 @@ function browserMessages(
 }
 
 export function messagingStorage(native: boolean): MessagingStorage {
-  const key = async (projectId: string) => {
+  const key = async (projectId: string, record: 'messages' | 'activity') => {
     const hash = await crypto.subtle.digest(
       'SHA-256',
       new TextEncoder().encode(projectId),
     );
-    return `messages-${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')}.json`;
+    return `wingman-${record}-${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')}.json`;
   };
   return {
     async read(projectId) {
       let messages: Message[];
       if (native) {
         const data = await invoke<string | null>('app_data_read', {
-          key: await key(projectId),
+          key: await key(projectId, 'messages'),
         });
         messages = data === null ? [] : (JSON.parse(data) as Message[]);
-      } else messages = await browserMessages(projectId);
+      } else
+        messages = await browserRecord<Message>('conversations', projectId);
       if (!Array.isArray(messages)) throw new Error('Invalid message list');
       let lastId = 0;
       for (const message of messages) {
@@ -106,10 +111,25 @@ export function messagingStorage(native: boolean): MessagingStorage {
           })),
         }));
         await invoke('app_data_write', {
-          key: await key(projectId),
+          key: await key(projectId, 'messages'),
           data: JSON.stringify(stored),
         });
-      } else await browserMessages(projectId, messages);
+      } else await browserRecord('conversations', projectId, messages);
+    },
+    async readActivity(projectId) {
+      if (!native) return browserRecord<WingmanActivity>('activity', projectId);
+      const data = await invoke<string | null>('app_data_read', {
+        key: await key(projectId, 'activity'),
+      });
+      return data === null ? [] : (JSON.parse(data) as WingmanActivity[]);
+    },
+    async writeActivity(projectId, entries) {
+      if (native)
+        await invoke('app_data_write', {
+          key: await key(projectId, 'activity'),
+          data: JSON.stringify(entries),
+        });
+      else await browserRecord('activity', projectId, entries);
     },
     async exportAttachment(attachment) {
       const image =

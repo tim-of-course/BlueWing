@@ -1,38 +1,76 @@
 import { createEffect, createSignal, onSettled, untrack } from 'solid-js';
+import {
+  panelSizes,
+  panelStripWidth,
+  type PanelName,
+} from '../app/panel-layout';
 import type { JSX } from '@solidjs/web';
 import './workspace-panel.css';
 
 export interface WorkspacePanelProps {
-  id: string;
+  name: PanelName;
   label: string;
   side: 'left' | 'right';
-  defaultWidth: number;
-  minWidth: number;
-  maxWidth: number;
-  pinned: boolean;
+  preferences: PanelPreferences;
+  temporarilyCollapsed: boolean;
   onPinnedChange: (value: boolean) => void;
   children: JSX.Element;
   peekRequest?: number;
+  bottomControl?: boolean;
+  unread?: number;
+  peekState?: ReturnType<typeof createSignal<boolean>>;
 }
 
-export default function WorkspacePanel(props: WorkspacePanelProps) {
+export function createPanelPreferences(name: PanelName) {
+  const spec = panelSizes[name];
+  const widthKey = `bluewing.panel.${spec.id}.width`;
+  const pinKey = `bluewing.panel.${name}.pinned`;
   const clamp = (value: number) =>
-    Math.min(props.maxWidth, Math.max(props.minWidth, value));
-  const storageKey = () => `bluewing.panel.${props.id}.width`;
-  const initialWidth = untrack(() => {
-    try {
-      const stored = localStorage.getItem(storageKey());
-      if (stored !== null && Number.isFinite(Number(stored)))
-        return clamp(Number(stored));
-    } catch {
-      // Layout preferences are optional when browser storage is unavailable.
-    }
-    return clamp(props.defaultWidth);
-  });
-  const [width, setWidth] = createSignal(initialWidth);
-  const [peeking, setPeeking] = createSignal(false);
+    Math.min(spec.max, Math.max(spec.min, value));
+  const saved = localStorage.getItem(widthKey);
+  const [width, setWidth] = createSignal(
+    saved !== null && Number.isFinite(Number(saved))
+      ? clamp(Number(saved))
+      : spec.width,
+  );
+  const [pinned, setPinned] = createSignal(
+    localStorage.getItem(pinKey) !== 'false',
+  );
+  return {
+    width,
+    setWidth,
+    clamp,
+    pinned,
+    savePin(value: boolean) {
+      if (value === pinned()) return;
+      setPinned(value);
+      localStorage.setItem(pinKey, String(value));
+    },
+    saveWidth: (value: number) => {
+      try {
+        localStorage.setItem(widthKey, String(value));
+      } catch {
+        // Resizing still works without saving a device preference.
+      }
+    },
+  };
+}
+export type PanelPreferences = ReturnType<typeof createPanelPreferences>;
+
+export default function WorkspacePanel(props: WorkspacePanelProps) {
+  const spec = untrack(() => panelSizes[props.name]);
+  const { width, setWidth, clamp, saveWidth } = untrack(
+    () => props.preferences,
+  );
+  const pinned = () =>
+    props.preferences.pinned() && !props.temporarilyCollapsed;
+  const [localPeek, setLocalPeek] = createSignal(false);
+  const [peeking, setPeeking] = untrack(() => props.peekState) ?? [
+    localPeek,
+    setLocalPeek,
+  ];
   const [resizing, setResizing] = createSignal(false);
-  const visible = () => props.pinned || peeking();
+  const visible = () => pinned() || peeking();
   let root!: HTMLDivElement;
   let control!: HTMLButtonElement;
   let pointerInside = false;
@@ -50,10 +88,10 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
   const engaged = () => pointerInside || root.contains(document.activeElement);
   const enter = () => {
     clearTimers();
-    if (!props.pinned && !peeking()) {
+    if (!pinned() && !peeking()) {
       enterTimer = setTimeout(() => {
         enterTimer = undefined;
-        if (!props.pinned && engaged()) setPeeking(true);
+        if (!pinned() && engaged()) setPeeking(true);
       }, 180);
     }
   };
@@ -68,16 +106,10 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
       }, 250);
     }
   };
-  const saveWidth = (value: number) => {
-    try {
-      localStorage.setItem(storageKey(), String(value));
-    } catch {
-      // Resizing still works without saving a device preference.
-    }
-  };
   const resizeByKeyboard = (event: KeyboardEvent) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
+    if (pinned()) props.onPinnedChange(true);
     const direction =
       (event.key === 'ArrowRight' ? 1 : -1) * (props.side === 'left' ? 1 : -1);
     const nextWidth = clamp(width() + direction * 16);
@@ -88,6 +120,7 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
     if (event.button !== 0) return;
     event.preventDefault();
     stopResize?.();
+    if (pinned()) props.onPinnedChange(true);
     clearTimers();
     setResizing(true);
     const startX = event.clientX;
@@ -117,14 +150,18 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
   };
 
   createEffect(
-    () => ({ pinned: props.pinned, request: props.peekRequest }),
-    ({ pinned, request }) => {
+    () => ({
+      pinned: pinned(),
+      request: props.peekRequest,
+      collapsed: props.temporarilyCollapsed,
+    }),
+    ({ pinned, request, collapsed }) => {
       const requested = request !== lastRequest;
       lastRequest = request;
       if (pinned) {
         clearTimers();
         setPeeking(false);
-      } else if (requested) {
+      } else if (requested || (collapsed && stopResize)) {
         clearTimers();
         setPeeking(true);
       }
@@ -157,7 +194,7 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
         leave();
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || props.pinned || !peeking()) return;
+      if (event.key !== 'Escape' || pinned() || !peeking()) return;
       event.preventDefault();
       event.stopPropagation();
       clearTimers();
@@ -190,12 +227,20 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
       ref={root}
       class="workspace-panel"
       data-side={props.side}
-      data-peeking={!props.pinned && peeking() ? 'true' : 'false'}
+      data-bottom-control={props.bottomControl || undefined}
+      data-collapsed-strip={props.temporarilyCollapsed || undefined}
+      data-peeking={!pinned() && peeking() ? 'true' : 'false'}
       data-resizing={resizing() ? 'true' : 'false'}
-      style={{ width: props.pinned ? `${String(width())}px` : '0px' }}
+      style={{
+        width: pinned()
+          ? `${String(width())}px`
+          : props.bottomControl || props.temporarilyCollapsed
+            ? `${String(panelStripWidth)}px`
+            : '0px',
+      }}
     >
       <aside
-        id={props.id}
+        id={spec.id}
         class="workspace-panel-surface"
         aria-label={props.label}
         aria-hidden={visible() ? 'false' : 'true'}
@@ -213,10 +258,10 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
           role="separator"
           tabindex={0}
           aria-label={`Resize ${props.label}`}
-          aria-controls={props.id}
+          aria-controls={spec.id}
           aria-orientation="vertical"
-          aria-valuemin={props.minWidth}
-          aria-valuemax={props.maxWidth}
+          aria-valuemin={spec.min}
+          aria-valuemax={spec.max}
           aria-valuenow={width()}
           onPointerDown={startResize}
           onKeyDown={resizeByKeyboard}
@@ -227,11 +272,11 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
         ref={control}
         type="button"
         class="workspace-panel-control"
-        aria-label={`${props.pinned ? 'Collapse' : 'Pin'} ${props.label}`}
-        aria-controls={props.id}
+        aria-label={`${pinned() ? 'Collapse' : 'Pin'} ${props.label}${props.unread ? ` (${String(props.unread)} unread)` : ''}`}
+        aria-controls={spec.id}
         aria-expanded={visible() ? 'true' : 'false'}
         title={
-          props.pinned
+          pinned()
             ? `Collapse ${props.label}`
             : `Pin ${props.label} (hover to peek)`
         }
@@ -239,28 +284,46 @@ export default function WorkspacePanel(props: WorkspacePanelProps) {
           clearTimers();
           setPeeking(false);
           control.focus();
-          props.onPinnedChange(!props.pinned);
+          const opening = !pinned();
+          props.onPinnedChange(opening);
+          if (opening) setPeeking(true);
         }}
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.4"
-          aria-hidden="true"
-        >
-          <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
-          <path d={props.side === 'left' ? 'M6 2v12' : 'M10 2v12'} />
-          <path
-            d={
-              (props.side === 'left') === props.pinned
-                ? 'm10 6-2 2 2 2'
-                : 'm6 6 2 2-2 2'
-            }
-          />
-        </svg>
+        {props.bottomControl ? (
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+          >
+            <path d="M16 13H8l-4 3v-3H3V4h13z" />
+            <path d="M6 7h7M6 10h4" />
+          </svg>
+        ) : (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            aria-hidden="true"
+          >
+            <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
+            <path d={props.side === 'left' ? 'M6 2v12' : 'M10 2v12'} />
+            <path
+              d={
+                (props.side === 'left') === pinned()
+                  ? 'm10 6-2 2 2 2'
+                  : 'm6 6 2 2-2 2'
+              }
+            />
+          </svg>
+        )}
+        {props.unread ? <span class="panel-unread" aria-hidden="true" /> : null}
       </button>
     </div>
   );

@@ -1,3 +1,6 @@
+import type { WingmanActivity } from './wingman-types';
+import { boundActivity } from './wingman-activity';
+
 export interface Attachment {
   id: string;
   name: string;
@@ -30,10 +33,12 @@ export function wireMessage(message: Message) {
     })),
   };
 }
-type MessagingChange = 'bind' | 'message' | 'status';
+type MessagingChange = 'bind' | 'message' | 'status' | 'activity';
 export interface MessagingStorage {
   read(projectId: string): Promise<Message[]>;
   write(projectId: string, messages: Message[]): Promise<void>;
+  readActivity(projectId: string): Promise<WingmanActivity[]>;
+  writeActivity(projectId: string, entries: WingmanActivity[]): Promise<void>;
   exportAttachment(attachment: Attachment): Promise<Attachment>;
 }
 export interface MessageWait {
@@ -45,6 +50,60 @@ export interface MessageWait {
 export class Messaging {
   private projectId: string | null = null;
   private messages: Message[] = [];
+  private history: { entries: WingmanActivity[]; replyIds: number[] } = {
+    entries: [],
+    replyIds: [],
+  };
+  private activityError: string | null = null;
+  get activity(): readonly WingmanActivity[] {
+    return this.history.entries;
+  }
+  startActivity(entry: WingmanActivity) {
+    const projectId = this.projectId;
+    if (!projectId) return;
+    const history = this.history;
+    const previous = history.entries.at(-1);
+    if (previous && previous.afterMessageId >= (history.replyIds.at(-1) ?? 0))
+      entry.turnStartedAt = previous.turnStartedAt ?? previous.startedAt;
+    history.entries = boundActivity(
+      [...history.entries, entry],
+      history.replyIds,
+    );
+    this.publish('activity');
+    return (changes: Partial<WingmanActivity>) =>
+      this.schedule(async () => {
+        // Closing a project can finish after it has unbound its transcript.
+        const bound = this.projectId === projectId;
+        const destination = bound ? this.history : history;
+        const previous = destination.entries;
+        const completed = { ...entry, ...changes };
+        let updated = previous.map((item) =>
+          item.id === entry.id ? completed : item,
+        );
+        if (
+          destination !== history &&
+          !updated.some((item) => item.id === entry.id)
+        ) {
+          updated = [...updated, completed].sort(
+            (a, b) =>
+              a.afterMessageId - b.afterMessageId || a.startedAt - b.startedAt,
+          );
+        }
+        const entries = boundActivity(updated, destination.replyIds);
+        destination.entries = entries;
+        try {
+          await this.storage.writeActivity(
+            projectId,
+            entries.filter((item) => item.outcome !== 'working'),
+          );
+          if (bound) this.activityError = null;
+        } catch (error) {
+          if (bound)
+            this.activityError = `Could not save Wingman activity: ${String(error)}`;
+        }
+        if (bound) this.publish('activity');
+      });
+  }
   private loadError: string | null = null;
   private paused = false;
   private resumes = 0;
@@ -62,6 +121,7 @@ export class Messaging {
       paused: this.paused,
       waiting: this.waiters.size > 0,
       loadError: this.loadError,
+      activityError: this.activityError,
     };
   }
   snapshot(after = 0) {
@@ -122,6 +182,19 @@ export class Messaging {
         if (projectId !== null) messages = await this.storage.read(projectId);
       } catch (error) {
         loadError = `Could not load Wingman conversation: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      this.history = {
+        entries: [],
+        replyIds: messages
+          .filter((message) => message.sender === 'agent')
+          .map((message) => message.id),
+      };
+      this.activityError = null;
+      try {
+        if (projectId)
+          this.history.entries = await this.storage.readActivity(projectId);
+      } catch (error) {
+        this.activityError = `Could not load Wingman activity: ${String(error)}`;
       }
       this.loadError = loadError;
       this.projectId = projectId;
@@ -220,6 +293,7 @@ export class Messaging {
       const messages = [...this.messages, message];
       await this.storage.write(projectId, messages);
       this.messages = messages;
+      if (sender === 'agent') this.history.replyIds.push(message.id);
       this.publish('message');
       return structuredClone(message);
     });

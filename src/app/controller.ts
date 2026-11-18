@@ -516,6 +516,19 @@ export function createWorkspace(
     return command('batch', { commands }, expected);
   }
   return {
+    projectForTakeoff(id) {
+      const current = project();
+      if (current?.takeoffId === id) return current;
+      const root = app.session?.project;
+      return root?.takeoffs[id] ? takeoffProject(root, id) : null;
+    },
+    constructionForTakeoff(id) {
+      const current = project();
+      if (current?.takeoffId === id) return construction();
+      return current?.takeoffs[id]
+        ? (app.session?.calculationFor(id).model ?? null)
+        : null;
+    },
     takeoffSources: () => {
       project();
       const root = app.session?.project;

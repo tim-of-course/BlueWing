@@ -3,6 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 const port = process.env['BLUEWING_TEST_DEV_PORT'] ?? '4173';
 const url = `http://127.0.0.1:${port}`;
 
+// Shared drawing workflows exercise all three pinned panels. Narrow layouts have dedicated resize scenarios.
+const viewport = { width: 1760, height: 720 };
+
 export default defineConfig({
   testDir: './tests/browser',
   testMatch: '**/*.dev.spec.ts',
@@ -18,12 +21,12 @@ export default defineConfig({
   ],
   use: { baseURL: url, trace: 'retain-on-failure' },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'], viewport } },
     // Windows WebKit lacks the worker OffscreenCanvas required for PDF drawing.
     ...(process.platform === 'win32'
       ? []
-      : [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }]),
+      : [{ name: 'webkit', use: { ...devices['Desktop Safari'], viewport } }]),
   ],
   webServer: {
     command: `bun run dev --port ${port} --strictPort`,
