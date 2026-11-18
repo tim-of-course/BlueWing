@@ -597,6 +597,38 @@ export async function viewWorkflow(page: Page) {
     ),
   ).toEqual(camera);
   expect((await inspect(page)).revision).toBe(before.revision);
+  // A render for a takeoff the user is not viewing says it was not shown.
+  const shown = await cli<{ notShownToUser?: string }>(page, 'sheet.render', {
+    sheetId,
+    path: 'wingman-shown.png',
+    maxDimension: 320,
+  });
+  expect(shown.response.data.notShownToUser).toBeUndefined();
+  await mutate(page, 'takeoff.create', {
+    id: 'elsewhere',
+    name: 'Elsewhere',
+    kind: 'change-order',
+  });
+  const agentView = (await inspect(page)).data.agent;
+  const unseen = await page.evaluate(
+    async (payload) => {
+      const bridge = window as unknown as {
+        wingmanCli(
+          name: string,
+          request: unknown,
+        ): Promise<CliResult<{ path: string; notShownToUser?: string }>>;
+      };
+      return bridge.wingmanCli('sheet.render', {
+        payload,
+        takeoffId: 'elsewhere',
+      });
+    },
+    { sheetId, path: 'wingman-unseen.png', maxDimension: 320 },
+  );
+  expect(unseen.exitCode).toBe(0);
+  expect(unseen.response.data.path).toBeTruthy();
+  expect(unseen.response.data.notShownToUser).toContain('different takeoff');
+  expect((await inspect(page)).data.agent).toEqual(agentView);
 }
 export async function warmSwapWorkflow(page: Page) {
   const canvas = page.getByLabel('Drawing canvas', { exact: true });

@@ -194,8 +194,8 @@ export default function Wingman(props: Props) {
     }
   }
   function publish(next: WingmanVisual) {
-    if (next.projectId !== props.controller.project()?.id) return;
-    if (next.takeoffId !== props.controller.project()?.takeoffId) return;
+    if (next.projectId !== props.controller.project()?.id) return false;
+    if (next.takeoffId !== props.controller.project()?.takeoffId) return false;
     const current = structuredClone(next);
     setVisual(current);
     if (swapped()) {
@@ -206,6 +206,7 @@ export default function Wingman(props: Props) {
           setError(cause instanceof Error ? cause.message : String(cause));
         });
     }
+    return true;
   }
   const presentation: WingmanPresentation = {
     hasMessageDraft: () => text().trim() !== '' || attachments().length > 0,
