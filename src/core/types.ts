@@ -5,6 +5,7 @@ import type {
   Ceiling,
   ConstructionSource,
 } from './construction-types';
+import type { SheetAnnotation } from './annotations';
 import type { ReviewData } from './review';
 import type { quantityChanges } from './quantity-changes';
 import type { MaterialTemplate } from './material-layout';
@@ -187,7 +188,8 @@ export interface Takeoff {
   }[];
 }
 export interface Project {
-  formatVersion: 9;
+  annotations: Record<string, SheetAnnotation>;
+  formatVersion: 10;
   allowSpecialOrderStuds: boolean;
   standardSizes: StandardSizes;
   takeoffs: Record<string, Takeoff>;

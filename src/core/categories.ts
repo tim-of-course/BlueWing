@@ -1,3 +1,4 @@
+import { checkAnnotationColor } from './annotations';
 import type { Project } from './types';
 import type { ConstructionSnapshot } from './calculation-state';
 
@@ -192,6 +193,7 @@ export function validateCategoryColor(name: string, color: string): void {
     throw new Error(
       'Use a unique project category name, separate from the standard categories',
     );
+  checkAnnotationColor(color);
   if (!/^#[0-9a-f]{6}$/i.test(color))
     throw new Error('Category color must be a six-digit hex color');
 }

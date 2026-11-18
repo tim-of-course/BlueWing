@@ -12,6 +12,12 @@ import {
   standardSizesSchema,
   type StandardSizes,
 } from './standard-sizes';
+import {
+  annotationKinds,
+  checkAnnotationColor,
+  validateAnnotation,
+  type SheetAnnotation,
+} from './annotations';
 import { searchNotes } from './notes';
 import type {
   Assignment,
@@ -189,6 +195,21 @@ const sheet = object(
     combined3dAlignment,
   },
   ['id', 'name', 'assetId', 'pageIndex', 'width', 'height'],
+);
+const annotationFields = {
+  sheetId: string,
+  kind: { type: 'string', enum: [...annotationKinds] } as PayloadSchema,
+  points: array(point),
+  text: string,
+};
+const annotation = object(
+  {
+    ...annotationFields,
+    id: string,
+    author: { type: 'string', enum: ['user', 'agent'] },
+    createdAt: string,
+  },
+  ['sheetId', 'kind', 'points', 'id', 'author', 'createdAt'],
 );
 const geometry = object({
   id: string,
@@ -482,6 +503,46 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
     true,
     { enabled: true },
   ],
+  [
+    'annotation.list',
+    'Read all permanent annotations on a sheet, including hidden annotations.',
+    object({ sheetId: string }),
+    false,
+    { sheetId: 'sheet-1' },
+  ],
+  [
+    'annotation.inspect',
+    'Read one complete sheet annotation.',
+    id,
+    false,
+    { id: 'annotation-id' },
+  ],
+  [
+    'annotation.add',
+    'Add a permanent sheet annotation in rotated page coordinates. Freehand creation uses the drawing tool only.',
+    object(annotationFields, ['sheetId', 'kind', 'points']),
+    true,
+    {
+      sheetId: 'sheet-1',
+      kind: 'text',
+      points: [{ x: 80, y: 40 }],
+      text: 'Verify opening',
+    },
+  ],
+  [
+    'annotation.update',
+    'Edit annotation points or text, preserving creation metadata.',
+    object({ id: string, points: array(point), text: string }, ['id']),
+    true,
+    { id: 'annotation-id', text: 'Confirmed opening' },
+  ],
+  [
+    'annotation.delete',
+    'Remove a permanent sheet annotation through project history.',
+    id,
+    true,
+    { id: 'annotation-id' },
+  ],
   ['project.inspect', 'Read the accepted project.', object({}), false, {}],
   [
     'project.category.put',
@@ -582,7 +643,7 @@ const definitions: [string, string, PayloadSchema, boolean, unknown][] = [
   ],
   [
     'sheet.delete',
-    'Delete a sheet, its geometry, and resulting memberships.',
+    'Delete a sheet, its annotations, its geometry, and resulting memberships.',
     id,
     true,
     { id: 'sheet-1' },
@@ -998,7 +1059,7 @@ export function validateProject(
     input &&
     typeof input === 'object' &&
     'formatVersion' in input &&
-    input.formatVersion !== 9
+    input.formatVersion !== 10
   )
     throw new Error(
       'Unsupported project format. Create a new takeoff with this version of Bluewing.',
@@ -1006,7 +1067,7 @@ export function validateProject(
   validatePayload(
     object(
       {
-        formatVersion: { type: 'number', enum: [9] },
+        formatVersion: { type: 'number', enum: [10] },
         standardSizes: standardSizesSchema,
         allowSpecialOrderStuds: { type: 'boolean' },
         takeoffs: {
@@ -1042,6 +1103,7 @@ export function validateProject(
         name: string,
         revision: { type: 'number', minimum: 0 },
         sheets: { type: 'object', additionalProperties: sheet },
+        annotations: { type: 'object', additionalProperties: annotation },
         geometries: { type: 'object', additionalProperties: geometry },
         groups: { type: 'object', additionalProperties: group },
         recipes: { type: 'object', additionalProperties: recipe },
@@ -1060,6 +1122,7 @@ export function validateProject(
         'name',
         'revision',
         'sheets',
+        'annotations',
         'geometries',
         'groups',
         'recipes',
@@ -1116,6 +1179,7 @@ export function validateProject(
     throw new Error('Unsupported project format or revision');
   for (const [key, entries, schema] of [
     ['sheets', project.sheets, sheet],
+    ['annotations', project.annotations, annotation],
     ['geometries', project.geometries, geometry],
     ['groups', project.groups, group],
     ['recipes', project.recipes, recipe],
@@ -1133,6 +1197,10 @@ export function validateProject(
         throw new Error(`Invalid ${key} record id`);
     }
   }
+  for (const entry of Object.values(project.annotations)) {
+    requireEntity(project.sheets, entry.sheetId, 'Sheet');
+    validateAnnotation(entry);
+  }
   for (const entry of Object.values(project.sheets)) {
     if (!Number.isInteger(entry.pageIndex))
       throw new Error('PDF pageIndex must be an integer');
@@ -1142,6 +1210,7 @@ export function validateProject(
     validateGeometry(entry);
   }
   for (const entry of Object.values(project.groups)) {
+    checkAnnotationColor(entry.color);
     if (new Set(entry.geometryIds).size !== entry.geometryIds.length)
       throw new Error('Group membership must be unique');
     entry.geometryIds.forEach((member) =>
@@ -1253,6 +1322,7 @@ export function executeCommandOnDraft(
   validateResult = true,
   calculation: () => CalculationSnapshot = () =>
     calculateProject(takeoffProject(next, call.takeoffId)),
+  origin = 'ui',
 ): { project: Project; data: unknown; changed: boolean } {
   const definition = validateCommand(call);
   if (!next.takeoffId) {
@@ -1266,6 +1336,7 @@ export function executeCommandOnDraft(
       };
     }
     if (
+      !call.name.startsWith('annotation.') &&
       ![
         'commands.list',
         'project.rename',
@@ -1307,6 +1378,51 @@ export function executeCommandOnDraft(
   switch (call.name) {
     case 'commands.list':
       data = commandIndex(commandRegistry);
+      break;
+    case 'annotation.list':
+      requireEntity(next.sheets, payload.sheetId as string, 'Sheet');
+      data = Object.values(next.annotations).filter(
+        (a) => a.sheetId === payload.sheetId,
+      );
+      break;
+    case 'annotation.inspect':
+      data = requireEntity(next.annotations, entityId, 'Annotation');
+      break;
+    case 'annotation.add': {
+      const fields = payload as unknown as Pick<
+        SheetAnnotation,
+        'sheetId' | 'kind' | 'points' | 'text'
+      >;
+      requireEntity(next.sheets, fields.sheetId, 'Sheet');
+      if (origin === 'cli' && fields.kind === 'freehand')
+        throw new Error('Freehand annotations must be drawn in the UI');
+      const entry: SheetAnnotation = {
+        ...structuredClone(fields),
+        id: newId(),
+        author: origin === 'cli' ? 'agent' : 'user',
+        createdAt: new Date().toISOString(),
+      };
+      validateAnnotation(entry);
+      next.annotations[entry.id] = entry;
+      data = entry;
+      break;
+    }
+    case 'annotation.update': {
+      const entry = requireEntity(next.annotations, entityId, 'Annotation');
+      if (payload.points === undefined && payload.text === undefined)
+        throw new Error('Supply annotation points or text');
+      if (payload.points !== undefined)
+        entry.points = structuredClone(
+          payload.points,
+        ) as SheetAnnotation['points'];
+      if (payload.text !== undefined) entry.text = payload.text as string;
+      validateAnnotation(entry);
+      data = entry;
+      break;
+    }
+    case 'annotation.delete':
+      requireEntity(next.annotations, entityId, 'Annotation');
+      Reflect.deleteProperty(next.annotations, entityId);
       break;
     case 'notes.read':
       data = { markdown: next.notes ?? '' };
@@ -1457,6 +1573,9 @@ export function executeCommandOnDraft(
         throw new Error('Remove takeoff work before deleting a shared sheet');
       for (const entry of Object.values(next.geometries))
         if (entry.sheetId === entityId) removeGeometry(next, entry.id);
+      for (const entry of Object.values(next.annotations))
+        if (entry.sheetId === entityId)
+          Reflect.deleteProperty(next.annotations, entry.id);
       Reflect.deleteProperty(next.sheets, entityId);
       break;
     case 'geometry.put':
@@ -1567,7 +1686,7 @@ export function executeCommandOnDraft(
   }
   if (definition.mutates) {
     if (
-      call.name.endsWith('.delete') ||
+      (call.name.endsWith('.delete') && call.name !== 'annotation.delete') ||
       [
         'group.members',
         'group.put',

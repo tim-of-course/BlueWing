@@ -4,6 +4,8 @@ export const estimatingSkill = `# Bluewing estimating skill
 
 Follow this skill for any takeoff or estimating work in Bluewing. It holds our company standards so you do not need to ask for them. Ask the user only where this skill says to.
 
+Read each sheet’s permanent annotations with annotation.list before starting work on it. Leave location-specific information for future estimators and agents with annotation.add. Use Notes for project-wide information, review snippets for source-linked review tracking, and wingman.annotate for temporary presentation notes.
+
 ## Our scopes
 
 Each scope is listed with its exact assembly category name in quotes.

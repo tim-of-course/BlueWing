@@ -20,7 +20,8 @@ function required<T>(value: T | undefined): T {
 
 function fixture(): Project {
   return {
-    formatVersion: 9,
+    annotations: {},
+    formatVersion: 10,
     allowSpecialOrderStuds: true,
     standardSizes: companySizes(),
     takeoffs: { main: { id: 'main', name: 'Main', kind: 'main', owned: {} } },

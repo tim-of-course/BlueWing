@@ -23,6 +23,9 @@ import {
   hitTestGeometry,
   hitTestGeometrySweep,
 } from '../../core/geometry';
+import type { AnnotationKind } from '../../core/annotations';
+import { createAnnotationEditor } from './annotation-editor';
+import { paintAnnotation } from './annotations';
 import { paintTakeoff } from './paint';
 import type { PlanView, ViewportPort } from '../../app/wingman-types';
 import { paintPlanPresentation } from '../WingmanPreview';
@@ -78,7 +81,7 @@ function cameraForView(
   };
 }
 interface Draft {
-  kind: Exclude<DrawingTool, 'select'>;
+  kind: Exclude<DrawingTool, 'select' | 'annotations'>;
   points: Point[];
   sheetId: string;
   expected: Observation;
@@ -173,6 +176,8 @@ function intersectsSelection(
 export default function DrawingCanvas(props: {
   controller: WorkspaceController;
   tool: DrawingTool;
+  annotationChoice?: AnnotationKind | 'edit';
+  onAnnotationCreated?: () => void;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
   /** Captures snapped page coordinates before any selection or drawing edit. */
@@ -337,7 +342,39 @@ export default function DrawingCanvas(props: {
     },
     { name: 'canvas.crosshair' },
   );
-  const dirty = () => draft() !== null || edit() !== null;
+  const annotationEditor = createAnnotationEditor({
+    controller: () => props.controller,
+    sheet,
+    context: () => canvas?.getContext('2d'),
+    choice: () => props.annotationChoice ?? 'edit',
+    pixel: () => 1 / camera().zoom,
+    created: () => props.onAnnotationCreated?.(),
+    error: (message) => {
+      props.onError(message);
+    },
+  });
+  const editingAnnotations = () =>
+    props.tool === 'annotations' && props.controller.annotationsVisible();
+  const annotationContext = createMemo(() =>
+    JSON.stringify([
+      editingAnnotations(),
+      sheet()?.id,
+      props.controller.project()?.id,
+    ]),
+  );
+  createEffect(
+    annotationContext,
+    () => {
+      annotationEditor.cancel();
+      annotationEditor.select(null);
+    },
+    { name: 'canvas.annotationContext' },
+  );
+  const dirty = () =>
+    draft() !== null ||
+    edit() !== null ||
+    !!annotationEditor.preview() ||
+    !!annotationEditor.textEdit();
   const viewKey = createMemo(
     () => {
       const current = renderSheet();
@@ -521,6 +558,14 @@ export default function DrawingCanvas(props: {
           : [],
         draft: currentDraft,
         edit: edit(),
+        annotations: annotationEditor.annotations(),
+        annotationPreview: editingAnnotations()
+          ? annotationEditor.preview()
+          : null,
+        selectedAnnotation:
+          editingAnnotations() && props.annotationChoice === 'edit'
+            ? annotationEditor.selectedId()
+            : null,
         hover: showHover ? hover() : null,
         snapped: isSnapped,
         selectionBox: selectionBox(),
@@ -612,6 +657,18 @@ export default function DrawingCanvas(props: {
         );
       }
     }
+    for (const annotation of state.annotations) {
+      if (state.annotationPreview && state.selectedAnnotation === annotation.id)
+        continue;
+      paintAnnotation(
+        ctx,
+        annotation,
+        pixel,
+        state.selectedAnnotation === annotation.id,
+      );
+    }
+    if (state.annotationPreview)
+      paintAnnotation(ctx, state.annotationPreview, pixel);
     if (state.draft?.sheetId === state.sheet.id) {
       const points = [...state.draft.points];
       if (
@@ -762,6 +819,7 @@ export default function DrawingCanvas(props: {
     if (savingNow) return;
     gesture = null;
     lastDrawingClick = null;
+    annotationEditor.cancel();
     setDraft(null);
     setEdit(null);
     setSelectionBox(null);
@@ -917,6 +975,11 @@ export default function DrawingCanvas(props: {
         props.onPickPoint(snap(point, event.shiftKey));
       return;
     }
+    if (props.tool === 'annotations') {
+      if (annotationEditor.down(point))
+        canvas?.setPointerCapture(event.pointerId);
+      return;
+    }
     if (brushSelection) {
       event.preventDefault();
       paintSelection(point, event.altKey);
@@ -1048,6 +1111,10 @@ export default function DrawingCanvas(props: {
       });
       return;
     }
+    if (props.tool === 'annotations' && !props.onPickPoint) {
+      annotationEditor.move(point);
+      return;
+    }
     if (brushSelection && !gesture) {
       if (spaceDown) brushPrevious = null;
       else paintSelection(point, event.altKey);
@@ -1096,6 +1163,7 @@ export default function DrawingCanvas(props: {
       setHover(snap(point, event.shiftKey));
   }
   function pointerUp(event: PointerEvent) {
+    if (annotationEditor.dragging()) annotationEditor.up(pagePoint(event));
     const completed = gesture;
     gesture = null;
     setPanCursor(spaceDown ? 'grab' : null);
@@ -1117,6 +1185,7 @@ export default function DrawingCanvas(props: {
     } else if (completed && completed.kind !== 'pan' && edit()) void commit();
   }
   function cancelGesture() {
+    if (annotationEditor.dragging()) annotationEditor.cancel();
     if (gesture && gesture.kind !== 'pan') setEdit(null);
     gesture = null;
     setSelectionBox(null);
@@ -1213,6 +1282,7 @@ export default function DrawingCanvas(props: {
         !event.metaKey &&
         !event.ctrlKey &&
         !event.repeat &&
+        props.tool !== 'annotations' &&
         !dirty() &&
         !gesture &&
         !props.interactionDisabled &&
@@ -1255,6 +1325,21 @@ export default function DrawingCanvas(props: {
         brushPrevious = null;
         if (gesture?.kind !== 'pan') setPanCursor('grab');
       }
+      if (
+        editingAnnotations() &&
+        !props.interactionDisabled &&
+        ['Escape', 'Enter', 'Delete', 'Backspace'].includes(event.key)
+      ) {
+        event.preventDefault();
+        if (event.key === 'Escape') {
+          annotationEditor.cancel();
+          annotationEditor.select(null);
+        } else if (props.annotationChoice === 'edit') {
+          if (event.key === 'Enter') annotationEditor.editText();
+          else void annotationEditor.remove();
+        }
+        return;
+      }
       if (event.key === 'Escape') {
         if (props.interactionDisabled && !dirty()) return;
         event.preventDefault();
@@ -1288,7 +1373,7 @@ export default function DrawingCanvas(props: {
     const wheel = (event: WheelEvent) => {
       if (!sheet()) return;
       event.preventDefault();
-      if (gesture) return;
+      if (gesture || annotationEditor.dragging()) return;
       const pixels =
         event.deltaY *
         (event.deltaMode === 1
@@ -1364,6 +1449,12 @@ export default function DrawingCanvas(props: {
           }
         }}
         onDblClick={() => {
+          if (
+            editingAnnotations() &&
+            props.annotationChoice === 'edit' &&
+            !props.interactionDisabled
+          )
+            annotationEditor.editText();
           if (draft()?.kind === 'path' || draft()?.kind === 'area')
             void commit();
         }}
@@ -1493,7 +1584,57 @@ export default function DrawingCanvas(props: {
           {loading() ? 'Loading PDF…' : renderError()}
         </p>
       </Show>
-      <Show when={dirty()}>
+      <Show when={annotationEditor.textEdit()}>
+        <form
+          class="annotation-text-editor"
+          aria-label="Edit annotation text"
+          onSubmit={(event) => {
+            event.preventDefault();
+            annotationEditor.saveText();
+          }}
+        >
+          <label class="field">
+            Annotation text
+            <textarea
+              ref={(el) => {
+                queueMicrotask(() => {
+                  el.focus();
+                });
+              }}
+              value={annotationEditor.textEdit()?.text ?? ''}
+              onInput={(e) => {
+                annotationEditor.changeText(e.currentTarget.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  annotationEditor.cancel();
+                  canvas?.focus();
+                }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  annotationEditor.saveText();
+                }
+              }}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={!annotationEditor.textEdit()?.text.trim()}
+          >
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              annotationEditor.cancel();
+            }}
+          >
+            Cancel
+          </button>
+        </form>
+      </Show>
+      <Show when={!!draft() || !!edit()}>
         <div
           class="stack"
           style={{
