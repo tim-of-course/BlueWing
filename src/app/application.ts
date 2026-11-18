@@ -52,7 +52,7 @@ import {
 import type { ImportedFile } from './files';
 import { applicationCommands, cliCommandIndex, registry } from './registry';
 import { renderImage, type RenderOptions } from './render';
-import { Messaging, type Attachment } from './messaging';
+import { Messaging, type Attachment, type ReplyView } from './messaging';
 import {
   cliIntroduction,
   type CliConnection,
@@ -65,7 +65,6 @@ import type {
   WingmanPresentation,
   WingmanVisual,
 } from './wingman-types';
-import type { PlanSnippet } from '../core/review';
 import type { acquireConstructionSnapshot } from '../three/renderer';
 import { PerformanceRecorder } from '../performance/recorder';
 
@@ -344,6 +343,7 @@ export class Application {
         ...(visual ? { visual } : {}),
       });
     }
+    if (visual) result.data = { ...(result.data as object), viewId: entry.id };
     return result;
   }
   private execute(
@@ -351,6 +351,8 @@ export class Application {
     onVisual?: (visual: WingmanVisual) => void,
   ): Promise<ApplicationResult> {
     const shown = (data: object, visual: WingmanVisual) => {
+      const { width, height } = data as { width: number; height: number };
+      visual.frame = { width, height };
       onVisual?.(visual);
       return this.shown(data, visual);
     };
@@ -555,15 +557,6 @@ export class Application {
               throw new Error('Wingman presentation unavailable');
             this.presentation.flash();
             data = { flashed: true };
-            break;
-          case 'wingman.annotate':
-            if (!this.presentation)
-              throw new Error('Wingman presentation unavailable');
-            this.presentation.annotate(
-              payload.annotations as PlanSnippet['annotations'],
-              payload.highlightIds as string[] | undefined,
-            );
-            data = { annotated: true };
             break;
           case 'project.backup':
             if (!(this.storage instanceof NativeStorage) || !this.session)
@@ -1163,6 +1156,7 @@ export class Application {
             (payload.text as string | undefined) ?? '',
             (payload.attachments as Attachment[] | undefined) ?? [],
             request.origin === 'cli' ? 'agent' : 'user',
+            this.messaging.resolveViews((payload.views ?? []) as ReplyView[]),
           )
         : await this.messaging.read(
             request.messagesAfter,

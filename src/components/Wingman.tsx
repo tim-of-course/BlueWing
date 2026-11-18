@@ -11,7 +11,9 @@ import {
 } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 import { connectionPrompt } from '../app/cli-guide';
-import type { Attachment } from '../app/messaging';
+import ViewAnnotationEditor from './ViewAnnotationEditor';
+import WingmanMessageView from './WingmanMessageView';
+import type { Attachment, MessageView } from '../app/messaging';
 import { groupActivity } from '../app/wingman-activity';
 import WorkspacePanel, { type PanelPreferences } from './WorkspacePanel';
 import WingmanTurn from './WingmanTurn';
@@ -33,6 +35,8 @@ interface Props {
   onReveal(): void;
   controller: WorkspaceController;
   openTarget(target: ActivityTarget, takeoffId?: string): void;
+  viewMode: WorkspaceViewSnapshot['mode'];
+  canAttachView: boolean;
   captureView(): WorkspaceViewSnapshot | null;
   applyView(view: WorkspaceViewSnapshot | WingmanVisual): Promise<void>;
   navigationDisabled: boolean;
@@ -128,13 +132,12 @@ export default function Wingman(props: Props) {
     () => props.controller.project()?.takeoffId ?? null,
     { name: 'wingman.takeoffId' },
   );
-  const [publication, setVisual] = createSignal<{
-    source: WingmanVisual;
-    visual: WingmanVisual;
-  } | null>(null, { name: 'wingman.agentView' });
+  const [publication, setVisual] = createSignal<WingmanVisual | null>(null, {
+    name: 'wingman.agentView',
+  });
   const visual = createMemo(
     () => {
-      const current = publication()?.visual;
+      const current = publication();
       const project = projectId();
       const takeoff = takeoffId();
       return current?.projectId === project && current.takeoffId === takeoff
@@ -153,6 +156,30 @@ export default function Wingman(props: Props) {
   const [changingView, setChangingView] = createSignal(false);
   const [text, setText] = createSignal('');
   const [attachments, setAttachments] = createSignal<Attachment[]>([]);
+  const [draftViews, setDraftViews] = createSignal<MessageView[]>([]);
+  const [editingView, setEditingView] = createSignal<MessageView | null>(null);
+  const [choosingView, setChoosingView] = createSignal(false);
+  let viewingMessage = false;
+  function attachView(kind: 'plan' | '3d') {
+    setChoosingView(false);
+    const saved = props.captureView();
+    const view = kind === 'plan' ? saved?.plan : saved?.model;
+    const project = props.controller.project();
+    if (!saved || !view || !project) {
+      setError('This view is unavailable.');
+      return;
+    }
+    const size = view.kind === 'plan' ? view.bounds : view.frame;
+    if (!size) return;
+    setEditingView({
+      projectId: saved.projectId,
+      takeoffId: saved.takeoffId,
+      revision: project.revision,
+      view,
+      frame: { width: size.width, height: size.height },
+      annotations: [],
+    });
+  }
   const [capturing, setCapturing] = createSignal(false);
   const [sending, setSending] = createSignal(false);
   const [error, setError] = createSignal('');
@@ -222,20 +249,12 @@ export default function Wingman(props: Props) {
       setChangingView(false);
     }
   }
-  function publish(next: WingmanVisual, annotated = false) {
+  function publish(next: WingmanVisual) {
     if (next.projectId !== props.controller.project()?.id) return false;
     if (next.takeoffId !== props.controller.project()?.takeoffId) return false;
-    const previous = publication();
-    const displayed = visual();
-    const source =
-      annotated && displayed
-        ? displayed === previous?.visual
-          ? previous.source
-          : displayed
-        : next;
     const current = structuredClone(next);
-    setVisual({ source, visual: current });
-    if (swapped()) {
+    setVisual(current);
+    if (swapped() && !viewingMessage) {
       if (props.navigationDisabled || changingView()) setPendingView(true);
       else
         void apply(current).catch((cause: unknown) => {
@@ -246,7 +265,11 @@ export default function Wingman(props: Props) {
     return true;
   }
   const presentation: WingmanPresentation = {
-    hasMessageDraft: () => text().trim() !== '' || attachments().length > 0,
+    hasMessageDraft: () =>
+      text().trim() !== '' ||
+      attachments().length > 0 ||
+      draftViews().length > 0 ||
+      !!editingView(),
     publish,
     inspect: () => ({
       main: props.captureView(),
@@ -263,44 +286,6 @@ export default function Wingman(props: Props) {
       clearTimeout(glowTimer);
       glowTimer = setTimeout(() => setGlowing(false), 1800);
     },
-    annotate(annotations, highlightIds) {
-      const current = visual();
-      if (!current || current.view.kind !== 'plan')
-        throw new Error('Render a plan view before adding plan annotations');
-      const sheetId = current.view.sheetId;
-      const project = props.controller.project();
-      const sheet = project?.sheets[sheetId];
-      if (!sheet) throw new Error('The source sheet is no longer available');
-      if (
-        highlightIds?.some((id) => project.geometries[id]?.sheetId !== sheetId)
-      )
-        throw new Error('Highlights must belong to the displayed sheet');
-      if (
-        annotations.some(
-          (item) =>
-            !item.points.length ||
-            item.points.some(
-              (point) =>
-                point.x < 0 ||
-                point.y < 0 ||
-                point.x > sheet.width ||
-                point.y > sheet.height,
-            ),
-        )
-      )
-        throw new Error('Annotation points must fit the displayed sheet');
-      publish(
-        {
-          ...current,
-          view: {
-            ...current.view,
-            annotations,
-            ...(highlightIds ? { highlightIds } : {}),
-          },
-        },
-        true,
-      );
-    },
   };
   onSettled(() => {
     props.controller.setPresentation(presentation);
@@ -313,7 +298,7 @@ export default function Wingman(props: Props) {
       ) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        if (!capturing()) setCapturing(true);
+        if (!capturing() && !editingView()) setCapturing(true);
       }
     };
     window.addEventListener('keydown', keydown, true);
@@ -333,6 +318,9 @@ export default function Wingman(props: Props) {
       setText('');
       setAttachments([]);
       setCapturing(false);
+      setDraftViews([]);
+      setEditingView(null);
+      setChoosingView(false);
       setError('');
       setPromptOpen(false);
       setCopyStatus('');
@@ -354,6 +342,7 @@ export default function Wingman(props: Props) {
     const saved = returnView() ?? props.captureView();
     if (!saved) return;
     const publishedAtClick = publication();
+    viewingMessage = current.annotations !== undefined;
     await apply(current);
     if (visual() && publication() !== publishedAtClick) setPendingView(true);
     setReturnView(saved);
@@ -364,6 +353,7 @@ export default function Wingman(props: Props) {
     if (!saved || props.navigationDisabled || changingView()) return;
     await apply(saved);
     setSwapped(false);
+    viewingMessage = false;
     setReturnView(null);
   }
   function turn(items: () => WingmanActivity[], endedAt?: number) {
@@ -375,10 +365,6 @@ export default function Wingman(props: Props) {
         visible={visible()}
         planImages={planImages}
         navigationDisabled={props.navigationDisabled || changingView()}
-        displayedVisual={(source) => {
-          const current = publication();
-          return current?.source === source ? current.visual : source;
-        }}
         onOpenView={(view) => {
           action(openView.bind(null, view));
         }}
@@ -408,15 +394,20 @@ export default function Wingman(props: Props) {
     }
   }
   async function send() {
-    if (sending() || (!text().trim() && !attachments().length)) return;
+    if (
+      sending() ||
+      (!text().trim() && !attachments().length && !draftViews().length)
+    )
+      return;
     const projectId = props.controller.project()?.id;
     setSending(true);
     setError('');
     try {
-      await messaging.send(text(), attachments(), 'user');
+      await messaging.send(text(), attachments(), 'user', draftViews());
       if (projectId === props.controller.project()?.id) {
         setText('');
         setAttachments([]);
+        setDraftViews([]);
       }
     } finally {
       setSending(false);
@@ -615,6 +606,22 @@ export default function Wingman(props: Props) {
                           {message.sender === 'user' ? 'You' : 'AI'}
                         </span>
                         <p>{message.text}</p>
+                        <For each={message.views}>
+                          {(view) => (
+                            <WingmanMessageView
+                              view={view}
+                              controller={controller}
+                              planImages={planImages}
+                              visible={visible()}
+                              disabled={
+                                props.navigationDisabled || changingView()
+                              }
+                              onOpen={(current) => {
+                                action(openView.bind(null, current));
+                              }}
+                            />
+                          )}
+                        </For>
                         <div class="wingman-message-images">
                           <For each={message.attachments}>
                             {(attachment) => (
@@ -681,6 +688,25 @@ export default function Wingman(props: Props) {
                   }}
                 />
                 <div class="wingman-attachments">
+                  <For each={draftViews()}>
+                    {(view) => (
+                      <div>
+                        <img src={view.image?.dataUrl} alt={view.image?.name} />
+                        <button
+                          type="button"
+                          aria-label={`Remove ${view.image?.name ?? 'view'}`}
+                          disabled={sending()}
+                          onClick={() =>
+                            setDraftViews((items) =>
+                              items.filter((item) => item !== view),
+                            )
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )}
+                  </For>
                   <For each={attachments()}>
                     {(attachment) => (
                       <div>
@@ -723,13 +749,63 @@ export default function Wingman(props: Props) {
                       <circle cx="10" cy="11" r="3" />
                     </svg>
                   </button>
+                  <div class="wingman-view-action">
+                    <button
+                      type="button"
+                      class="wingman-icon"
+                      aria-label="Attach view"
+                      title="Attach view"
+                      disabled={sending() || !props.canAttachView}
+                      onClick={() => {
+                        const mode = props.viewMode;
+                        if (mode === 'split')
+                          setChoosingView((value) => !value);
+                        else attachView(mode);
+                      }}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        aria-hidden="true"
+                      >
+                        <path d="M2 3h13v10H2z M4 11l3-4 3 3 2-2 M15 11v7m-3.5-3.5h7" />
+                      </svg>
+                    </button>
+                    <Show when={props.viewMode === 'split' && choosingView()}>
+                      <div class="wingman-view-choice">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            attachView('plan');
+                          }}
+                        >
+                          Plan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            attachView('3d');
+                          }}
+                        >
+                          3D
+                        </button>
+                      </div>
+                    </Show>
+                  </div>
                   <button
                     type="submit"
                     class="wingman-icon wingman-send"
                     aria-label="Send"
                     title="Enter to send · Shift+Enter for a new line"
                     disabled={
-                      sending() || (!text().trim() && !attachments().length)
+                      sending() ||
+                      (!text().trim() &&
+                        !attachments().length &&
+                        !draftViews().length)
                     }
                   >
                     <svg
@@ -764,6 +840,22 @@ export default function Wingman(props: Props) {
             </Show>
           </div>
         </WorkspacePanel>
+      </Show>
+      <Show when={editingView()}>
+        {(view) => (
+          <ViewAnnotationEditor
+            view={view()}
+            controller={controller}
+            planImages={planImages}
+            onCancel={() => setEditingView(null)}
+            onDone={(saved) => {
+              setDraftViews((items) => [...items, saved]);
+              setEditingView(null);
+              props.onPinnedChange(true);
+              setPeek((value) => value + 1);
+            }}
+          />
+        )}
       </Show>
       <Show when={capturing()}>
         <ScreenshotCapture

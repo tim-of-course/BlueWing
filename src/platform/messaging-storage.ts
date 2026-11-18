@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Message, MessagingStorage } from '../app/messaging';
+import type { Attachment, Message, MessagingStorage } from '../app/messaging';
 
 import type { WingmanActivity } from '../app/wingman-types';
 
@@ -73,7 +73,12 @@ export function messagingStorage(native: boolean): MessagingStorage {
         )
           throw new Error('Invalid Wingman message');
         lastId = message.id;
-        for (const attachment of message.attachments) {
+        for (const attachment of [
+          ...message.attachments,
+          ...(message.views ?? []).flatMap((view) =>
+            view.image ? [view.image] : [],
+          ),
+        ]) {
           if (
             typeof attachment.id !== 'string' ||
             typeof attachment.name !== 'string' ||
@@ -101,14 +106,24 @@ export function messagingStorage(native: boolean): MessagingStorage {
     },
     async write(projectId, messages) {
       if (native) {
+        const storedImage = (attachment: Attachment) => ({
+          ...attachment,
+          dataUrl: attachment.path
+            ? attachment.dataUrl.slice(0, attachment.dataUrl.indexOf(',') + 1)
+            : attachment.dataUrl,
+        });
         const stored = messages.map((message) => ({
           ...message,
-          attachments: message.attachments.map((attachment) => ({
-            ...attachment,
-            dataUrl: attachment.path
-              ? attachment.dataUrl.slice(0, attachment.dataUrl.indexOf(',') + 1)
-              : attachment.dataUrl,
-          })),
+          attachments: message.attachments.map(storedImage),
+          ...(message.views
+            ? {
+                views: message.views.map((view) =>
+                  view.image
+                    ? { ...view, image: storedImage(view.image) }
+                    : view,
+                ),
+              }
+            : {}),
         }));
         await invoke('app_data_write', {
           key: await key(projectId, 'messages'),

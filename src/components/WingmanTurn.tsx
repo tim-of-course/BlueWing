@@ -16,7 +16,6 @@ interface Props {
   visible: boolean;
   controller: WorkspaceController;
   planImages: RegionImages;
-  displayedVisual(entry: WingmanVisual): WingmanVisual;
   onOpenView(view: WingmanVisual): void;
   onOpenTarget(target: ActivityTarget, takeoffId?: string): void;
   navigationDisabled: boolean;
@@ -39,9 +38,7 @@ function Thumbnail(props: {
       observer.disconnect();
     };
   });
-  const visual = createMemo(
-    () => props.entry.visual && props.turn.displayedVisual(props.entry.visual),
-  );
+  const visual = () => props.entry.visual;
   const source = createMemo(() => {
     const view = visual();
     if (!view) return;
@@ -78,6 +75,7 @@ function Thumbnail(props: {
               controller={props.turn.controller}
               takeoffId={view().takeoffId}
               view={view().view}
+              frame={view().frame}
               planImages={props.turn.planImages}
             />
           )}

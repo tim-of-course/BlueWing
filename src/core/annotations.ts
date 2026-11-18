@@ -10,6 +10,11 @@ export const annotationKinds = [
   'freehand',
 ] as const;
 export type AnnotationKind = (typeof annotationKinds)[number];
+export function annotationName(kind: AnnotationKind | 'edit') {
+  return kind === 'revision-cloud'
+    ? 'Revision cloud'
+    : kind.charAt(0).toUpperCase() + kind.slice(1);
+}
 export interface AnnotationShape {
   kind: AnnotationKind;
   points: Point[];
@@ -27,10 +32,17 @@ export function checkAnnotationColor(color?: string) {
     throw new Error('This color is reserved for sheet annotations');
 }
 export function validateAnnotation(annotation: SheetAnnotation) {
-  const { kind, points, text, createdAt } = annotation;
+  const { createdAt } = annotation;
   const date = new Date(createdAt);
   if (!Number.isFinite(date.getTime()) || date.toISOString() !== createdAt)
     throw new Error('Annotation creation time must be UTC');
+  validateAnnotationShape(annotation);
+}
+export function validateAnnotationShape({
+  kind,
+  points,
+  text,
+}: AnnotationShape) {
   if (kind === 'text') {
     if (points.length !== 1 || !text?.trim())
       throw new Error('A text annotation requires one anchor and text');

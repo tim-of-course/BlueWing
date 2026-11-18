@@ -117,7 +117,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         start()
         commands = {entry['name'] for entry in command('commands.list')['commands']}
         assert {'help', 'connect', 'messages.send', 'messages.read', 'messages.wait', 'wingman.inspect', 'wingman.flash',
-                'wingman.annotate', 'sheet.render', 'snippet.render', 'construction.render'} <= commands
+                'sheet.render', 'snippet.render', 'construction.render'} <= commands
         assert command('help')['project'] is None
         assert command('help', {'command': 'messages.wait'})['name'] == 'messages.wait'
         call('help', {'command': 'does.not.exist'}, succeeds=False)
@@ -208,11 +208,6 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         assert view['mode'] == 'combined'
         assert command('wingman.flash') == {'flashed': True}
         assert command('wingman.inspect')['expanded'] is True
-        assert command('wingman.annotate', {'annotations': annotations, 'highlightIds': ['wall-path']}) == {'annotated': True}
-        view = visual('plan', 'Plan review')
-        assert view['annotations'] == annotations and view['highlightIds'] == ['wall-path']
-        command('wingman.annotate', {'annotations': [], 'highlightIds': []})
-        assert visual('plan', 'Plan review')['annotations'] == []
         snippet_image = command('snippet.render', {'id': 'detail', 'path': str(EVIDENCE / 'snippet.png'),
                                                   'maxDimension': 640, 'caption': 'Detail review'})
         png(snippet_image)
@@ -230,7 +225,9 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         assert view['camera']['yaw'] == 0.5 and view['camera']['pitch'] == 0.4
         assert command('project.inspect') == baseline
 
-        sent = call('messages.send', {'text': 'Please check this plan', 'attachments': [{
+        marks = [{'kind': 'arrow', 'points': [{'x': 0.15, 'y': 0.2}, {'x': 0.5, 'y': 0.6}]}]
+        views = [{'viewId': result['viewId'], 'annotations': marks} for result in [sheet_image, model_image]]
+        sent = call('messages.send', {'text': 'Please check this plan', 'views': views, 'attachments': [{
             'id': 'plan-capture', 'name': 'plan.png', 'width': sheet_image['width'],
             'height': sheet_image['height'],
             'dataUrl': 'data:image/png;base64,' + base64.b64encode(image_bytes).decode('ascii'),
@@ -238,6 +235,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         first, = sent['messages']
         assert sent['data'] == {'id': first['id']}
         assert first['sender'] == 'agent' and first['text'] == 'Please check this plan'
+        assert [item['view']['kind'] for item in first['views']] == ['plan', '3d']
+        assert all(item['annotations'] == marks for item in first['views'])
         attachment(first, image_bytes)
         assert sent['messagesProjectId'] == project_id and sent['messages'] == [first]
         assert call('messages.read')['messages'] == [first]
@@ -245,9 +244,9 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         cursor = first['id']
         assert call('messages.read', messagesAfter=cursor)['messages'] == []
         assert call('project.inspect', messagesAfter=cursor)['messages'] == []
-        failed = call('wingman.annotate', {'annotations': annotations}, succeeds=False)
+        failed = call('messages.send', {'views': [{'viewId': 'missing'}]}, succeeds=False)
         assert failed['messages'] == [first] and failed['messagesProjectId'] == project_id
-        assert call('wingman.annotate', {'annotations': annotations}, succeeds=False,
+        assert call('messages.send', {'views': [{'viewId': 'missing'}]}, succeeds=False,
                     messagesAfter=cursor)['messages'] == []
 
         # A waiting read must not occupy the desktop's project command queue.

@@ -54,7 +54,8 @@ export class RegionImages {
       const oldest = this.images.entries().next().value;
       if (!oldest) break;
       this.images.delete(oldest[0]);
-      this.release(oldest[1]);
+      // Visible message views may still be awaiting this image. Dropping the
+      // cache reference leaves its lifetime to those callers.
     }
     return entry;
   }

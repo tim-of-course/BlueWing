@@ -137,6 +137,77 @@ void test('message results and CLI metadata cannot mutate the accepted conversat
   delivery.messages.length = 0;
   assert.deepEqual(await messaging.read(), [expected]);
 });
+void test('reply views keep their own positions after reopening, and user views export a PNG with the normalized marks', async () => {
+  const { messaging } = fixture();
+  await messaging.bind('one');
+  const visual = {
+    projectId: 'one',
+    takeoffId: 'main',
+    revision: 7,
+    frame: { width: 800, height: 600 },
+    view: {
+      kind: 'plan' as const,
+      sheetId: 'sheet',
+      bounds: { x: 12, y: 10, width: 80, height: 60 },
+    },
+  };
+  const finish = messaging.startActivity({
+    id: 'v',
+    startedAt: 1,
+    afterMessageId: 0,
+    command: 'sheet.render',
+    category: 'Rendered',
+    outcome: 'working',
+    description: 'Detail',
+  });
+  await finish?.({ visual, outcome: 'succeeded' });
+  const marks = [
+    { kind: 'text' as const, points: [{ x: 0, y: 1 }], text: 'Corner' },
+  ];
+  const [view] = messaging.resolveViews([
+    { viewId: 'v', caption: 'Detail', annotations: marks },
+  ]);
+  assert.ok(view);
+  await messaging.send('', [], 'agent', [view]);
+  for (const annotations of [
+    [
+      {
+        kind: 'freehand' as const,
+        points: [
+          { x: 0, y: 0 },
+          { x: 1, y: 1 },
+        ],
+      },
+    ],
+    [
+      {
+        kind: 'text' as const,
+        points: [{ x: 1.1, y: 0.9 }],
+        text: 'Beyond edge',
+      },
+    ],
+    [{ kind: 'arrow' as const, points: [{ x: 0, y: 0 }] }],
+  ])
+    assert.throws(() => messaging.resolveViews([{ viewId: 'v', annotations }]));
+  const image = {
+    id: 'view-image',
+    width: 800,
+    height: 600,
+    name: 'Annotated view',
+    dataUrl: 'data:image/png;base64,eA==',
+  };
+  await messaging.send('', [], 'user', [{ ...view, image }]);
+  await messaging.bind('one');
+  assert.throws(
+    () => messaging.resolveViews([{ viewId: 'v' }]),
+    /Unknown rendered view/,
+  );
+  const [reply, user] = messaging.delivery().messages;
+  assert.deepEqual(reply?.views?.[0], view);
+  assert.equal(user?.views?.[0]?.image?.path, '/local/view-image.png');
+  assert.deepEqual(user.views[0].annotations, marks);
+  assert.ok(!JSON.stringify(user).includes('dataUrl'));
+});
 void test('reads clone once and status notifications do not clone pending results', async () => {
   const { messaging } = fixture();
   await messaging.bind('one');
@@ -598,7 +669,6 @@ void test('stale Wingman requests cannot touch the open presentation or receive 
   const unexpected = () => assert.fail('Touched the other job presentation');
   app.presentation = {
     inspect: unexpected,
-    annotate: unexpected,
     flash: unexpected,
     publish: unexpected,
     hasMessageDraft: () => false,
@@ -609,7 +679,6 @@ void test('stale Wingman requests cannot touch the open presentation or receive 
     'messages.wait',
     'wingman.inspect',
     'wingman.flash',
-    'wingman.annotate',
   ]) {
     const result = await dispatchCli(app, [name], '{"projectId":"previous"}');
     assert.equal(result.exitCode, 1);

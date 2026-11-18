@@ -6,6 +6,7 @@ import {
   type PayloadSchema,
 } from '../core/commands';
 
+import { annotationKinds } from '../core/annotations';
 import { standardSizesSchema, companySizes } from '../core/standard-sizes';
 const string: PayloadSchema = { type: 'string' };
 function entry(
@@ -132,9 +133,49 @@ export const applicationCommands = [
   ),
   entry(
     'messages.send',
-    'Send a project message without changing the estimate or undo history.',
+    'Send a message. Attach rendered views by viewId from sheet.render, snippet.render or construction.render. Annotation points are normalized 0–1 from the top left of that rendered frame: x = pixelX / imageWidth, y = pixelY / imageHeight.',
     {
       text: string,
+      views: {
+        type: 'array',
+        maxItems: 8,
+        items: {
+          type: 'object',
+          required: ['viewId'],
+          additionalProperties: false,
+          properties: {
+            viewId: string,
+            caption: string,
+            annotations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['kind', 'points'],
+                additionalProperties: false,
+                properties: {
+                  kind: {
+                    type: 'string',
+                    enum: annotationKinds.filter((kind) => kind !== 'freehand'),
+                  },
+                  text: string,
+                  points: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      required: ['x', 'y'],
+                      additionalProperties: false,
+                      properties: {
+                        x: { type: 'number', minimum: 0 },
+                        y: { type: 'number', minimum: 0 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       attachments: {
         type: 'array',
         items: {
@@ -191,37 +232,6 @@ export const applicationCommands = [
     [],
     false,
     {},
-  ),
-  entry(
-    'wingman.annotate',
-    'Replace local Wingman plan annotations and optional highlights.',
-    {
-      annotations: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            points: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: { x: { type: 'number' }, y: { type: 'number' } },
-                required: ['x', 'y'],
-                additionalProperties: false,
-              },
-            },
-            label: string,
-            color: string,
-          },
-          required: ['points', 'label', 'color'],
-          additionalProperties: false,
-        },
-      },
-      highlightIds: { type: 'array', items: string },
-    },
-    ['annotations'],
-    false,
-    { annotations: [], highlightIds: [] },
   ),
   entry(
     'project.backup',
