@@ -137,21 +137,9 @@ export default function Wingman(props: Props) {
       const current = publication()?.visual;
       const project = projectId();
       const takeoff = takeoffId();
-      if (
-        current &&
-        current.projectId === project &&
-        current.takeoffId === takeoff
-      )
-        return current;
-      return (
-        entries()
-          .filter(
-            (entry) =>
-              entry.visual?.projectId === project &&
-              entry.visual.takeoffId === takeoff,
-          )
-          .at(-1)?.visual ?? null
-      );
+      return current?.projectId === project && current.takeoffId === takeoff
+        ? current
+        : null;
     },
     { name: 'wingman.currentAgentView' },
   );
