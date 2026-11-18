@@ -208,25 +208,41 @@ small,
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+/* Blend only the two one-pixel strips and the reticle. Their paint does not overlap. */
+.canvas-crosshair span,
+.canvas-reticle {
+  position: absolute;
   mix-blend-mode: difference;
   opacity: 0.6;
-}
-.canvas-crosshair span {
-  position: absolute;
-  background: white;
 }
 .crosshair-horizontal {
   left: 0;
   right: 0;
+  top: var(--cursor-y);
   height: 1px;
+  background: linear-gradient(
+    to right,
+    white calc(var(--cursor-x) - 13px),
+    transparent 0 calc(var(--cursor-x) + 13px),
+    white 0
+  );
 }
 .crosshair-vertical {
   top: 0;
   bottom: 0;
+  left: var(--cursor-x);
   width: 1px;
+  background: linear-gradient(
+    to bottom,
+    white calc(var(--cursor-y) - 13px),
+    transparent 0 calc(var(--cursor-y) + 13px),
+    white 0
+  );
 }
 .canvas-reticle {
-  position: absolute;
+  left: var(--cursor-x);
+  top: var(--cursor-y);
   width: 26px;
   height: 26px;
   transform: translate(-50%, -50%);
