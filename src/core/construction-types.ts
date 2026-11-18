@@ -228,7 +228,16 @@ export interface ConstructionPurchase extends ConstructionSource {
   purchasedCount: number;
   packageCount: number | null;
 }
+export interface FaceRequirement extends ConstructionSource {
+  materialId: string;
+  grossArea: number;
+  wastePercent: number;
+  packageSize?: number;
+  surfaceIds: string[];
+}
 export interface ConstructionSurfacePurchase extends ConstructionSource {
+  grossArea?: number;
+  openingArea?: number;
   quantityKey?: string;
   surfaceIds: string[];
   materialId: string;
@@ -245,6 +254,7 @@ export interface ConstructionOptions {
 export interface ConstructionResult {
   pieces: ConstructionPiece[];
   surfaces: ConstructionSurface[];
+  faceRequirements?: FaceRequirement[];
   purchases: ConstructionPurchase[];
   /** Area purchasing rounds once per authored finish/ceiling, never per polygon patch. */
   surfacePurchases?: ConstructionSurfacePurchase[];

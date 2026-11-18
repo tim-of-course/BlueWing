@@ -244,6 +244,8 @@ export interface CalculationOutput {
   role?: string;
   cutLength?: Quantity;
   stockLength?: Quantity;
+  grossArea?: number;
+  openingArea?: number;
   baseAmount: number;
   /** Takeoff-wide stock order. baseAmount remains the installed piece count. */
   packedCount?: number;

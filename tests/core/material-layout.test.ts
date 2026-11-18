@@ -115,7 +115,7 @@ void test('standalone finish subtracts the union of located openings before laye
   summarizeMaterials(project, result);
   assert.equal(result.surfacePurchases?.length, 1);
   close(present(result.surfacePurchases[0]).requiredArea, 42);
-  close(present(result.surfacePurchases[0]).purchasedArea, 50);
+  close(present(result.surfacePurchases[0]).purchasedArea, 60);
   assert.equal(JSON.stringify({ project, application, context }), before);
 });
 

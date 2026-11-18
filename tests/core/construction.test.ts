@@ -821,8 +821,10 @@ void test('partial-height finishes deduct only covered openings, apply layers an
   );
   const purchase = present(present(result.surfacePurchases)[0]);
   close(purchase.requiredArea, 16);
-  close(purchase.purchasedArea, 18);
-  assert.equal(purchase.packageCount, 6);
+  close(present(purchase.grossArea), 19.2);
+  close(present(purchase.openingArea), 3.2);
+  close(purchase.purchasedArea, 24);
+  assert.equal(purchase.packageCount, 8);
   for (const surface of result.surfaces) {
     close(present(surface.thickness), 0.02);
     assert.equal(surface.finishId, 'front');

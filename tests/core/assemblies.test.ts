@@ -173,7 +173,7 @@ void test('steel wall starters use company framing and drywall purchasing defaul
     for (const finish of wall.finishes ?? []) near(finish.packageSize, 48);
     const board = rows.filter((row) => row.unit === 'SF');
     assert.equal(board.length, id === 'steel-wall' ? 2 : 0);
-    for (const row of board) near(row.quantity, 288);
+    for (const row of board) near(row.quantity, 240);
   }
 });
 

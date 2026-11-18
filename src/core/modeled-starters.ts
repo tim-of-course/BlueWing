@@ -75,7 +75,7 @@ function surface(
       kind: 'path-surface',
       elevation: 0,
       materialId,
-      wastePercent: 5,
+      wastePercent: 0,
       layers: 1,
       thickness: thickness / 12,
       ...(height === undefined ? {} : { height: height / 12 }),

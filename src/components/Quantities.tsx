@@ -501,6 +501,19 @@ export default function Quantities(props: {
                             {quantityLabel(output().baseAmount, output().unit)}
                           </dd>
                         </div>
+                        <Show when={output().grossArea !== undefined}>
+                          <div>
+                            <dt>Waste from openings</dt>
+                            <dd>
+                              {number(output().openingArea ?? 0)} SF (
+                              {number(
+                                ((output().openingArea ?? 0) * 100) /
+                                  (output().grossArea || 1),
+                              )}
+                              % of gross)
+                            </dd>
+                          </div>
+                        </Show>
                         <div>
                           <dt>Waste ({number(output().wastePercent)}%)</dt>
                           <dd>
