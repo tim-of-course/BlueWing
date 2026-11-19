@@ -200,6 +200,16 @@ export default function Wingman(props: Props) {
       ) || null
     );
   });
+  // The connect prompt is a setup step: close it once the AI makes contact.
+  let seenContact = untrack(contact);
+  createEffect(
+    contact,
+    (current) => {
+      if (current != null && current !== seenContact) setPromptOpen(false);
+      seenContact = current;
+    },
+    { name: 'wingman.closePromptOnContact' },
+  );
   const firstConnection = () =>
     contact() == null && !messages().length && !entries().length;
   createEffect(
@@ -379,6 +389,10 @@ export default function Wingman(props: Props) {
       setError(cause instanceof Error ? cause.message : String(cause)),
     );
   }
+  let copyTimer: ReturnType<typeof setTimeout> | undefined;
+  onCleanup(() => {
+    clearTimeout(copyTimer);
+  });
   async function copyPrompt(mode: 'wingman' | 'chat') {
     const connection = props.controller.cliConnection();
     const project = props.controller.project();
@@ -387,8 +401,14 @@ export default function Wingman(props: Props) {
     setFallbackPrompt('');
     try {
       await navigator.clipboard.writeText(prompt);
+      setPromptOpen(false);
       setCopyStatus('Prompt copied. Paste it into your AI’s chat.');
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => {
+        setCopyStatus('');
+      }, 4000);
     } catch {
+      clearTimeout(copyTimer);
       setCopyStatus('Could not copy. Select and copy the prompt below.');
       setFallbackPrompt(prompt);
     }
@@ -485,6 +505,11 @@ export default function Wingman(props: Props) {
                 CLI paused. A running action may finish.
               </p>
             </Show>
+            <Show when={copyStatus()}>
+              <p class="wingman-pause-note" role="status">
+                {copyStatus()}
+              </p>
+            </Show>
             <Show when={promptOpen()}>
               <section class="wingman-prompts" aria-label="Connect your AI">
                 <Show
@@ -497,27 +522,28 @@ export default function Wingman(props: Props) {
                   }
                 >
                   <p>Copy a prompt and paste it into your AI’s chat.</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void copyPrompt('wingman');
-                    }}
-                  >
-                    Wingman + chat
-                  </button>
-                  <p>Talk here or in your AI’s chat.</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void copyPrompt('chat');
-                    }}
-                  >
-                    Chat only
-                  </button>
-                  <p>Keep the conversation in your AI’s chat.</p>
-                  <Show when={copyStatus()}>
-                    <p role="status">{copyStatus()}</p>
-                  </Show>
+                  <div class="wingman-prompt-choices">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void copyPrompt('wingman');
+                      }}
+                    >
+                      Wingman + chat
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void copyPrompt('chat');
+                      }}
+                    >
+                      Chat only
+                    </button>
+                  </div>
+                  <p>
+                    Wingman + chat: talk here or in your AI’s chat. Chat only:
+                    keep the conversation in your AI’s chat.
+                  </p>
                   <Show when={fallbackPrompt()}>
                     <label for="wingman-prompt">AI connection prompt</label>
                     <textarea
