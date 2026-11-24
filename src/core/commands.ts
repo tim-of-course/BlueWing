@@ -1585,6 +1585,17 @@ export function executeCommandOnDraft(
       for (const entry of Object.values(next.annotations))
         if (entry.sheetId === entityId)
           Reflect.deleteProperty(next.annotations, entry.id);
+      for (const takeoff of Object.values(next.takeoffs)) {
+        if (takeoff.kind === 'main') continue;
+        const sheetReferences: (
+          Record<string, { sheetId: string }> | undefined
+        )[] = [takeoff.construction?.placements, takeoff.review?.snippets];
+        for (const records of sheetReferences) {
+          if (!records) continue;
+          for (const [id, entry] of Object.entries(records))
+            if (entry.sheetId === entityId) Reflect.deleteProperty(records, id);
+        }
+      }
       Reflect.deleteProperty(next.sheets, entityId);
       break;
     case 'geometry.put':

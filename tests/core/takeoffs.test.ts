@@ -465,6 +465,56 @@ void test('copy/delete, failed saves, batch preview and undo/redo stay atomic in
   );
 });
 
+void test('deleting a shared sheet prunes phase and change order references and undo restores them', async () => {
+  const f = fixture();
+  const sheet = {
+    ...required(f.session.project.sheets.s),
+    id: 'detail',
+    name: 'Detail',
+    pageIndex: 1,
+  };
+  const placement = {
+    id: 'placement',
+    sheetId: sheet.id,
+    pageOrigin: { x: 0, y: 0 },
+    worldOffset: { x: 1, y: 2, z: 0 },
+    rotation: 0,
+  };
+  const snippet = {
+    id: 'snippet',
+    name: 'Detail',
+    sheetId: sheet.id,
+    bounds: { x: 5, y: 5, width: 20, height: 20 },
+    geometryIds: [],
+    sources: [],
+    annotations: [],
+    note: '',
+  };
+  await f.call({ name: 'sheet.put', payload: sheet });
+  await f.create('phase', 'phase');
+  await f.create();
+  for (const takeoffId of ['phase', 'co']) {
+    await f.call({ name: 'placement.put', takeoffId, payload: placement });
+    await f.call({ name: 'snippet.put', takeoffId, payload: snippet });
+  }
+
+  await f.call({ name: 'sheet.delete', payload: { id: sheet.id } });
+  assert.equal(f.session.project.sheets[sheet.id], undefined);
+  for (const takeoffId of ['phase', 'co']) {
+    const takeoff = takeoffProject(f.session.project, takeoffId);
+    assert.deepEqual(takeoff.construction?.placements, {});
+    assert.deepEqual(takeoff.review?.snippets, {});
+  }
+
+  await f.call({ name: 'history.undo' });
+  assert.deepEqual(f.session.project.sheets[sheet.id], sheet);
+  for (const takeoffId of ['phase', 'co']) {
+    const takeoff = takeoffProject(f.session.project, takeoffId);
+    assert.deepEqual(takeoff.construction?.placements[placement.id], placement);
+    assert.deepEqual(takeoff.review?.snippets[snippet.id], snippet);
+  }
+});
+
 void test('project notes and category colors remain shared when edited from another takeoff', async () => {
   const f = fixture();
   await f.create();
