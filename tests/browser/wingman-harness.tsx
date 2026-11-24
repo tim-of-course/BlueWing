@@ -16,6 +16,27 @@ Object.assign(window, {
     dispatchCli(application, [name, JSON.stringify(request)]),
   wingmanPublish: (visual: WingmanVisual) =>
     application.presentation?.publish(visual),
+  holdNextReviewSheetRender() {
+    const renderSheet = application.pageImages.render.bind(
+      application.pageImages,
+    );
+    let release!: (fail: boolean) => void;
+    const gate = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    application.pageImages.render = async () => {
+      application.pageImages.render = renderSheet;
+      if (await gate) throw new Error('Obsolete sheet render failed');
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 10;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Expected a canvas context');
+      context.fillStyle = 'red';
+      context.fillRect(0, 0, 10, 10);
+      return canvas;
+    };
+    return release;
+  },
   holdNextProjectSave() {
     const save = application.storage.save.bind(application.storage);
     let release!: (fail: boolean) => void;
