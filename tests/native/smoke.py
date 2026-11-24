@@ -41,6 +41,17 @@ const handler = api.transformCallback(async ({payload:r}) => {
     } else if (r.args[0] === 'invoke') {
       response = await invoke(r.args[1], JSON.parse(r.input || '{}'));
       if (response instanceof ArrayBuffer) response = [...new Uint8Array(response)];
+    } else if (r.args[0] === 'drag-listeners') {
+      const target = {kind:'Webview', label:api.metadata.currentWebview.label};
+      for (const phase of ['enter', 'over', 'drop', 'leave']) {
+        const event = 'tauri://drag-' + phase;
+        const eventId = await invoke('plugin:event|listen', {
+          event, target, handler:api.transformCallback(() => {})
+        });
+        window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, eventId);
+        await invoke('plugin:event|unlisten', {event, eventId});
+      }
+      response = true;
     } else {
       response = {version:VERSION, bridge:await invoke('bridge_ready'), args:r.args,input:r.input};
     }
@@ -102,6 +113,9 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
     desktop = subprocess.Popen([str(BIN / "bluewing-desktop")], env=env)
     try:
         ready("smoke-v1")
+        assert cli("drag-listeners") is True
+        denied = cli("invoke", "plugin:window|get_all_windows", ok=False)
+        assert "not allowed" in denied["error"].lower(), denied
         second = subprocess.run([str(BIN / "bluewing-desktop")], env=env,
                                 capture_output=True, text=True, timeout=15)
         assert second.returncode != 0
@@ -142,4 +156,4 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
         desktop.terminate()
         desktop.wait(timeout=10)
     cli("echo", ok=False)
-print("PASS: native IPC, CLI stdin, durable SQLite, activation guard, new cached assets, offline restart")
+print("PASS: native IPC, event and window permission checks, CLI stdin, durable SQLite, activation guard, new cached assets, offline restart")
