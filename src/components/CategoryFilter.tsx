@@ -36,8 +36,10 @@ export default function CategoryFilter(props: {
           <input
             type="checkbox"
             checked={props.controller.categoryFilter() === undefined}
-            onChange={() => {
-              props.controller.setCategoryFilter(undefined);
+            onChange={(event) => {
+              props.controller.setCategoryFilter(
+                event.currentTarget.checked ? undefined : [],
+              );
             }}
           />{' '}
           All

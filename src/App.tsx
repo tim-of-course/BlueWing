@@ -227,6 +227,7 @@ export default function App(props: { application?: Application }) {
     }
     setTool(id);
     if (id === 'select') controller.setActiveGroupId(null);
+    else if (view() === '3d') setView('plan');
     setQuantities(false);
     if (id !== 'select' && id !== 'annotations') requestInspector();
   };
@@ -1366,6 +1367,7 @@ export default function App(props: { application?: Application }) {
             onClose={() => setScaleDialog(null)}
             onMeasure={() => {
               setScaleDialog(null);
+              if (view() === '3d') setView('plan');
               setTool('calibrate');
             }}
           />

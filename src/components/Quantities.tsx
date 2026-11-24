@@ -95,7 +95,6 @@ export default function Quantities(props: {
           </button>
           <button
             type="button"
-            disabled={props.navigationDisabled}
             onClick={() => {
               exportFile('csv');
             }}

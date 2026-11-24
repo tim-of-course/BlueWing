@@ -1289,13 +1289,15 @@ export default function DrawingCanvas(props: {
     const observer = new ResizeObserver(resize);
     observer.observe(element);
     const keydown = (event: KeyboardEvent) => {
-      if (!canvas?.getClientRects().length) return;
+      if (event.defaultPrevented || !canvas?.getClientRects().length) return;
       if (
         document.querySelector('[role="dialog"],dialog[open]') ||
         (event.target instanceof Element &&
-          event.target.closest(
+          (event.target.closest(
             'input,textarea,select,[contenteditable="true"]',
-          ))
+          ) ||
+            ((event.key === 'Enter' || event.code === 'Space') &&
+              event.target.closest('button,a,[role="button"]'))))
       )
         return;
       if (
@@ -1336,11 +1338,6 @@ export default function DrawingCanvas(props: {
         });
       }
       if (event.code === 'Space') {
-        if (
-          event.target instanceof Element &&
-          event.target.closest('button,a,[role="button"]')
-        )
-          return;
         event.preventDefault();
         spaceDown = true;
         brushPrevious = null;

@@ -15,6 +15,13 @@ export async function categoryVisibilityWorkflow(page: Page): Promise<void> {
   await expect(
     filter.getByRole('checkbox', { name: 'Insulation', exact: true }),
   ).toBeVisible();
+  const all = filter.getByLabel('All', { exact: true });
+  await expect(all).toBeChecked();
+  await all.uncheck();
+  await expect(filter.locator('summary')).toHaveText(/Categories\s+•/);
+  await all.check();
+  await expect(filter.locator('summary')).toHaveText('Categories');
+  await all.uncheck();
   await filter.getByLabel('Uncategorized').check();
   await expect(filter.getByLabel('Uncategorized')).toBeChecked();
   const shown = await canvas.screenshot();

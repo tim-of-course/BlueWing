@@ -115,6 +115,27 @@ export async function namedTakeoffs(page: Page) {
   };
   expect(report.totals[0]?.amount).toBe(-4);
   expect(report.totals[0]?.deductions).toBe(4);
+  const copy = page.getByRole('button', {
+    name: 'Copy selected items',
+    exact: true,
+  });
+  const source = page.getByLabel('Source takeoff');
+  await expect(copy).toBeEnabled();
+  await page.getByLabel('Active takeoff').selectOption('main');
+  await expect(source).toHaveValue(co);
+  await expect(copy).toBeDisabled();
+  await page.getByLabel('Active takeoff').selectOption(co);
+  await expect(source).toHaveValue('main');
+  const markers = page.getByRole('checkbox', {
+    name: 'Main markers',
+    exact: true,
+  });
+  await expect(markers).not.toBeChecked();
+  await markers.check();
+  await mutate('geometry.delete', { id: 'g' });
+  await expect(markers).toBeHidden();
+  await expect(copy).toBeDisabled();
+  await mutate('history.undo', {});
   await page.getByLabel('Active takeoff').selectOption('main');
   await mutate('takeoff.rename', { id: co, name: 'CO renamed' }, co);
   await mutate(

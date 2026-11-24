@@ -1,5 +1,5 @@
 import { required, takeoffContext } from '../core/takeoffs';
-import { createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import type { WorkspaceController } from '../app/contracts';
 
 export default function TakeoffControls(props: {
@@ -15,13 +15,31 @@ export default function TakeoffControls(props: {
   const [error, setError] = createSignal('');
   const current = () => required(props.controller.project() ?? undefined);
   const takeoff = () => takeoffContext(current());
-  const source = () =>
-    props.controller
-      .takeoffSources()
-      .find(
-        (p) => p.takeoffId === sourceId() && p.takeoffId !== takeoff().id,
-      ) ??
-    props.controller.takeoffSources().find((p) => p.takeoffId !== takeoff().id);
+  const destinationId = createMemo(() => current().takeoffId);
+  const sources = createMemo(() =>
+    Object.values(current().takeoffs).filter((t) => t.id !== destinationId()),
+  );
+  const effectiveSourceId = createMemo(
+    () => sources().find((t) => t.id === sourceId())?.id ?? sources()[0]?.id,
+  );
+  const source = createMemo(() => {
+    if (!open()) return null;
+    const id = effectiveSourceId();
+    return id ? props.controller.projectForTakeoff(id) : null;
+  });
+  createEffect(
+    () => [effectiveSourceId(), destinationId()],
+    () => {
+      setSelected([]);
+    },
+    { name: 'takeoff.copySelection' },
+  );
+  const copyIds = createMemo(() => {
+    const geometries = source()?.geometries;
+    return geometries
+      ? selected().filter((id) => Object.hasOwn(geometries, id))
+      : [];
+  });
   const run = async (work: () => unknown) => {
     try {
       setError('');
@@ -92,7 +110,6 @@ export default function TakeoffControls(props: {
                   payload: { id, name: name(), kind: kind() },
                 });
                 props.controller.selectTakeoff(id);
-                setSelected([]);
               });
             }}
           >
@@ -131,17 +148,10 @@ export default function TakeoffControls(props: {
             Copy from{' '}
             <select
               aria-label="Source takeoff"
-              value={source()?.takeoffId ?? ''}
-              onChange={(e) => {
-                setSourceId(e.currentTarget.value);
-                setSelected([]);
-              }}
+              value={effectiveSourceId() ?? ''}
+              onChange={(e) => setSourceId(e.currentTarget.value)}
             >
-              <For
-                each={Object.values(current().takeoffs).filter(
-                  (t) => t.id !== takeoff().id,
-                )}
-              >
+              <For each={sources()}>
                 {(t) => <option value={t.id}>{t.name}</option>}
               </For>
             </select>
@@ -178,15 +188,18 @@ export default function TakeoffControls(props: {
           </select>
           <button
             type="button"
-            disabled={props.disabled || !selected().length || !source()}
+            disabled={props.disabled || !copyIds().length}
             onClick={() => {
+              const sourceTakeoffId = effectiveSourceId();
+              const geometryIds = copyIds();
+              if (!sourceTakeoffId || !geometryIds.length) return;
               void run(() =>
                 props.controller.execute({
                   name: 'takeoff.copyItems',
                   takeoffId: takeoff().id,
                   payload: {
-                    sourceTakeoffId: source()?.takeoffId,
-                    geometryIds: selected(),
+                    sourceTakeoffId,
+                    geometryIds,
                     direction:
                       takeoff().kind === 'change-order' ? direction() : 'add',
                   },
