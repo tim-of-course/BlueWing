@@ -148,7 +148,12 @@ void test('sloped members use true-axis extensions and rotated sections in the m
   close(piece.end.x, 3.3);
   close(piece.end.z, 4.4);
   assert.equal(result.complete, false);
-  assert.equal(result.diagnostics[0]?.code, 'stock-shortfall');
+  const diagnostic = present(result.diagnostics[0]);
+  assert.equal(diagnostic.code, 'stock-shortfall');
+  assert.equal(
+    diagnostic.message,
+    'layout/component/segment/0: cut 6 ft exceeds stock 5 ft',
+  );
   const axis = present(piece.widthAxis);
   close(
     axis.x * (piece.end.x - piece.start.x) +

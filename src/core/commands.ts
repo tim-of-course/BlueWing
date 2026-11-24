@@ -1328,7 +1328,7 @@ export function executeCommandOnDraft(
   if (!next.takeoffId) {
     if (call.name.startsWith('takeoff.') && call.name !== 'takeoff.inspect') {
       const data = manageTakeoff(next, call);
-      if (definition.mutates) validateProject(next);
+      if (definition.mutates && validateResult) validateProject(next);
       return {
         project: next,
         data: structuredClone(data),
@@ -1354,6 +1354,15 @@ export function executeCommandOnDraft(
       ].includes(call.name)
     ) {
       const view = takeoffProject(next, call.takeoffId ?? mainId(next));
+      if (!definition.mutates) {
+        const result = executeCommandOnDraft(
+          view,
+          call,
+          validateResult,
+          calculation,
+        );
+        return { ...result, project: next };
+      }
       const before = structuredClone(view);
       const result = executeCommandOnDraft(
         view,

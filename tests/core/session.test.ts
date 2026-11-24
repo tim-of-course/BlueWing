@@ -1,6 +1,7 @@
 import { companySizes } from '../../src/core/standard-sizes';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import type { inspectQuantities } from '../../src/core/calculations';
 import { ProjectConflictError, ProjectSession } from '../../src/core/session';
 import type { CommandCall, Project } from '../../src/core/types';
 
@@ -266,6 +267,10 @@ void test('batch rollback, final-state validation, and one undo step', async () 
             payload: { id: 'g', name: 'Group', geometryIds: ['geom'] },
           },
           {
+            name: 'takeoff.rename',
+            payload: { id: 'main', name: 'Base takeoff' },
+          },
+          {
             name: 'geometry.put',
             payload: {
               id: 'geom',
@@ -292,10 +297,12 @@ void test('batch rollback, final-state validation, and one undo step', async () 
   );
   assert.equal(saves.length, 1);
   assert.equal(session.project.revision, 1);
+  assert.equal(session.project.takeoffs.main?.name, 'Base takeoff');
   await session.dispatch(request(session, { name: 'history.undo' }));
   assert.deepEqual(session.project.groups, {});
   assert.deepEqual(session.project.sheets, {});
   assert.deepEqual(session.project.geometries, {});
+  assert.equal(session.project.takeoffs.main.name, 'Main');
   assert.equal(session.canUndo, false);
   await session.dispatch(request(session, { name: 'history.redo' }));
   assert.deepEqual(session.project.groups.g?.geometryIds, ['geom']);
@@ -453,6 +460,35 @@ void test('read commands and metadata paths avoid draft copies and retain isolat
   );
   assert.equal(renameClones, 3);
   assert.equal(session.project.name, 'Renamed');
+
+  await session.dispatch(
+    request(session, {
+      name: 'takeoff.create',
+      payload: { id: 'phase', name: 'Phase A', kind: 'phase' },
+    }),
+  );
+  const inspectPhase = () =>
+    session.dispatch(
+      request(session, { name: 'quantities.inspect', takeoffId: 'phase' }),
+    );
+  const initial = await inspectPhase();
+  const scopedClones = await countProjectClones(async () => {
+    const result = await inspectPhase();
+    assert.deepEqual(result.data, initial.data);
+    assert.equal(result.changed, false);
+    const inspected = result.data as ReturnType<typeof inspectQuantities>;
+    assert.equal(inspected.context.name, 'Phase A');
+    inspected.context.name = 'mutated phase';
+    assert.equal(inspected.coverage.complete, true);
+    assert.ok(Reflect.set(inspected.coverage, 'complete', false));
+    assert.equal(result.project.takeoffs.phase?.name, 'Phase A');
+    assert.equal(result.project.name, 'Renamed');
+    result.project.name = 'mutated result';
+  });
+  assert.equal(scopedClones, 1);
+  assert.deepEqual((await inspectPhase()).data, initial.data);
+  assert.equal(session.project.name, 'Renamed');
+  assert.equal(saves.length, 2);
 });
 
 void test('rename history skips unchanged records and extension snapshots', async () => {
