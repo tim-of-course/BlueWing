@@ -434,6 +434,7 @@ export default function ConstructionEditor(props: {
   );
   const [draft, setDraft] = createSignal<Record<string, unknown> | null>(null);
   const [dirty, setDirty] = createSignal(false);
+  const [saving, setSaving] = createSignal(false);
   const [filter, setFilter] = createSignal('');
   const [templateName, setTemplateName] = createSignal('Wall template');
   const [templateId, setTemplateId] = createSignal('');
@@ -626,17 +627,22 @@ export default function ConstructionEditor(props: {
   const command = () =>
     `${kinds.find((item) => item.kind === kind())?.command ?? 'wall'}.put`;
   async function save() {
-    if (!draft()) return;
-    await props.controller.execute(
-      { name: command(), payload: draft() },
-      expected,
-    );
-    expected = props.controller.observe();
-    setDirty(false);
-    setPreview(null);
+    if (!draft() || saving()) return;
+    setSaving(true);
+    try {
+      await props.controller.execute(
+        { name: command(), payload: draft() },
+        expected,
+      );
+      expected = props.controller.observe();
+      setDirty(false);
+      setPreview(null);
+    } finally {
+      setSaving(false);
+    }
   }
   return (
-    <div class="stack">
+    <fieldset class="stack panel-fieldset" disabled={saving()}>
       <div class="panel-heading">
         <div>
           <h2>Construction</h2>
@@ -1188,6 +1194,6 @@ export default function ConstructionEditor(props: {
           {(diagnostic) => <p class="warning">{diagnostic.message}</p>}
         </For>
       </Show>
-    </div>
+    </fieldset>
   );
 }
