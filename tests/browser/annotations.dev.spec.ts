@@ -58,10 +58,17 @@ test('permanent annotations draw, edit, hide and render independently of takeoff
   }
   await choose('Text');
   await pagePoint(page, 150, 70);
+  const text = page.getByLabel('Annotation text', { exact: true });
+  const cancel = page.getByRole('button', { name: 'Cancel', exact: true });
+  await text.fill('Discard this note');
+  await cancel.press('Enter');
+  await expect(text).toBeHidden();
+  expect(await records()).toHaveLength(5);
+  await pagePoint(page, 150, 70);
   await page
     .getByLabel('Annotation text', { exact: true })
     .fill('Confirm top of wall');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).press('Enter');
   await expect
     .poll(async () => (await records()).at(-1)?.text)
     .toBe('Confirm top of wall');

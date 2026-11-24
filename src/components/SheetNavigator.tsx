@@ -680,7 +680,7 @@ export default function SheetNavigator(props: Props) {
                   aria-expanded={
                     rowState[sheet().id]?.expanded ? 'true' : 'false'
                   }
-                  disabled={!sheetGroups(sheet().id).length}
+                  disabled={!!term() || !sheetGroups(sheet().id).length}
                   onClick={() =>
                     setCollapsed((ids) =>
                       ids.includes(sheet().id)

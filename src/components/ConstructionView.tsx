@@ -596,6 +596,7 @@ export default function ConstructionView(props: ConstructionViewProps) {
       ArrowDown: [0, 12],
     };
     const step = steps[event.key];
+    if (step && (event.altKey || event.ctrlKey || event.metaKey)) return;
     if (step) {
       event.preventDefault();
       setCamera((old) => orbitCamera(old, ...step));

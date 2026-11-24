@@ -85,9 +85,6 @@ export async function navigatorWorkflow(page: Page) {
     'aria-expanded',
     'false',
   );
-  await firstBranch
-    .getByRole('button', { name: /^Expand groups for / })
-    .click();
   await page.getByRole('button', { name: 'Assemblies', exact: true }).click();
   const editor = page.getByRole('dialog', {
     name: 'Assembly editor',
@@ -120,6 +117,9 @@ export async function navigatorWorkflow(page: Page) {
     .getByLabel('Filter sheets and groups', { exact: true })
     .fill('Walls');
   await expect(firstBranch).toBeVisible();
+  const disclosure = firstBranch.locator('.sheet-expand');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  await expect(disclosure).toBeDisabled();
   await page
     .getByLabel('Filter sheets and groups', { exact: true })
     .fill('no match');
@@ -127,6 +127,27 @@ export async function navigatorWorkflow(page: Page) {
     page.getByText('No sheets or groups match.', { exact: true }),
   ).toBeVisible();
   await page.getByLabel('Filter sheets and groups', { exact: true }).fill('');
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await expect(disclosure).toBeEnabled();
+  await disclosure.click();
+  await firstBranch
+    .getByRole('button', { name: 'Walls, 1 drawing objects', exact: true })
+    .click();
+  const groupName = page.getByLabel('Group name', { exact: true });
+  await groupName.fill('Draft walls');
+  await page.getByRole('button', { name: 'Quantities', exact: true }).click();
+  await page
+    .getByText('1 drawn item is not in any quantity', { exact: true })
+    .click();
+  await expect(
+    page.locator('.quantities').getByRole('button', { name: 'North wall' }),
+  ).toBeDisabled();
+  const csv = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
+  expect((await csv).suggestedFilename()).toMatch(/\.csv$/);
+  await page.getByRole('button', { name: 'Drawing', exact: true }).click();
+  await expect(groupName).toHaveValue('Draft walls');
+  await page.getByRole('button', { name: 'Cancel group edit' }).click();
 
   const separator = page.getByRole('separator', {
     name: 'Resize Sheets',
