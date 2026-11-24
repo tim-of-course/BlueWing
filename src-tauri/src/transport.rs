@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
     sync::{
@@ -15,6 +15,9 @@ use std::{
 };
 use tauri::Emitter;
 pub const TIMEOUT: Duration = Duration::from_secs(60);
+const REQUEST_BYTE_LIMIT: usize = 16 * 1024 * 1024;
+const REQUEST_TOO_LARGE: &str =
+    "CLI request exceeds the 16 MiB transport limit. Reduce attachment size and retry.";
 pub fn data_dir() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("BLUEWING_DATA_DIR") {
         return Ok(path.into());
@@ -34,6 +37,40 @@ pub struct Request {
     args: Vec<String>,
     input: Option<String>,
 }
+
+struct RequestBudget(usize);
+
+impl Write for RequestBudget {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0 = self
+            .0
+            .checked_sub(bytes.len())
+            .ok_or_else(|| io::Error::other(REQUEST_TOO_LARGE))?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn write_request(mut writer: impl Write, request: &Request) -> Result<(), String> {
+    serde_json::to_writer(&mut writer, request).map_err(|e| e.to_string())?;
+    writer.write_all(b"\n").map_err(|e| e.to_string())
+}
+
+fn read_request(reader: impl BufRead) -> Result<Request, String> {
+    let mut line = Vec::new();
+    reader
+        .take((REQUEST_BYTE_LIMIT + 1) as u64)
+        .read_until(b'\n', &mut line)
+        .map_err(|e| e.to_string())?;
+    if line.len() > REQUEST_BYTE_LIMIT {
+        return Err(REQUEST_TOO_LARGE.into());
+    }
+    serde_json::from_slice(&line).map_err(|e| e.to_string())
+}
+
 #[derive(Clone, Serialize)]
 struct Event {
     id: String,
@@ -108,13 +145,8 @@ impl Bridge {
         stream
             .set_write_timeout(Some(TIMEOUT))
             .map_err(|e| e.to_string())?;
-        let mut line = String::new();
-        BufReader::new(&stream)
-            .take(16 * 1024 * 1024)
-            .read_line(&mut line)
-            .map_err(|e| e.to_string())?;
         let result = (|| {
-            let request: Request = serde_json::from_str(&line).map_err(|e| e.to_string())?;
+            let request = read_request(BufReader::new(&stream))?;
             if request.token != token {
                 return Err("Invalid desktop session token".into());
             }
@@ -174,6 +206,14 @@ fn exchange(
     input: Option<String>,
     timeout: Duration,
 ) -> Result<Reply, String> {
+    let request = Request {
+        token: endpoint.token.clone(),
+        args,
+        input,
+    };
+    // Count the encoded frame without building a second copy or opening a socket.
+    write_request(RequestBudget(REQUEST_BYTE_LIMIT), &request)?;
+
     let unavailable =
         |e| format!("Bluewing desktop is unavailable. Open Bluewing and retry. ({e})");
     let mut stream = TcpStream::connect_timeout(
@@ -187,19 +227,54 @@ fn exchange(
     stream
         .set_write_timeout(Some(timeout))
         .map_err(|e| e.to_string())?;
-    serde_json::to_writer(
-        &mut stream,
-        &Request {
-            token: endpoint.token.clone(),
-            args,
-            input,
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    stream.write_all(b"\n").map_err(|e| e.to_string())?;
+    write_request(&mut stream, &request)?;
     let mut line = String::new();
     BufReader::new(stream)
         .read_line(&mut line)
         .map_err(|e| e.to_string())?;
     serde_json::from_str(&line).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn launcher_counts_escaped_utf8_json_and_the_newline() {
+        let endpoint = Endpoint {
+            port: 0,
+            token: "session".into(),
+        };
+        let mut request = Request {
+            token: endpoint.token.clone(),
+            args: vec!["messages.send".into()],
+            input: Some("é\n\"".into()),
+        };
+        let padding = REQUEST_BYTE_LIMIT - serde_json::to_vec(&request).unwrap().len() - 1;
+        let input = request.input.as_mut().unwrap();
+        input.extend(std::iter::repeat_n('a', padding));
+        assert_eq!(
+            write_request(RequestBudget(REQUEST_BYTE_LIMIT), &request),
+            Ok(())
+        );
+
+        request.input.as_mut().unwrap().push('a');
+        let error = exchange(&endpoint, request.args, request.input, TIMEOUT).err();
+        assert_eq!(error.as_deref(), Some(REQUEST_TOO_LARGE));
+    }
+
+    #[test]
+    fn receiver_rejects_oversized_frame_even_when_the_prefix_is_valid_json() {
+        let mut frame = br#"{"token":"session","args":[],"input":null}"#.to_vec();
+        frame.resize(REQUEST_BYTE_LIMIT - 1, b' ');
+        frame.push(b'\n');
+        assert_eq!(read_request(frame.as_slice()).unwrap().token, "session");
+
+        *frame.last_mut().unwrap() = b' ';
+        frame.push(b'\n');
+        assert_eq!(
+            read_request(frame.as_slice()).err().as_deref(),
+            Some(REQUEST_TOO_LARGE)
+        );
+    }
 }
