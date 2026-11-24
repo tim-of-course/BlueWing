@@ -31,13 +31,18 @@ with tempfile.TemporaryDirectory(prefix='bluewing-assemblies-') as temporary:
         global desktop
         desktop = subprocess.Popen([str(BIN / 'bluewing-desktop')], env=env, stdout=log, stderr=log)
         deadline = time.monotonic() + 40
-        while time.monotonic() < deadline:
-            probe = subprocess.run([str(BIN / 'bluewing'), 'commands.list'], capture_output=True, text=True, env=env)
-            if probe.returncode == 0:
-                return
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                probe = subprocess.run([str(BIN / 'bluewing'), 'commands.list'],
+                                       capture_output=True, text=True, env=env,
+                                       timeout=min(5, remaining))
+                if probe.returncode == 0:
+                    return
+            except subprocess.TimeoutExpired:
+                pass
             if desktop.poll() is not None:
                 raise AssertionError((EVIDENCE / 'native.log').read_text())
-            time.sleep(0.2)
+            time.sleep(max(0, min(0.2, deadline - time.monotonic())))
         raise AssertionError('Desktop did not become ready')
 
     def settled(value):

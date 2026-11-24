@@ -64,12 +64,12 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
         (initial / name).write_text(content)
     (data / "web/active").write_text("smoke-v1")
 
-    def cli(*args, payload=None, ok=True):
+    def cli(*args, payload=None, ok=True, timeout=70):
         argv = [str(BIN / "bluewing"), *args]
         if payload is not None:
             argv.append("--stdin")
         result = subprocess.run(argv, input=json.dumps(payload) if payload is not None else None,
-                                capture_output=True, text=True, env=env, timeout=70)
+                                capture_output=True, text=True, env=env, timeout=timeout)
         reply = json.loads(result.stdout)
         if ok:
             assert result.returncode == 0, reply
@@ -79,21 +79,24 @@ with tempfile.TemporaryDirectory(prefix="bluewing-native-") as directory:
 
     def ready(version):
         deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
+        while (remaining := deadline - time.monotonic()) > 0:
             try:
-                reply = cli("echo")
+                reply = cli("echo", timeout=min(5, remaining))
                 if reply["version"] == version:
                     assert reply["bridge"]["webVersion"] == version
                     assert reply["bridge"]["webSource"] == "cached"
                     assert Path(reply["bridge"]["dataDir"]).samefile(data)
                     assert Path(reply["bridge"]["dataDir"]).is_absolute()
-                    info = cli("invoke", "cache_info")
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    info = cli("invoke", "cache_info", timeout=min(5, remaining))
                     assert info["activeVersion"] == version
                     assert info["runningSource"] == "cached" and info["runningVersion"] == version
                     return
-            except (AssertionError, KeyError, json.JSONDecodeError):
+            except (AssertionError, KeyError, json.JSONDecodeError, subprocess.TimeoutExpired):
                 pass
-            time.sleep(0.2)
+            time.sleep(max(0, min(0.2, deadline - time.monotonic())))
         raise AssertionError(f"Webview did not become ready: {version}")
 
     desktop = subprocess.Popen([str(BIN / "bluewing-desktop")], env=env)
