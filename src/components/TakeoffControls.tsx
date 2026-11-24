@@ -16,8 +16,17 @@ export default function TakeoffControls(props: {
   const current = () => required(props.controller.project() ?? undefined);
   const takeoff = () => takeoffContext(current());
   const destinationId = createMemo(() => current().takeoffId);
-  const sources = createMemo(() =>
-    Object.values(current().takeoffs).filter((t) => t.id !== destinationId()),
+  const sources = createMemo(
+    () =>
+      Object.values(current().takeoffs).filter((t) => t.id !== destinationId()),
+    {
+      name: 'takeoff.copySources',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every(
+          (t, index) => t.id === next[index]?.id && t.name === next[index].name,
+        ),
+    },
   );
   const effectiveSourceId = createMemo(
     () => sources().find((t) => t.id === sourceId())?.id ?? sources()[0]?.id,
@@ -34,12 +43,20 @@ export default function TakeoffControls(props: {
     },
     { name: 'takeoff.copySelection' },
   );
-  const copyIds = createMemo(() => {
-    const geometries = source()?.geometries;
-    return geometries
-      ? selected().filter((id) => Object.hasOwn(geometries, id))
-      : [];
-  });
+  const copyIds = createMemo(
+    () => {
+      const geometries = source()?.geometries;
+      return geometries
+        ? selected().filter((id) => Object.hasOwn(geometries, id))
+        : [];
+    },
+    {
+      name: 'takeoff.copyIds',
+      equals: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((id, index) => id === next[index]),
+    },
+  );
   const run = async (work: () => unknown) => {
     try {
       setError('');
