@@ -85,6 +85,7 @@ for (const start of [
         groupId: 'review-scope',
         recipeId: assembly.id,
         inputs: {},
+        allowances: {},
       });
       const filter = page.locator('details.category-filter').first();
       await filter.locator('summary').click();
