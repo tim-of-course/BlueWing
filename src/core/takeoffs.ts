@@ -39,16 +39,17 @@ export function requireTakeoff(project: Project, id: string): Takeoff {
   if (!entry) throw new Error(`Unknown takeoff ${id}`);
   return entry;
 }
-export function owner(
+function collectionOwners(
   project: Project,
-  collection: string,
-  id: string,
-): string {
-  return (
-    Object.values(project.takeoffs).find((t) =>
-      t.owned[collection]?.includes(id),
-    )?.id ?? mainId(project)
-  );
+  collection: (typeof ownedCollections)[number],
+): Map<string, string> {
+  const owners = new Map<string, string>();
+  for (const takeoff of Object.values(project.takeoffs)) {
+    for (const key of takeoff.owned[collection] ?? []) {
+      if (!owners.has(key)) owners.set(key, takeoff.id);
+    }
+  }
+  return owners;
 }
 /** Plain-data view, shared by UI, CLI, calculations and renderers. Source sheets stay shared. */
 export function takeoffProject(
@@ -61,14 +62,17 @@ export function takeoffProject(
     ...project,
     takeoffId: id,
   };
-  for (const collection of ownedCollections)
+  const fallbackOwner = mainId(project);
+  for (const collection of ownedCollections) {
+    const owners = collectionOwners(project, collection);
     Object.assign(view, {
       [collection]: Object.fromEntries(
         Object.entries(project[collection]).filter(
-          ([key]) => owner(project, collection, key) === id,
+          ([key]) => (owners.get(key) ?? fallbackOwner) === id,
         ),
       ),
     });
+  }
   if (takeoff.kind !== 'main') {
     delete view.construction;
     delete view.review;
@@ -85,14 +89,16 @@ export function mergeTakeoff(
 ): void {
   const id = required(view.takeoffId);
   const takeoff = requireTakeoff(project, id);
+  const fallbackOwner = mainId(project);
   for (const collection of ownedCollections) {
+    const owners = collectionOwners(project, collection);
     for (const key of Object.keys(before[collection]))
       if (!view[collection][key])
         Reflect.deleteProperty(project[collection], key);
     for (const [key, value] of Object.entries(
       view[collection] as Record<string, object>,
     )) {
-      if (project[collection][key] && owner(project, collection, key) !== id)
+      if (project[collection][key] && (owners.get(key) ?? fallbackOwner) !== id)
         throw new Error('Entity belongs to another takeoff');
       Object.assign(project[collection], { [key]: value });
     }
