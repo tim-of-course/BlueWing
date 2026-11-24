@@ -429,6 +429,13 @@ footer button {
   width: min(480px, 90vw);
   color: inherit;
 }
+.modal-form {
+  color: inherit;
+}
+.modal-form:not([open]) {
+  display: none;
+}
+.modal-form::backdrop,
 .sheet-scale-dialog::backdrop {
   background: #0009;
 }
