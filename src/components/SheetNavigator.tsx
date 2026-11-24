@@ -17,6 +17,7 @@ import type { Group, Sheet } from '../core/types';
 import { convertQuantity, measureGeometry } from '../core/geometry';
 import ToolIcon from './ToolIcon';
 import CategoryFilter from './CategoryFilter';
+import ModalForm from './ModalForm';
 import { SheetThumbnails } from './sheet-thumbnails';
 import './sheet-navigator.css';
 
@@ -137,6 +138,7 @@ export default function SheetNavigator(props: Props) {
   });
   const [menu, setMenu] = createSignal<{
     sheet: Sheet;
+    opener: HTMLButtonElement;
     x: number;
     y: number;
   } | null>(null);
@@ -144,6 +146,7 @@ export default function SheetNavigator(props: Props) {
     sheet: Sheet;
     action: 'rename' | 'delete' | 'properties';
     expected: Observation;
+    opener: HTMLButtonElement;
   } | null>(null);
   const [name, setName] = createSignal('');
   const [dropTarget, setDropTarget] = createSignal<string | null>(null);
@@ -374,16 +377,7 @@ export default function SheetNavigator(props: Props) {
           ?.focus(),
       );
   });
-  createEffect(dialog, (value) => {
-    if (value)
-      queueMicrotask(() =>
-        document
-          .querySelector<HTMLElement>(
-            '[aria-label="Sheet details"] input, [aria-label="Sheet details"] button',
-          )
-          ?.focus(),
-      );
-  });
+
   const showPreview = (
     sheet: Sheet,
     element: HTMLElement,
@@ -409,10 +403,16 @@ export default function SheetNavigator(props: Props) {
     clearTimeout(exitTimer);
     exitTimer = setTimeout(() => setPreview(null), 160);
   };
-  const openMenu = (sheet: Sheet, x: number, y: number) => {
+  const openMenu = (
+    sheet: Sheet,
+    opener: HTMLButtonElement,
+    x: number,
+    y: number,
+  ) => {
     hidePreview();
     setMenu({
       sheet,
+      opener,
       x: Math.min(x, window.innerWidth - 210),
       y: Math.min(y, window.innerHeight - 195),
     });
@@ -718,7 +718,12 @@ export default function SheetNavigator(props: Props) {
                   }}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    openMenu(sheet(), event.clientX, event.clientY);
+                    openMenu(
+                      sheet(),
+                      event.currentTarget,
+                      event.clientX,
+                      event.clientY,
+                    );
                   }}
                   onDragStart={(event) => {
                     if (props.disabled) {
@@ -757,7 +762,12 @@ export default function SheetNavigator(props: Props) {
                     ) {
                       event.preventDefault();
                       const rect = event.currentTarget.getBoundingClientRect();
-                      openMenu(sheet(), rect.left + 20, rect.bottom);
+                      openMenu(
+                        sheet(),
+                        event.currentTarget,
+                        rect.left + 20,
+                        rect.bottom,
+                      );
                     }
                     if (
                       event.altKey &&
@@ -904,6 +914,7 @@ export default function SheetNavigator(props: Props) {
                         sheet: value().sheet,
                         action,
                         expected: props.controller.observe(),
+                        opener: value().opener,
                       });
                       setMenu(null);
                     }}
@@ -935,87 +946,86 @@ export default function SheetNavigator(props: Props) {
       <Show when={dialog()}>
         {(value) => (
           <Portal>
-            <div class="modal-backdrop">
-              <section
-                class="dialog compact"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Sheet details"
+            <ModalForm
+              label="Sheet details"
+              opener={value().opener}
+              busy={props.controller.busy()}
+              onClose={() => setDialog(null)}
+            >
+              <h2>
+                {value().action === 'rename'
+                  ? 'Rename sheet'
+                  : value().action === 'delete'
+                    ? 'Delete sheet'
+                    : 'Sheet properties'}
+              </h2>
+              <form
+                class="stack"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const current = value();
+                  if (props.controller.busy() || !name().trim()) return;
+                  run(async () => {
+                    if (current.action === 'rename')
+                      await props.controller.renameSheet(
+                        current.sheet.id,
+                        name().trim(),
+                        current.expected,
+                      );
+                    if (current.action === 'delete')
+                      await props.controller.deleteSheet(current.sheet.id);
+                    setDialog(null);
+                  });
+                }}
               >
-                <h2>
-                  {value().action === 'rename'
-                    ? 'Rename sheet'
-                    : value().action === 'delete'
-                      ? 'Delete sheet'
-                      : 'Sheet properties'}
-                </h2>
-                <form
-                  class="stack"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const current = value();
-                    run(async () => {
-                      if (current.action === 'rename')
-                        await props.controller.renameSheet(
-                          current.sheet.id,
-                          name().trim(),
-                          current.expected,
-                        );
-                      if (current.action === 'delete')
-                        await props.controller.deleteSheet(current.sheet.id);
-                      setDialog(null);
-                    });
-                  }}
-                >
-                  <Show when={value().action === 'rename'}>
-                    <label class="field">
-                      Sheet name
-                      <input
-                        value={name()}
-                        onInput={(event) => setName(event.currentTarget.value)}
-                      />
-                    </label>
-                  </Show>
-                  <Show when={value().action === 'delete'}>
-                    <p>
-                      Delete “{value().sheet.name}” and its drawing objects?
-                      Group memberships will be removed. You can undo this edit.
-                    </p>
-                  </Show>
-                  <Show when={value().action === 'properties'}>
-                    <p>
-                      {value().sheet.name}
-                      <br />
-                      Source page {value().sheet.pageIndex + 1}
-                      <br />
-                      {value().sheet.width} × {value().sheet.height} PDF points
-                      <br />
-                      {value().sheet.calibration
-                        ? 'Calibrated'
-                        : 'Uncalibrated'}
-                    </p>
-                  </Show>
-                  <div class="button-row">
-                    <Show when={value().action !== 'properties'}>
-                      <button
-                        type="submit"
-                        class={
-                          value().action === 'delete' ? 'danger' : 'primary'
-                        }
-                        disabled={props.controller.busy() || !name().trim()}
-                      >
-                        {value().action === 'delete'
-                          ? 'Delete sheet'
-                          : 'Save sheet'}
-                      </button>
-                    </Show>
-                    <button type="button" onClick={() => setDialog(null)}>
-                      {value().action === 'properties' ? 'Close' : 'Cancel'}
+                <Show when={value().action === 'rename'}>
+                  <label class="field">
+                    Sheet name
+                    <input
+                      value={name()}
+                      onInput={(event) => setName(event.currentTarget.value)}
+                    />
+                  </label>
+                </Show>
+                <Show when={value().action === 'delete'}>
+                  <p>
+                    Delete “{value().sheet.name}” and its drawing objects? Group
+                    memberships will be removed. You can undo this edit.
+                  </p>
+                </Show>
+                <Show when={value().action === 'properties'}>
+                  <p>
+                    {value().sheet.name}
+                    <br />
+                    Source page {value().sheet.pageIndex + 1}
+                    <br />
+                    {value().sheet.width} × {value().sheet.height} PDF points
+                    <br />
+                    {value().sheet.calibration ? 'Calibrated' : 'Uncalibrated'}
+                  </p>
+                </Show>
+                <div class="button-row">
+                  <Show when={value().action !== 'properties'}>
+                    <button
+                      type="submit"
+                      class={value().action === 'delete' ? 'danger' : 'primary'}
+                      disabled={props.controller.busy() || !name().trim()}
+                    >
+                      {value().action === 'delete'
+                        ? 'Delete sheet'
+                        : 'Save sheet'}
                     </button>
-                  </div>
-                </form>
-              </section>
-            </div>
+                  </Show>
+                  <button
+                    type="button"
+                    disabled={props.controller.busy()}
+                    onClick={() => setDialog(null)}
+                  >
+                    {value().action === 'properties' ? 'Close' : 'Cancel'}
+                  </button>
+                </div>
+              </form>
+            </ModalForm>
           </Portal>
         )}
       </Show>

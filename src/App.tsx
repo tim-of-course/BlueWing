@@ -22,6 +22,7 @@ import SelectionInspector from './components/SelectionInspector';
 import RecipeEditor from './components/RecipeEditor';
 import Quantities from './components/Quantities';
 import UpdateDialog from './components/UpdateDialog';
+import ModalForm from './components/ModalForm';
 import ToolIcon from './components/ToolIcon';
 import WorkspacePanel, {
   createPanelPreferences,
@@ -182,6 +183,8 @@ export default function App(props: { application?: Application }) {
   const [notesDraft, setNotesDraft] = createSignal(false);
   const [selectionDraft, setSelectionDraft] = createSignal(false);
   const [updateOpen, setUpdateOpen] = createSignal(false);
+  let updateOpener: HTMLButtonElement | undefined;
+  let projectOpener: HTMLButtonElement | undefined;
   const [projectAction, setProjectAction] = createSignal<
     'create' | 'rename' | null
   >(null);
@@ -492,7 +495,8 @@ export default function App(props: { application?: Application }) {
         <button
           type="button"
           disabled={controller.busy() || hasDraft() || !!controller.project()}
-          onClick={() => {
+          onClick={(event) => {
+            projectOpener = event.currentTarget;
             setProjectName('Untitled project');
             setProjectAction('create');
           }}
@@ -586,7 +590,8 @@ export default function App(props: { application?: Application }) {
                 class="project-title"
                 type="button"
                 title="Rename project"
-                onClick={() => {
+                onClick={(event) => {
+                  projectOpener = event.currentTarget;
                   setProjectName(project().name);
                   setProjectAction('rename');
                 }}
@@ -629,7 +634,13 @@ export default function App(props: { application?: Application }) {
         >
           Assemblies
         </button>
-        <button type="button" onClick={() => setUpdateOpen(true)}>
+        <button
+          type="button"
+          onClick={(event) => {
+            updateOpener = event.currentTarget;
+            setUpdateOpen(true);
+          }}
+        >
           Updates
         </button>
       </header>
@@ -702,7 +713,10 @@ export default function App(props: { application?: Application }) {
                   <button
                     class="primary"
                     type="button"
-                    onClick={() => setProjectAction('create')}
+                    onClick={(event) => {
+                      projectOpener = event.currentTarget;
+                      setProjectAction('create');
+                    }}
                   >
                     Create project
                   </button>
@@ -1384,61 +1398,59 @@ export default function App(props: { application?: Application }) {
         )}
       </Show>
       <Show when={projectAction()}>
-        <div class="modal-backdrop">
-          <section
-            class="dialog compact"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="project-dialog-title"
+        <ModalForm
+          labelledBy="project-dialog-title"
+          opener={projectOpener}
+          busy={controller.busy()}
+          onClose={() => setProjectAction(null)}
+        >
+          <h2 id="project-dialog-title">
+            {projectAction() === 'create' ? 'Create project' : 'Rename project'}
+          </h2>
+          <form
+            class="stack"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (controller.busy() || !projectName().trim()) return;
+              run(async () => {
+                if (projectAction() === 'create')
+                  await controller.createProject(projectName());
+                else await controller.renameProject(projectName());
+                setProjectAction(null);
+              });
+            }}
           >
-            <h2 id="project-dialog-title">
-              {projectAction() === 'create'
-                ? 'Create project'
-                : 'Rename project'}
-            </h2>
-            <form
-              class="stack"
-              onSubmit={(event) => {
-                event.preventDefault();
-                run(async () => {
-                  if (projectAction() === 'create')
-                    await controller.createProject(projectName());
-                  else await controller.renameProject(projectName());
-                  setProjectAction(null);
-                });
-              }}
-            >
-              <label class="field">
-                Project name
-                <input
-                  value={projectName()}
-                  onInput={(event) => setProjectName(event.currentTarget.value)}
-                />
-              </label>
-              <div class="button-row">
-                <button
-                  class="primary"
-                  type="submit"
-                  disabled={!projectName().trim() || controller.busy()}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  disabled={controller.busy()}
-                  onClick={() => setProjectAction(null)}
-                >
-                  Cancel
-                </button>
-              </div>
-              <p role="status">{error() || controller.error()}</p>
-            </form>
-          </section>
-        </div>
+            <label class="field">
+              Project name
+              <input
+                value={projectName()}
+                onInput={(event) => setProjectName(event.currentTarget.value)}
+              />
+            </label>
+            <div class="button-row">
+              <button
+                class="primary"
+                type="submit"
+                disabled={!projectName().trim() || controller.busy()}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                disabled={controller.busy()}
+                onClick={() => setProjectAction(null)}
+              >
+                Cancel
+              </button>
+            </div>
+            <p role="status">{error() || controller.error()}</p>
+          </form>
+        </ModalForm>
       </Show>
 
       <Show when={updateOpen()}>
         <UpdateDialog
+          opener={updateOpener}
           controller={controller}
           hasDraft={hasDraft()}
           onClose={() => setUpdateOpen(false)}
