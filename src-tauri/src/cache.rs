@@ -6,6 +6,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 pub const BUNDLED: &str = "0.1.0";
+const ACTIVE_MARKER: &str = "active";
 #[derive(Deserialize)]
 pub struct CacheFile {
     pub path: String,
@@ -26,6 +27,9 @@ fn version_path(version: &str) -> Result<(), String> {
     if version.is_empty()
         || version == "."
         || version == ".."
+        || version
+            .trim_end_matches('.')
+            .eq_ignore_ascii_case(ACTIVE_MARKER)
         || !version
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b".-_".contains(&b))
@@ -49,7 +53,7 @@ impl Cache {
     pub fn new(data: &Path) -> Result<Self, String> {
         let root = data.join("web");
         fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-        let active = fs::read_to_string(root.join("active"))
+        let active = fs::read_to_string(root.join(ACTIVE_MARKER))
             .ok()
             .filter(|v| version_path(v).is_ok() && root.join(v).join("index.html").is_file())
             .unwrap_or(BUNDLED.into());
@@ -57,7 +61,7 @@ impl Cache {
     }
     pub fn stage(&self, version: &str, files: Vec<CacheFile>) -> Result<(), String> {
         version_path(version)?;
-        if version == BUNDLED || self.root.join(version).exists() {
+        if version.trim_end_matches('.') == BUNDLED || self.root.join(version).exists() {
             return Err("Web version already exists; use a new version".into());
         }
         let temp = tempfile::Builder::new()
@@ -88,7 +92,7 @@ impl Cache {
         if version != BUNDLED && !self.root.join(version).join("index.html").is_file() {
             return Err("Stage the complete web bundle before activation".into());
         }
-        crate::storage::atomic_write(&self.root.join("active"), version.as_bytes())?;
+        crate::storage::atomic_write(&self.root.join(ACTIVE_MARKER), version.as_bytes())?;
         self.active = version.into();
         Ok(())
     }
@@ -134,6 +138,25 @@ impl Cache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cannot_stage_the_active_marker_as_a_version() {
+        let d = tempfile::tempdir().unwrap();
+        let c = Cache::new(d.path()).unwrap();
+        for version in ["active", "AcTiVe", "active."] {
+            assert_eq!(
+                c.stage(
+                    version,
+                    vec![CacheFile {
+                        path: "index.html".into(),
+                        data: STANDARD.encode("new"),
+                    }],
+                ),
+                Err("Invalid web version".into())
+            );
+        }
+        assert!(c.info().cached_versions.is_empty());
+    }
+
     #[test]
     fn bundle_is_atomic_and_has_no_mixed_fallback() {
         let d = tempfile::tempdir().unwrap();

@@ -20,6 +20,7 @@ function manifest(value: unknown): WebManifest {
   if (
     typeof candidate.version !== 'string' ||
     !/^[a-zA-Z0-9_-][a-zA-Z0-9._-]*$/.test(candidate.version) ||
+    candidate.version.replace(/\.+$/, '').toLowerCase() === 'active' ||
     !Number.isInteger(candidate.bridgeVersion) ||
     !Array.isArray(candidate.files)
   )

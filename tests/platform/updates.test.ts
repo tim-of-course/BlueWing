@@ -107,3 +107,30 @@ void test('installed version rejects after the manifest without fetching assets'
   assert.deepEqual(calls, ['cache_info']);
   assert.deepEqual(urls, ['https://example.test/manifest.json']);
 });
+
+void test('reserved active marker rejects before downloading bundle files', async () => {
+  const calls: string[] = [];
+  const call: NativeInvoke = <T>(command: string): Promise<T> => {
+    calls.push(command);
+    return Promise.resolve({ bridgeVersion: 1, cachedVersions: [] } as T);
+  };
+  for (const version of ['active', 'AcTiVe', 'active.']) {
+    let downloads = 0;
+    const fetchFile: typeof fetch = () => {
+      downloads++;
+      return Promise.resolve(
+        Response.json({
+          version,
+          bridgeVersion: 1,
+          files: [{ path: 'index.html', sha256: '0'.repeat(64) }],
+        }),
+      );
+    };
+    await assert.rejects(
+      stageWebUpdate('https://example.test/manifest.json', call, fetchFile),
+      /Invalid web manifest/,
+    );
+    assert.equal(downloads, 1);
+  }
+  assert.deepEqual(calls, ['cache_info', 'cache_info', 'cache_info']);
+});
