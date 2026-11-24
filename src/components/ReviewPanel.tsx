@@ -17,6 +17,7 @@ export default function ReviewPanel(props: {
   initialSnippetId?: string | undefined;
   controller: WorkspaceController;
   onClose: () => void;
+  onShowPlan: () => void;
   onError: (message: string) => void;
   onDraftChange?: (dirty: boolean) => void;
 }) {
@@ -48,22 +49,28 @@ export default function ReviewPanel(props: {
     const project = props.controller.project();
     return project ? inspectReview(project) : null;
   });
-  function sourceName(source: SourceReference): string {
+  function sourceDetails(source: SourceReference) {
     const project = props.controller.project();
-    if (!project) return source.id;
+    if (!project) return { name: source.id, geometry: undefined };
     const item = sourceEntity(project, source, construction()) as
       { name?: string; geometryId?: string; wallId?: string } | undefined;
     const geometryId =
-      item?.geometryId ??
-      (item?.wallId
-        ? construction()?.walls[item.wallId]?.geometryId
-        : undefined);
-    return (
-      item?.name ??
-      (geometryId ? project.geometries[geometryId]?.name : undefined) ??
-      source.id
-    );
+      source.kind === 'geometry'
+        ? source.id
+        : (item?.geometryId ??
+          (item?.wallId
+            ? construction()?.walls[item.wallId]?.geometryId
+            : undefined));
+    const geometry = geometryId ? project.geometries[geometryId] : undefined;
+    return { name: item?.name ?? geometry?.name ?? source.id, geometry };
   }
+  function sourceName(source: SourceReference): string {
+    return sourceDetails(source).name;
+  }
+  const selectedSource = createMemo(() => {
+    const source = target();
+    return source ? sourceDetails(source) : undefined;
+  });
   const sourceChoices = createMemo(() => {
     const project = props.controller.project();
     const data = construction();
@@ -139,28 +146,15 @@ export default function ReviewPanel(props: {
     expected = props.controller.observe();
     setDirty(false);
   }
-  function showSource(source: SourceReference) {
+  function showSource(geometryId: string) {
     const project = props.controller.project();
     if (!project) return;
-    const entity = sourceEntity(project, source, construction()) as
-      { geometryId?: string; wallId?: string } | undefined;
-    const id =
-      source.kind === 'geometry'
-        ? source.id
-        : (entity?.geometryId ??
-          (entity?.wallId
-            ? construction()?.walls[entity.wallId]?.geometryId
-            : undefined));
-    const geometry = id ? project.geometries[id] : undefined;
-    if (geometry) {
-      props.controller.setSheetVisible(geometry.sheetId, true);
-      for (const group of Object.values(project.groups))
-        if (group.geometryIds.includes(geometry.id))
-          props.controller.setGroupVisible(group.id, geometry.sheetId, true);
-      props.controller.setActiveSheetId(geometry.sheetId);
-      props.controller.setSelection([geometry.id]);
-      props.onClose();
-    }
+    const group = Object.values(project.groups).find((candidate) =>
+      candidate.geometryIds.includes(geometryId),
+    );
+    props.controller.showGeometry(geometryId, group?.id ?? '');
+    props.onShowPlan();
+    props.onClose();
   }
   async function mark(status: 'reviewed' | 'question' | 'needs-review') {
     const source = target();
@@ -394,7 +388,7 @@ export default function ReviewPanel(props: {
               {(source) => (
                 <>
                   <h3>
-                    {source().kind} · {sourceName(source())}
+                    {source().kind} · {selectedSource()?.name}
                   </h3>
                   <label class="field">
                     Review note
@@ -433,15 +427,19 @@ export default function ReviewPanel(props: {
                     </button>
                   </div>
                   <div class="button-row">
-                    <button
-                      type="button"
-                      disabled={dirty()}
-                      onClick={() => {
-                        showSource(source());
-                      }}
-                    >
-                      Show on plan
-                    </button>
+                    <Show when={selectedSource()?.geometry}>
+                      {(geometry) => (
+                        <button
+                          type="button"
+                          disabled={dirty()}
+                          onClick={() => {
+                            showSource(geometry().id);
+                          }}
+                        >
+                          Show on plan
+                        </button>
+                      )}
+                    </Show>
                     <button
                       type="button"
                       disabled={dirty()}

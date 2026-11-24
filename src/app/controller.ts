@@ -210,12 +210,12 @@ export function createWorkspace(
       }
     }
   }
-  function revealCategory(id: string) {
+  function revealCategory(id: string, view = visibility()) {
     const current = app.project;
     if (
       current &&
       !geometryMatchesCategories(
-        visibleCategoryTags(current, visibility())[id] ?? [],
+        visibleCategoryTags(current, view)[id] ?? [],
         categoryFilter(),
       )
     )
@@ -715,9 +715,8 @@ export function createWorkspace(
     showGeometry(id, groupId) {
       const geometry = app.project?.geometries[id];
       if (!geometry) return;
-      revealCategory(id);
       const view = visibility();
-      changeVisibility({
+      const revealedVisibility = {
         hiddenSheets: view.hiddenSheets.filter(
           (sheetId) => sheetId !== geometry.sheetId,
         ),
@@ -727,9 +726,11 @@ export function createWorkspace(
             view.hiddenGroups[geometry.sheetId] ?? []
           ).filter((hidden) => hidden !== groupId),
         },
-      });
+      };
+      revealCategory(id, revealedVisibility);
+      changeVisibility(revealedVisibility);
       setActiveSheetId(geometry.sheetId);
-      setActiveGroupId(groupId);
+      setActiveGroupId(groupId || null);
       setSelection([id]);
     },
     activeGroupId,

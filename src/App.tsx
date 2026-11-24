@@ -1250,6 +1250,10 @@ export default function App(props: { application?: Application }) {
                     : undefined
                 }
                 controller={controller}
+                onShowPlan={() => {
+                  if (quantities() || view() === '3d') setView('plan');
+                  setQuantities(false);
+                }}
                 onClose={() => {
                   setActivityTarget(null);
                   setReviewOpen(false);
