@@ -148,13 +148,13 @@ async function fractionalExport() {
     project.sheets[sheet.id] = sheet;
     const options = {
       sheetId: sheet.id,
-      bounds: { x: 7.25, y: 10.5, width: 51.5, height: 38.25 },
+      bounds: { x: 0.25, y: 10.5, width: 38.25, height: 28.25 },
       maxDimension: 640.25,
       annotations: [
         {
           points: [
             { x: 10, y: 20 },
-            { x: 50, y: 30 },
+            { x: 35, y: 30 },
           ],
           color: '#00ff00',
           label: 'Detail',

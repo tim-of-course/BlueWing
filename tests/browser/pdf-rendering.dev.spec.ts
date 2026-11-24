@@ -30,7 +30,7 @@ test('fractional exports match encoded plan pixels and coordinates without worke
   const result = await page.evaluate(() =>
     window.pdfRendering.fractionalExport(),
   );
-  expect(result.dimensions).toEqual([641, 476]);
+  expect(result.dimensions).toEqual([641, 473]);
   expect(result.dimensions).toEqual(result.expectedDimensions);
   expect(result.metadata).toEqual(result.expectedMetadata);
   expect(result.pixels.mean).toBe(0);
