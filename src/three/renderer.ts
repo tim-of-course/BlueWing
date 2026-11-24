@@ -5,6 +5,7 @@ import {
   Color,
   DirectionalLight,
   DoubleSide,
+  DynamicDrawUsage,
   EdgesGeometry,
   Float32BufferAttribute,
   Group,
@@ -489,6 +490,12 @@ export class ConstructionRenderer {
       texture.needsUpdate = true;
       const geometry = new BufferGeometry();
       geometry.setAttribute(
+        'position',
+        new Float32BufferAttribute(new Float32Array(12), 3).setUsage(
+          DynamicDrawUsage,
+        ),
+      );
+      geometry.setAttribute(
         'uv',
         new Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2),
       );
@@ -501,14 +508,16 @@ export class ConstructionRenderer {
       this.content.add(this.plan);
     }
     if (this.plan && (modelChanged || this.planCorners !== plan)) {
-      const positions = plan.corners.flatMap((point) => {
-        const p = vector(point).sub(this.origin);
-        return [p.x, p.y, p.z];
+      const positions = this.plan.geometry.getAttribute('position');
+      plan.corners.forEach((point, index) => {
+        positions.setXYZ(
+          index,
+          point.x - this.origin.x,
+          point.y - this.origin.y,
+          point.z - this.origin.z,
+        );
       });
-      this.plan.geometry.setAttribute(
-        'position',
-        new Float32BufferAttribute(positions, 3),
-      );
+      positions.needsUpdate = true;
       this.plan.geometry.computeBoundingSphere();
       this.planCorners = plan;
     }

@@ -680,6 +680,59 @@ async function clearPreparation() {
   }
 }
 
+async function clearWhileSaving() {
+  const writing = gate();
+  const release = gate();
+  const store = new (class extends MemoryStore {
+    override async write(key: string, bytes: Uint8Array) {
+      writing.open();
+      await release.promise;
+      await super.write(key, bytes);
+    }
+  })();
+  const fake = renderer();
+  const images = new PageImages(fake.render, store);
+  const small = { ...sheet('small'), width: 144 };
+  try {
+    images.prepare([small], small.id);
+    await writing.promise;
+    images.clear();
+    release.open();
+    await until(() => !images.status().running);
+    return { reads: store.reads.length, writes: store.writes.length };
+  } finally {
+    release.open();
+    images.clear();
+  }
+}
+
+async function sharedMasterDimension() {
+  const small = { ...sheet('small'), width: 230.4 };
+  const store = new MemoryStore();
+  const fake = renderer();
+  const images = new PageImages(fake.render, store);
+  try {
+    images.setPreparationPaused(true);
+    const selected = await images.acquire(small);
+    selected.release();
+    await store.written(small, PAGE_PREVIEW_DIMENSION);
+    const selectedCall = fake.calls[0];
+    images.clear();
+    store.bytes.clear();
+    store.reads.length = 0;
+    images.prepare([small], small.id);
+    await until(() => !images.status().running);
+    return {
+      selectedCall,
+      completed: images.status().completed,
+      reads: store.reads.length,
+      writes: store.writes.length,
+    };
+  } finally {
+    images.clear();
+  }
+}
+
 async function preparation() {
   const store = new MemoryStore();
   const fake = renderer();
@@ -1013,6 +1066,8 @@ const harness = {
   sharedCancellation,
   cancellation,
   clearPreparation,
+  clearWhileSaving,
+  sharedMasterDimension,
   preparation,
   thumbnailPreparation,
   preparationProgress,

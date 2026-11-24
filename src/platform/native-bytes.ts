@@ -35,13 +35,17 @@ export async function readNativeChunks(
 ): Promise<Uint8Array> {
   if (!Number.isSafeInteger(length) || length < 0)
     throw new Error('Invalid native byte length');
-  const bytes = new Uint8Array(length);
-  for (let offset = 0; offset < length; offset += NATIVE_CHUNK_BYTES) {
-    const size = Math.min(NATIVE_CHUNK_BYTES, length - offset);
+  const readChunk = async (offset: number, size: number) => {
     const chunk = new Uint8Array(await read(offset, size));
     if (chunk.length !== size)
       throw new Error('Incomplete native byte transfer');
-    bytes.set(chunk, offset);
+    return chunk;
+  };
+  if (length > 0 && length <= NATIVE_CHUNK_BYTES) return readChunk(0, length);
+  const bytes = new Uint8Array(length);
+  for (let offset = 0; offset < length; offset += NATIVE_CHUNK_BYTES) {
+    const size = Math.min(NATIVE_CHUNK_BYTES, length - offset);
+    bytes.set(await readChunk(offset, size), offset);
   }
   return bytes;
 }

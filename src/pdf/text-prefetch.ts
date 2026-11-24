@@ -105,12 +105,14 @@ export class TextPrefetch {
     this.running = true;
     try {
       for (;;) {
-        const pending = [...this.entries].find(
-          ([, entry]) => entry.state === 'queued',
-        );
-        if (!pending) break;
-        const [id, entry] = pending,
-          generation = this.generation;
+        let entry: Entry | undefined;
+        for (const candidate of this.entries.values()) {
+          if (candidate.state !== 'queued') continue;
+          entry = candidate;
+          break;
+        }
+        if (!entry) break;
+        const generation = this.generation;
         const controller = new AbortController();
         this.active = controller;
         entry.state = 'reading';
@@ -121,13 +123,11 @@ export class TextPrefetch {
           const bytes = JSON.stringify(value).length * 2 + 256;
           if (bytes > this.maxBytes)
             throw new Error('Page text exceeds cache allowance');
-          while (this.bytes + bytes > this.maxBytes) {
-            const oldest = [...this.entries].find(
-              ([, candidate]) => candidate.state === 'ready',
-            );
-            if (!oldest) break;
-            this.bytes -= oldest[1].bytes;
-            this.entries.delete(oldest[0]);
+          for (const [id, candidate] of this.entries) {
+            if (this.bytes + bytes <= this.maxBytes) break;
+            if (candidate.state !== 'ready') continue;
+            this.bytes -= candidate.bytes;
+            this.entries.delete(id);
           }
           entry.value = value;
           entry.bytes = bytes;
@@ -143,7 +143,6 @@ export class TextPrefetch {
         }
         // Allow foreground work and progress reads between pages.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        if (this.entries.get(id) !== entry) continue;
       }
     } finally {
       this.running = false;

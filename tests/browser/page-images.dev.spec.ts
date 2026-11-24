@@ -241,6 +241,27 @@ test('project clear aborts background preparation and discards its queue and lat
   expect(errors).toEqual([]);
 });
 
+test('a cache write that finishes after project close cannot start a preview job', async ({
+  page,
+}) => {
+  const result = await page.evaluate(() =>
+    window.pageImages.clearWhileSaving(),
+  );
+  expect(result).toEqual({ reads: 1, writes: 1 });
+});
+
+test('a 640-pixel master renders at foreground priority and preparation caches it once', async ({
+  page,
+}) => {
+  const result = await page.evaluate(() =>
+    window.pageImages.sharedMasterDimension(),
+  );
+  expect(result.selectedCall).toMatchObject({ dimension: 640, priority: 100 });
+  expect(result.completed).toBe(1);
+  expect(result.reads).toBe(2);
+  expect(result.writes).toBe(2);
+});
+
 test('preparation visits every page nearby first and saves previews derived from full images', async ({
   page,
 }) => {
