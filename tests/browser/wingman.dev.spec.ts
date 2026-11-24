@@ -39,7 +39,7 @@ for (const [name, workflow] of [
     'warm swaps and collapse reuse source pixels with live annotations',
     warmSwapWorkflow,
   ],
-  ['message cursors, long polling and pause', messagingWorkflow],
+  ['message cursors, long polling, pause and project close', messagingWorkflow],
   ['live 3D preview, split restoration and draft protection', modelWorkflow],
   ['screenshot pixels, editing and conversation persistence', captureWorkflow],
 ] as const) {

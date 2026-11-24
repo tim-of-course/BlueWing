@@ -50,13 +50,18 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
 
     try:
         deadline = time.monotonic() + 40
-        while time.monotonic() < deadline:
-            result = subprocess.run([str(BIN / "bluewing"), "commands.list"], capture_output=True, text=True, env=env)
-            if result.returncode == 0:
-                break
+        while (remaining := deadline - time.monotonic()) > 0:
+            try:
+                result = subprocess.run([str(BIN / "bluewing"), "commands.list"],
+                                        capture_output=True, text=True, env=env,
+                                        timeout=min(5, remaining))
+                if result.returncode == 0:
+                    break
+            except subprocess.TimeoutExpired:
+                pass
             if desktop.poll() is not None:
                 raise AssertionError((EVIDENCE / "native.log").read_text())
-            time.sleep(0.2)
+            time.sleep(max(0, min(0.2, deadline - time.monotonic())))
         else:
             raise AssertionError("Desktop command bridge did not become ready")
 
@@ -164,12 +169,17 @@ with tempfile.TemporaryDirectory(prefix="bluewing-product-") as temporary:
             desktop.wait(timeout=10)
             desktop = subprocess.Popen([str(BIN / "bluewing-desktop")], env=env, stdout=log, stderr=log)
             deadline = time.monotonic() + 30
-            while time.monotonic() < deadline:
-                result = subprocess.run([str(BIN / "bluewing"), "web.inspect"], capture_output=True, text=True, env=env)
-                if result.returncode == 0:
-                    assert json.loads(result.stdout)["data"]["activeVersion"] == staged["version"]
-                    break
-                time.sleep(0.2)
+            while (remaining := deadline - time.monotonic()) > 0:
+                try:
+                    result = subprocess.run([str(BIN / "bluewing"), "web.inspect"],
+                                            capture_output=True, text=True, env=env,
+                                            timeout=min(5, remaining))
+                    if result.returncode == 0:
+                        assert json.loads(result.stdout)["data"]["activeVersion"] == staged["version"]
+                        break
+                except subprocess.TimeoutExpired:
+                    pass
+                time.sleep(max(0, min(0.2, deadline - time.monotonic())))
             else:
                 raise AssertionError("Cached web release did not start after release server stopped")
             call("project.open", {"path": project_path})

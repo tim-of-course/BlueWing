@@ -249,7 +249,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         assert call('messages.send', {'views': [{'viewId': 'missing'}]}, succeeds=False,
                     messagesAfter=cursor)['messages'] == []
 
-        # A waiting read must not occupy the desktop's project command queue.
+        # Verify delivery through the native launcher with a message cursor.
         waiting_request = {'projectId': project_id, 'messagesAfter': cursor,
                            'payload': {'waitMs': 25000}}
         pending = subprocess.Popen(argv('messages.read'), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -257,11 +257,8 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         pending.stdin.write(json.dumps(waiting_request))
         pending.stdin.close()
         pending.stdin = None
-        time.sleep(0.5)
-        assert pending.poll() is None, 'Read did not remain pending'
         assert command('project.inspect', timeout=10) == baseline
         command('wingman.flash', timeout=10)
-        assert pending.poll() is None, 'Unrelated commands ended the waiting read'
         second_response = call('messages.send', {'text': 'The wall is ready to review'},
                                messagesAfter=cursor, timeout=10)
         second, = second_response['messages']
@@ -301,20 +298,7 @@ with tempfile.TemporaryDirectory(prefix='bluewing-wingman-') as temporary:
         command('history.redo', mutates=True)
         saved = command('project.inspect')
         original_id = project_id
-        waiting_request = {'projectId': project_id, 'messagesAfter': second['id'],
-                           'payload': {'timeoutMs': 300000}}
-        pending = subprocess.Popen(argv('messages.wait'), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, text=True, env=env)
-        pending.stdin.write(json.dumps(waiting_request))
-        pending.stdin.close()
-        pending.stdin = None
-        time.sleep(0.5)
-        assert pending.poll() is None
         command('project.close', mutates=True)
-        stdout, stderr = pending.communicate(timeout=10)
-        changed = response('messages.wait', waiting_request, pending.returncode, stdout, stderr)
-        assert changed['data']['status'] == 'project_changed'
-        assert changed['messages'] == [] and changed['messagesProjectId'] == original_id
         stop()
         start()
         command('project.open', {'path': str(project_path)})

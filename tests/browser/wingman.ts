@@ -880,12 +880,44 @@ export async function messagingWorkflow(page: Page) {
   await page.getByRole('menuitem', { name: 'Copy AI prompt' }).press('Escape');
   await page.getByRole('button', { name: 'Resume CLI', exact: true }).click();
   expect((await resumeWait).response.data.status).toBe('resumed');
-  expect((await cli(page, 'project.inspect')).exitCode).toBe(0);
+  const current = await cli(page, 'project.inspect');
+  expect(current.exitCode).toBe(0);
   expect(
     await originalRow.evaluate(
       (row) => row === document.querySelector('.wingman-message'),
     ),
   ).toBe(true);
+  const cursorBeforeSend = current.response.messages.at(-1)?.id ?? 0;
+  const text = 'The message arrived before the wait';
+  await sendText(page, text);
+  const delivered = await cli<null>(
+    page,
+    'messages.read',
+    { waitMs: 25000 },
+    cursorBeforeSend,
+  );
+  expect(delivered.exitCode).toBe(0);
+  const [message] = delivered.response.messages;
+  expect(delivered.response.messages).toHaveLength(1);
+  expect(message?.text).toBe(text);
+  if (!message) throw new Error('Missing delivered message');
+  const closing = cli<MessageWait>(
+    page,
+    'messages.wait',
+    { timeoutMs: 25000 },
+    message.id,
+  );
+  await expect(
+    page.getByText('Waiting for you', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  const closed = await closing;
+  expect(closed.exitCode).toBe(0);
+  expect(closed.response).toMatchObject({
+    data: { status: 'project_changed', projectId: current.response.projectId },
+    messages: [],
+    messagesProjectId: current.response.projectId,
+  });
 }
 
 export async function modelWorkflow(page: Page) {
