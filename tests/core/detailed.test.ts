@@ -487,6 +487,165 @@ void test('ordinary quantities, exact piece exports and preview deltas share pos
   );
 });
 
+void test('a wall finish review follows openings and their levels on a shared trace', async () => {
+  const { session, call, wall } = fixture();
+  const level = { id: 'framing-level', name: 'Framing', elevation: 0 };
+  await call({ name: 'level.put', payload: level });
+  await call({
+    name: 'wall.put',
+    payload: { ...wall, levelId: level.id, finishes: [] },
+  });
+  await call({ name: 'wall.put', payload: { ...wall, id: 'finish' } });
+  const opening = {
+    id: 'opening',
+    wallId: wall.id,
+    distance: 1,
+    width: 1,
+    height: 2,
+    sill: 0,
+    jambCount: 1,
+  };
+  await call({ name: 'opening.put', payload: opening });
+  const mark = {
+    id: 'finish',
+    target: { kind: 'wall', id: 'finish' },
+    status: 'reviewed',
+    note: '',
+  };
+  const status = () => inspectReview(session.project).marks[0]?.effectiveStatus;
+  const area = () =>
+    generateConstruction(session.project, resolveConstruction(session.project))
+      .surfaces.filter((surface) => surface.wallId === 'finish')
+      .reduce((sum, surface) => sum + surface.area, 0);
+  await call({ name: 'review.mark', payload: mark });
+  assert.equal(area(), 32);
+  assert.equal(status(), 'reviewed');
+  await call({ name: 'opening.put', payload: { ...opening, width: 2 } });
+  assert.equal(area(), 28);
+  assert.equal(status(), 'changed');
+  await call({ name: 'review.mark', payload: mark });
+  await call({ name: 'level.put', payload: { ...level, elevation: 2 } });
+  assert.equal(area(), 32);
+  assert.equal(status(), 'changed');
+});
+
+void test('automatic stud stock settings invalidate wall reviews and preserve count and fixed stock reviews', async () => {
+  const { session, call, wall } = fixture();
+  const { materialId, width, depth } = wall.stud;
+  await call({
+    name: 'wall.put',
+    payload: { ...wall, height: 7.5, stud: { materialId, width, depth } },
+  });
+  await call({ name: 'wall.put', payload: { ...wall, id: 'fixed' } });
+  await call({
+    name: 'geometry.put',
+    payload: {
+      id: 'count',
+      name: 'Count',
+      sheetId: 's',
+      kind: 'count',
+      points: [{ x: 20, y: 20 }],
+    },
+  });
+  const review = (id: string, kind: 'wall' | 'geometry' = 'wall') =>
+    call({
+      name: 'review.mark',
+      payload: { id, target: { kind, id }, status: 'reviewed', note: '' },
+    });
+  const status = (id: string) =>
+    inspectReview(session.project).marks.find((mark) => mark.id === id)
+      ?.effectiveStatus;
+  const stock = () =>
+    generateConstruction(
+      session.project,
+      resolveConstruction(session.project),
+    ).pieces.find((piece) => piece.wallId === wall.id && piece.role === 'stud')
+      ?.stockLength;
+  const sizes = session.project.standardSizes;
+  await review(wall.id);
+  await review('fixed');
+  await review('count', 'geometry');
+  assert.equal(stock(), 8);
+  await call({
+    name: 'project.sizes.put',
+    payload: { sizes: { ...sizes, studLengths: [9, 10] } },
+  });
+  assert.equal(stock(), 9);
+  assert.equal(status(wall.id), 'changed');
+  await review(wall.id);
+  await call({
+    name: 'project.sizes.put',
+    payload: {
+      sizes: { ...session.project.standardSizes, specialOrderMinimum: 1 },
+    },
+  });
+  assert.equal(stock(), 7.5);
+  assert.equal(status(wall.id), 'changed');
+  await review(wall.id);
+  await call({
+    name: 'project.specialOrderStuds.put',
+    payload: { enabled: false },
+  });
+  assert.equal(stock(), 9);
+  assert.equal(status(wall.id), 'changed');
+  assert.equal(status('fixed'), 'reviewed');
+  assert.equal(status('count'), 'reviewed');
+});
+
+void test('board ceiling review follows the selected project sheet stock', async () => {
+  const { session, call } = fixture();
+  await call({
+    name: 'geometry.put',
+    payload: {
+      id: 'area',
+      name: 'Ceiling',
+      sheetId: 's',
+      kind: 'area',
+      points: [
+        { x: 0, y: 0 },
+        { x: 8, y: 0 },
+        { x: 0, y: 8 },
+      ],
+    },
+  });
+  await call({
+    name: 'ceiling.put',
+    payload: {
+      id: 'ceiling',
+      geometryId: 'area',
+      elevation: 8,
+      materialId: 'board',
+      layers: 1,
+      board: { width: 4, length: 8 },
+    },
+  });
+  await call({
+    name: 'review.mark',
+    payload: {
+      id: 'ceiling',
+      target: { kind: 'ceiling', id: 'ceiling' },
+      status: 'reviewed',
+      note: '',
+    },
+  });
+  const sizes = session.project.standardSizes;
+  await call({
+    name: 'project.sizes.put',
+    payload: {
+      sizes: {
+        ...sizes,
+        sheets: sizes.sheets.filter(
+          (sheet) => sheet.width !== 4 || sheet.length !== 8,
+        ),
+      },
+    },
+  });
+  assert.equal(
+    inspectReview(session.project).marks[0]?.effectiveStatus,
+    'changed',
+  );
+});
+
 void test('review follows linked header evidence and relevant levels, independent of record insertion order', async () => {
   const { session, call, wall } = fixture();
   await call({
