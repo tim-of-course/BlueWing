@@ -26,6 +26,7 @@ export default function ReviewPanel(props: {
   const [note, setNote] = createSignal('');
   const [draft, setDraft] = createSignal<PlanSnippet | null>(null);
   const [dirty, setDirty] = createSignal(false);
+  const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
   const [image, setImage] = createSignal('');
   const [picking, setPicking] = createSignal(false);
@@ -108,6 +109,17 @@ export default function ReviewPanel(props: {
       const message = cause instanceof Error ? cause.message : String(cause);
       setError(message);
       report(message);
+    });
+  }
+  function runSave(action: () => Promise<unknown>) {
+    if (saving()) return;
+    run(async () => {
+      setSaving(true);
+      try {
+        await action();
+      } finally {
+        setSaving(false);
+      }
     });
   }
   function selectSource(source: SourceReference) {
@@ -282,7 +294,11 @@ export default function ReviewPanel(props: {
     };
   }
   return (
-    <div class="stack">
+    <fieldset
+      class="stack"
+      disabled={saving()}
+      style={{ border: 0, margin: 0, padding: 0 }}
+    >
       <div class="panel-heading">
         <div>
           <h2>Takeoff review</h2>
@@ -376,7 +392,7 @@ export default function ReviewPanel(props: {
                     <button
                       type="button"
                       onClick={() => {
-                        run(() => mark('reviewed'));
+                        runSave(() => mark('reviewed'));
                       }}
                     >
                       Mark reviewed
@@ -384,7 +400,7 @@ export default function ReviewPanel(props: {
                     <button
                       type="button"
                       onClick={() => {
-                        run(() => mark('question'));
+                        runSave(() => mark('question'));
                       }}
                     >
                       Needs clarification
@@ -392,7 +408,7 @@ export default function ReviewPanel(props: {
                     <button
                       type="button"
                       onClick={() => {
-                        run(() => mark('needs-review'));
+                        runSave(() => mark('needs-review'));
                       }}
                     >
                       Needs review
@@ -674,6 +690,7 @@ export default function ReviewPanel(props: {
                     class="snippet-picker"
                     aria-label="Plan snippet crop and callout position"
                     onPointerDown={(event) => {
+                      if (saving()) return;
                       corner = imagePoint(event);
                       event.currentTarget.setPointerCapture(event.pointerId);
                     }}
@@ -681,7 +698,7 @@ export default function ReviewPanel(props: {
                       const end = imagePoint(event);
                       const start = corner;
                       corner = undefined;
-                      if (!end || !start) return;
+                      if (saving() || !end || !start) return;
                       if (picking()) {
                         const width = Math.abs(end.x - start.x),
                           height = Math.abs(end.y - start.y);
@@ -752,7 +769,7 @@ export default function ReviewPanel(props: {
                     type="button"
                     disabled={props.controller.busy()}
                     onClick={() => {
-                      run(async () => {
+                      runSave(async () => {
                         await props.controller.execute(
                           { name: 'snippet.put', payload: snippet() },
                           expected,
@@ -819,6 +836,6 @@ export default function ReviewPanel(props: {
           </Show>
         </div>
       </Show>
-    </div>
+    </fieldset>
   );
 }

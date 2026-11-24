@@ -16,6 +16,19 @@ Object.assign(window, {
     dispatchCli(application, [name, JSON.stringify(request)]),
   wingmanPublish: (visual: WingmanVisual) =>
     application.presentation?.publish(visual),
+  holdNextProjectSave() {
+    const save = application.storage.save.bind(application.storage);
+    let release!: (fail: boolean) => void;
+    const gate = new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+    application.storage.save = async (...args) => {
+      application.storage.save = save;
+      if (await gate) throw new Error('Test save failed');
+      await save(...args);
+    };
+    return release;
+  },
   wingmanHoldLibraryRead: () => {
     const read = application.libraryStore.read.bind(application.libraryStore);
     let release!: () => void;

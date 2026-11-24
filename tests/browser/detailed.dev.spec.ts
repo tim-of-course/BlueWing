@@ -3,6 +3,89 @@ import { test, expect } from '@playwright/test';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { detailedWorkflow, systemWorkflow } from './detailed';
+import { drawWall } from './takeoff';
+import { startWingmanProject } from './wingman';
+
+for (const editor of ['construction', 'review note', 'snippet'] as const) {
+  test(`${editor} keeps its draft locked until the save settles`, async ({
+    page,
+  }) => {
+    await startWingmanProject(page, true);
+    const construction = editor === 'construction';
+    if (!construction) await drawWall(page);
+    await page
+      .getByRole('button', {
+        name: construction ? 'Construction' : 'Review',
+        exact: true,
+      })
+      .click();
+    const dialog = page.getByRole('dialog', {
+      name: construction ? 'Construction editor' : 'Takeoff review',
+    });
+    if (construction) {
+      await dialog.getByLabel('Construction type').selectOption('levels');
+      await dialog.getByRole('button', { name: 'New level' }).click();
+    } else if (editor === 'review note') {
+      await dialog.getByRole('button', { name: /geometry · Path 1/ }).click();
+    } else {
+      await dialog.getByRole('button', { name: 'Plan snippets' }).click();
+      await dialog
+        .getByRole('button', { name: 'New snippet from selection' })
+        .click();
+    }
+    const field = dialog.getByLabel(
+      construction
+        ? 'Name'
+        : editor === 'review note'
+          ? 'Review note'
+          : 'Snippet name',
+      { exact: true },
+    );
+    const save = dialog.getByRole('button', {
+      name: construction
+        ? 'Save construction'
+        : editor === 'review note'
+          ? 'Mark reviewed'
+          : 'Save snippet',
+      exact: true,
+    });
+    const cancel = dialog.getByRole('button', {
+      name: editor === 'review note' ? 'Discard note edits' : 'Cancel edits',
+    });
+    const close = dialog.getByRole('button', { name: 'Close', exact: true });
+    await field.fill('Draft to preserve');
+
+    for (const fail of [true, false]) {
+      const release = await page.evaluateHandle(() =>
+        (
+          window as unknown as {
+            holdNextProjectSave(): (fail: boolean) => void;
+          }
+        ).holdNextProjectSave(),
+      );
+      await save.click();
+      try {
+        await expect(field).toBeDisabled();
+        await expect(cancel).toBeDisabled();
+        await expect(save).toBeDisabled();
+        await expect(close).toBeDisabled();
+      } finally {
+        await release.evaluate((finish, reject) => finish(reject), fail);
+        await release.dispose();
+      }
+      await expect(field).toBeEnabled();
+      await expect(cancel).toBeEnabled();
+      await expect(field).toHaveValue('Draft to preserve');
+      if (fail) {
+        await expect(dialog.getByRole('alert')).toHaveText('Test save failed');
+        await expect(close).toBeDisabled();
+      } else {
+        await expect(close).toBeEnabled();
+      }
+    }
+  });
+}
+
 test('positioned takeoff, linked 3D and highlighted review survive reopening', async ({
   page,
 }, info) => {
