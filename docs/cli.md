@@ -1,6 +1,6 @@
 # Desktop CLI
 
-`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, the format-8 reset and per-takeoff handoff filenames.
+`connect` and `takeoff.list` identify the current CLI selection in the response's top-level `takeoff` field. `takeoff.select` with `{id}` changes this shared setting (Main initially). Supply an envelope `takeoffId` on reads, edits, batch/preview, exports and renders to keep them on the intended takeoff if another caller switches. The UI has its own selector. See [named takeoffs](named-takeoffs.md) for copy/deduction examples, ownership, and per-takeoff handoff filenames.
 
 The `bluewing` launcher operates the open desktop application. Start Bluewing first. The launcher forwards arguments to the same TypeScript command session used by the interface; it does not open another project database.
 
@@ -67,7 +67,7 @@ Read `annotation.list` with `{sheetId}` before working on a sheet. It returns co
 
 Use `annotation.add` with `{sheetId, kind, points, text?}`. A text annotation takes one anchor and nonempty text. Arrow and line take a start and end. Rectangle, ellipse and revision-cloud take opposite corners. Draw freehand strokes using the Annotations tool. All points use rotated PDF page coordinates. Use `annotation.update` with `{id, points?, text?}` and `annotation.delete` with `{id}`. These edits support batch, preview, revision guards and shared Undo/Redo. Bluewing records the originating author and UTC creation time.
 
-Use permanent annotations for location-specific information that future estimators should see. The Annotations toggle beside View controls the canvas and sheet PNGs, including cropped renders. Review snippet annotations belong to a source-linked review crop. Wingman annotations last for a presentation. Notes hold project-wide Markdown.
+Use permanent annotations for location-specific information that future estimators should see. The Annotations toggle beside View controls the canvas and sheet PNGs, including cropped renders. Review snippet annotations belong to a source-linked review crop. Wingman presentation annotations last for the presentation. Annotations on a sent view are saved with the message. Notes hold project-wide Markdown.
 
 ## Project scratchpad
 

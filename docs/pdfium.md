@@ -14,7 +14,7 @@ Successful imports retain the parsed worker instead of reopening the same PDF fo
 
 The main viewer keeps one cached 200 DPI master at all zoom levels, with grayscale text antialiasing and high-quality display smoothing. Sidebar previews derive from that master. An engine-specific cache key regenerates old PDF.js pixels without migrating projects. PNG encoding, memory leases, disk caching, preparation and Wingman region reuse retain their existing contracts.
 
-Ordinary display annotations and widget appearances are enabled. LCD text and printing flags are disabled. Page labels and positioned embedded text support existing import names and auto-name review. Scanned or outlined text still requires manual names.
+Ordinary display annotations and widget appearances are enabled. LCD text and printing flags are disabled. Page labels and positioned embedded text support existing import names and AI Page Naming. Agents can inspect title-block crops for scanned or outlined text.
 
 ## Sources and memory
 
@@ -32,7 +32,7 @@ The synthetic fixture suite exposes these PDFium differences from PDF.js:
 
 - A transfer function applies to solid colors, images and tiling patterns, but PDFium leaves the shading gradient in the transfer fixture uninverted. This can change colors in PDFs using transfer-filtered shading.
 - A cropped isolated knockout transparency group can composite differently from the independent reference and the full-page render. Ordinary alpha/luminosity masks and display annotations pass their color probes. Prepared full-image crops continue to reuse the same source pixels.
-- Font antialiasing differs. Tests bound the pixel difference, verify actual ink coverage, and keep neutral grayscale text and colored-markup checks.
+- Font antialiasing differs. Tests bound the pixel difference, verify actual ink coverage, and keep neutral grayscale text and red rectangle checks.
 
 These are recorded engine limits, not claims of exact cross-engine parity. PNG round trips and transient-versus-cached PDFium output remain exact. Geometry and annotation comparisons retain tight limits.
 
@@ -62,4 +62,4 @@ Evidence is retained in ignored `tmp/pdfium-integration-2026-10-20/`: `verify-fi
 
 macOS and Linux native builds were not run. Windows WebKit lacks worker OffscreenCanvas, so Chromium/Firefox establish PDF browser results here; its PDF-independent IndexedDB check passes. The isolated comparison sample is unchanged. Takeoff format 4 is unchanged, and renderer updates after this bridge-8 rebuild remain web-delivered.
 
-Workflow `pdfium-integration-2026-10-20` uses the [Banana Split skill](C:/Users/TimothyCardoza/.agents/skills/banana-split/SKILL.md); see the [agent directory](../.banana-split/pdfium-integration-2026-10-20/directory.md). Host/root outcome: success. The host/root is thread `cf0d72d7-7832-410b-bbf6-ad5ef72b648e`, GPT-6.1 Sol/xhigh. Eight distinct children used the default tier: four GPT-6.1 Sol/xhigh and four GPT-6.1 Sol/medium, with zero descendants or tier changes; nine agents including the host. One API assessment and seven fresh source reviews are accepted. Two review corrections addressed sparse hidden-layer reads, page-box fallbacks and distribution notices. Native captures then drove saved-asset snapshots and import-worker retention; trial memory mapping was insufficient and removed. Source reviews report no high/medium findings. The host owns runtime verification, including before/after reproductions of the hidden-layer issue and the final small nested-tree correction. No escalations or cancellations occurred.
+Workflow `pdfium-integration-2026-10-20` completed successfully. The host/root is thread `cf0d72d7-7832-410b-bbf6-ad5ef72b648e`, GPT-6.1 Sol/xhigh. Eight distinct children used the default tier: four GPT-6.1 Sol/xhigh and four GPT-6.1 Sol/medium, with zero descendants or tier changes; nine agents including the host. One API assessment and seven fresh source reviews are accepted. Two review corrections addressed sparse hidden-layer reads, page-box fallbacks and distribution notices. Native captures then drove saved-asset snapshots and import-worker retention; trial memory mapping was insufficient and removed. Source reviews report no high/medium findings. The host owns runtime verification, including before/after reproductions of the hidden-layer issue and the final small nested-tree correction. No escalations or cancellations occurred.

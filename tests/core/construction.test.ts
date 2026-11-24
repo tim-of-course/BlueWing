@@ -196,7 +196,7 @@ void test('collinear wall points leave studs, tracks and finishes unchanged and 
     ),
   );
 });
-void test('metric station offset includes endpoints exactly once', () => {
+void test('stud station offset includes endpoints exactly once', () => {
   const { project, data, wall } = fixture(3, 2.4);
   wall.studSpacing = 1;
   wall.studOffset = 0.5;
