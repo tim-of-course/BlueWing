@@ -1,36 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import type { Project } from '../../src/core/types';
-import { captureErrors, cli, startWingmanProject } from './wingman';
+import { captureErrors, cli, mutate, startWingmanProject } from './wingman';
 import { drawWall } from './takeoff';
 import { openPanel } from './panels';
-
-async function mutate(page: Page, name: string, payload: unknown) {
-  const current = (await cli(page, 'project.inspect')).response;
-  const result = await page.evaluate(
-    async ({ name, request }) => {
-      return (
-        window as unknown as {
-          wingmanCli(
-            name: string,
-            request: unknown,
-          ): Promise<{ response: { ok: boolean } }>;
-        }
-      ).wingmanCli(name, request);
-    },
-    {
-      name,
-      request: {
-        payload,
-        projectId: current.projectId,
-        expectedRevision: current.revision,
-        takeoffId: 'main',
-      },
-    },
-  );
-  expect(result.response.ok).toBe(true);
-}
 
 test('navigator retains sheet and group elements while their live labels update', async ({
   page,

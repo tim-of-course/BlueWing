@@ -80,6 +80,9 @@ test('AI Page Naming reads only title blocks, ignoring a large body before the t
   expect(result.cleared.cacheBytes).toBe(0);
   expect(result.reopened.ready).toBe(0);
   expect(result.cancelled.exitCode).toBe(0);
-  expect(result.afterCancel.queued + result.afterCancel.reading).toBe(0);
+  expect(result.cancelled.response).toMatchObject({
+    ok: true,
+    data: { queued: 0, reading: 0 },
+  });
   expect(errors).toEqual([]);
 });

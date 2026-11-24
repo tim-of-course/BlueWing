@@ -1,10 +1,10 @@
 import { writeFile } from 'node:fs/promises';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { captureBrowserArtifact } from '@solidjs/diagnostics/playwright';
 import { expectNoDiagnostics, expectNoSilentHolds } from '@solidjs/diagnostics';
 import type { CalculationSnapshot } from '../../src/core/calculation-state';
 import type { Project } from '../../src/core/types';
-import { captureErrors, cli, startWingmanProject } from './wingman';
+import { captureErrors, cli, mutate, startWingmanProject } from './wingman';
 import { drawWall } from './takeoff';
 
 declare global {
@@ -19,23 +19,6 @@ declare global {
       request: unknown,
     ): Promise<{ exitCode: number; response: unknown }>;
   }
-}
-
-async function mutate(page: Page, name: string, payload: unknown) {
-  const { projectId, revision } = (await cli(page, 'project.inspect')).response;
-  const result = await page.evaluate(
-    async ({ name, request }) => window.wingmanCli(name, request),
-    {
-      name,
-      request: {
-        projectId,
-        expectedRevision: revision,
-        payload,
-        takeoffId: 'main',
-      },
-    },
-  );
-  expect(result.exitCode, JSON.stringify(result.response)).toBe(0);
 }
 
 test('UI, CLI reports and camera renders share one calculation and metadata retains 3D models', async ({

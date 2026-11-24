@@ -84,8 +84,6 @@ async function run() {
     const reopened = app.textPrefetch.status(sheets);
     await call('sheet.naming.start');
     const cancelled = await call('sheet.naming.cancel');
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    const afterCancel = app.textPrefetch.status(sheets);
     return {
       before,
       immediate,
@@ -106,7 +104,6 @@ async function run() {
       cleared,
       reopened,
       cancelled,
-      afterCancel,
     };
   } finally {
     if (app.project)

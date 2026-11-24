@@ -41,6 +41,7 @@ export async function mutate(page: Page, name: string, payload: unknown) {
     },
   );
   expect(result.response.ok, JSON.stringify(result.response)).toBe(true);
+  expect(result.exitCode, JSON.stringify(result.response)).toBe(0);
 }
 interface Inspection {
   main: WorkspaceViewSnapshot;

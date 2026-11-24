@@ -8,6 +8,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   {
     ignores: [
+      '.banana-split/**',
       'dist/**',
       'node_modules/**',
       'test-results/**',
