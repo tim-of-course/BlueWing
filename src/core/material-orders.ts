@@ -1,6 +1,6 @@
 import type { CalculationSnapshot } from './calculation-state';
 import type { CalculationOutput } from './types';
-import { wholeQuantity } from './purchasing';
+import { aggregationOverflowDiagnostic, wholeQuantity } from './purchasing';
 
 /** Requirements use the output unit. A stock cut contributes its fraction of a stick. */
 export function orderGroups(output: CalculationSnapshot['outputs'][number]) {
@@ -18,6 +18,30 @@ export function orderGroups(output: CalculationSnapshot['outputs'][number]) {
     }
   } else groups.set(output.groupId, output.adjustedAmount);
   return [...groups].map(([groupId, amount]) => ({ groupId, amount }));
+}
+
+function checkOrderAmounts(order: CalculationOutput): CalculationOutput {
+  const amounts = [
+    order.baseAmount,
+    order.wasteAmount,
+    order.adjustedAmount,
+    order.packageCount ?? 0,
+    order.purchasedAmount,
+    order.purchasedLength?.value ?? 0,
+    order.grossArea ?? 0,
+    order.openingArea ?? 0,
+    order.orderArea ?? 0,
+    order.packedCount ?? 0,
+  ];
+  if (
+    !amounts.every(Number.isFinite) ||
+    order.groupRequirements?.some(({ amount }) => !Number.isFinite(amount))
+  ) {
+    order.complete = false;
+    if (!order.diagnostics.includes(aggregationOverflowDiagnostic))
+      order.diagnostics = [...order.diagnostics, aggregationOverflowDiagnostic];
+  }
+  return order;
 }
 
 export function poolOrders(
@@ -87,7 +111,7 @@ export function poolOrders(
       amount,
     }));
     order.quantityKey = key;
-    if (items.length === 1) return order;
+    if (items.length === 1) return checkOrderAmounts(order);
     const sum = (
       field:
         | 'baseAmount'
@@ -145,6 +169,6 @@ export function poolOrders(
       if (items.some((i) => i[field] !== order[field])) order[field] = '';
     if (items.some((i) => i.modeling === 'estimate'))
       order.modeling = 'estimate';
-    return order;
+    return checkOrderAmounts(order);
   });
 }

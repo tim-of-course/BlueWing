@@ -183,6 +183,57 @@ void test('shared membership in separate groups intentionally contributes twice'
   };
   near(calculateProject(project).totals[0]?.amount, 384);
 });
+void test('complete formula contributions can overflow when pooled into an order', () => {
+  const project = wall();
+  const assignment = project.assignments.assignment;
+  const output = project.recipes['wall-area']?.outputs[0];
+  assert.ok(assignment && output);
+  assignment.inputs.height = 1e308;
+  output.formula = 'height';
+  output.unit = 'ft';
+  output.allowance = { wastePercent: 0 };
+  const single = calculateProject(project);
+  assert.equal(single.complete, true);
+  assert.equal(single.outputs[0]?.purchasedAmount, 1e308);
+
+  project.assignments.second = { ...assignment, id: 'second' };
+  const result = calculateProject(project);
+  assert.equal(result.outputs.length, 1);
+  assert.equal(result.outputs[0]?.complete, false);
+  assert.deepEqual(result.outputs[0].diagnostics, [
+    'Quantity aggregation overflowed',
+  ]);
+  assert.equal(result.totals[0]?.complete, false);
+  assert.equal(result.complete, false);
+});
+void test('finite purchase buckets can overflow when combined into a material total', () => {
+  const project = wall();
+  const assignment = project.assignments.assignment;
+  const output = project.recipes['wall-area']?.outputs[0];
+  assert.ok(assignment && output);
+  assignment.inputs = { height: 1, layers: 1e308 };
+  output.formula = 'layers';
+  output.unit = 'ea';
+  output.allowance = { wastePercent: 0 };
+  output.piece = { role: 'stud', cutLength: { formula: 'height', unit: 'ft' } };
+
+  // The exact cut lengths produce separate orders but share the total's key.
+  project.assignments.second = {
+    ...assignment,
+    id: 'second',
+    inputs: { ...assignment.inputs, height: 1 + 1e-13 },
+  };
+  const result = calculateProject(project);
+  assert.equal(result.outputs.length, 2);
+  assert.ok(
+    result.outputs.every(
+      (order) => order.complete && Number.isFinite(order.purchasedAmount),
+    ),
+  );
+  assert.equal(result.totals.length, 1);
+  assert.equal(result.totals[0]?.complete, false);
+  assert.equal(result.complete, false);
+});
 void test('partial allowance overrides inherit recipe fields and null clears package rounding', () => {
   const project = fixture(
     'area',

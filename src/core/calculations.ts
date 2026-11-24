@@ -484,7 +484,7 @@ export function calculateProject(project: Project): CalculationResult {
   }
   const positioned = modeledOutputs(project, model);
   const outputs = poolOrders([...contributions, ...positioned]);
-  complete &&= model.complete;
+  complete &&= model.complete && outputs.every((output) => output.complete);
   const totals = new Map<string, QuantityTotal>();
   const accounted = new Set<string>();
   for (const diagnostic of model.diagnostics)
@@ -538,6 +538,16 @@ export function calculateProject(project: Project): CalculationResult {
       };
     total.complete &&= output.complete;
     totals.set(key, total);
+  }
+  for (const total of totals.values()) {
+    const finite = [
+      total.amount,
+      total.additions,
+      total.deductions,
+      total.purchasedLength?.value ?? 0,
+    ].every(Number.isFinite);
+    total.complete &&= finite;
+    complete &&= finite;
   }
   const estimateOutputs = outputs.filter(
     (output) => output.modeling === 'estimate',
