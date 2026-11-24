@@ -70,7 +70,9 @@ for (const editor of ['construction', 'review note', 'snippet'] as const) {
         await expect(save).toBeDisabled();
         await expect(close).toBeDisabled();
       } finally {
-        await release.evaluate((finish, reject) => finish(reject), fail);
+        await release.evaluate((finish, reject) => {
+          finish(reject);
+        }, fail);
         await release.dispose();
       }
       await expect(field).toBeEnabled();
