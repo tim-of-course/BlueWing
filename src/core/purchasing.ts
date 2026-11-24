@@ -1,5 +1,7 @@
 import type { OutputAllowance } from './types';
 
+export const aggregationOverflowDiagnostic = 'Quantity aggregation overflowed';
+
 /** Equal-length kickers use the least leftover fraction. Sorted stock breaks ties shorter. */
 export function kickerStockLength(cut: number, lengths: number[]): number {
   let selected = Math.max(...lengths);
@@ -92,7 +94,7 @@ export function purchaseAmount(
       Number.isFinite,
     )
   )
-    diagnostics.push('Quantity aggregation overflowed');
+    diagnostics.push(aggregationOverflowDiagnostic);
   return {
     baseAmount,
     wastePercent,
