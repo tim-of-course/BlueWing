@@ -1,6 +1,40 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { openPanel } from './panels';
+import { startProject } from './takeoff';
+
+test('browser projects stay usable when the last-project preference is unavailable', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const getItem = localStorage.getItem.bind(localStorage);
+    const setItem = localStorage.setItem.bind(localStorage);
+    Storage.prototype.getItem = function (key) {
+      if (key === 'bluewing.lastProject')
+        throw new DOMException('Preference unavailable', 'SecurityError');
+      return getItem(key);
+    };
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'bluewing.lastProject')
+        throw new DOMException('Preference unavailable', 'QuotaExceededError');
+      setItem(key, value);
+    };
+  });
+  await startProject(page);
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'No project open', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await expect(page.locator('.sheet-row')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'No project open', exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Open project', exact: true }).click();
+  await expect(page.locator('.sheet-row')).toHaveCount(1);
+});
 
 test('sheet order, history, recent projects and dropped PDFs', async ({
   page,

@@ -6,6 +6,16 @@ import {
   readNativeChunks,
 } from '../../src/platform/native-bytes';
 
+void test('a single native chunk reuses the raw IPC buffer', async () => {
+  const raw = new ArrayBuffer(NATIVE_CHUNK_BYTES);
+  const bytes = await readNativeChunks(raw.byteLength, (offset, size) => {
+    assert.equal(offset, 0);
+    assert.equal(size, raw.byteLength);
+    return Promise.resolve(raw);
+  });
+  assert.equal(bytes.buffer, raw);
+});
+
 void test('native bytes preserve chunk boundaries with raw and WebView fallback responses', async () => {
   const source = new Uint8Array(NATIVE_CHUNK_BYTES + 7);
   for (let i = 0; i < source.length; i++) source[i] = i % 251;

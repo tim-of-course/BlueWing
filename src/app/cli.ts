@@ -90,22 +90,40 @@ export async function connectCli(
         event.payload.args,
         event.payload.input,
       );
-      await invoke('cli_respond', { id: event.payload.id, response, exitCode });
-      if (exitCode === 0 && event.payload.args[0] === 'web.activate')
-        window.location.reload();
+      try {
+        await invoke('cli_respond', {
+          id: event.payload.id,
+          response,
+          exitCode,
+        });
+      } catch (error) {
+        console.error('CLI response failed', error);
+      } finally {
+        if (exitCode === 0 && event.payload.args[0] === 'web.activate')
+          window.location.reload();
+      }
     })().catch((error: unknown) => {
       console.error('CLI response failed', error);
     });
   });
-  const connection = await invoke<Partial<CliConnection>>('bridge_ready');
-  if (connection.cliPath && connection.dataDir)
-    application.setCliConnection({
-      cliPath: connection.cliPath,
-      shell:
-        connection.shell ??
-        (connection.cliPath.endsWith('.exe') ? 'powershell' : 'posix'),
-      dataDir: connection.dataDir,
-    });
+  try {
+    const connection = await invoke<Partial<CliConnection>>('bridge_ready');
+    if (connection.cliPath && connection.dataDir)
+      application.setCliConnection({
+        cliPath: connection.cliPath,
+        shell:
+          connection.shell ??
+          (connection.cliPath.endsWith('.exe') ? 'powershell' : 'posix'),
+        dataDir: connection.dataDir,
+      });
+  } catch (error) {
+    try {
+      await Promise.resolve().then(unlisten);
+    } catch (cleanupError) {
+      console.error('CLI listener cleanup failed', cleanupError);
+    }
+    throw error;
+  }
   return unlisten;
 }
 

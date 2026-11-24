@@ -141,7 +141,7 @@ export class PageImages {
     dimension = pageImageDimension(sheet),
     signal?: AbortSignal,
   ): Promise<RasterLease> {
-    return this.request(sheet, dimension, signal, (entry) =>
+    return this.request(sheet, dimension, true, signal, (entry) =>
       entry.resource.lease(),
     );
   }
@@ -149,6 +149,7 @@ export class PageImages {
     return this.request(
       sheet,
       PAGE_PREVIEW_DIMENSION,
+      false,
       signal,
       (entry) => entry.resource.bytes,
     );
@@ -244,17 +245,17 @@ export class PageImages {
   private async request<T>(
     sheet: Sheet,
     dimension: number,
+    foreground: boolean,
     signal: AbortSignal | undefined,
     use: (entry: ImageEntry) => T | Promise<T>,
   ): Promise<T> {
     signal?.throwIfAborted();
     dimension = imageDimension(sheet, dimension);
-    const foreground = dimension !== PAGE_PREVIEW_DIMENSION;
     if (foreground) this.deferPreparation();
     const finish = this.recorder?.span('page.request', {
       pageId: sheet.id,
       dimension,
-      purpose: dimension <= PAGE_PREVIEW_DIMENSION ? 'preview' : 'selected',
+      purpose: foreground ? 'selected' : 'preview',
     });
     try {
       const key = pageImageKey(sheet, dimension),
@@ -646,7 +647,8 @@ export class PageImages {
         !inMemory &&
         this.store &&
         (await this.store.exists(key).catch(() => false)) &&
-        (await this.store.exists(previewKey).catch(() => false));
+        (key === previewKey ||
+          (await this.store.exists(previewKey).catch(() => false)));
       if (epoch !== this.epoch) return;
       if (inMemory) {
         const full = this.images.get(key),
@@ -657,7 +659,8 @@ export class PageImages {
         const job = this.job(sheet, pageImageDimension(sheet), true);
         const result = await job.promise;
         if (!(await job.saved)) throw new Error('Page image caching failed');
-        if (!result.preview) {
+        if (epoch !== this.epoch) return;
+        if (!result.preview && key !== previewKey) {
           const preview = this.job(sheet, PAGE_PREVIEW_DIMENSION, true);
           await preview.promise;
           if (!(await preview.saved))

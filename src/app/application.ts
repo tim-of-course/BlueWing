@@ -137,6 +137,7 @@ export class Application {
   > | null = null;
   private constructionRendererEpoch = 0;
   private projectPath: string | null = null;
+  private recentBrowserPath: string | null = null;
 
   constructor(readonly native: boolean) {
     this.messaging = new Messaging(messagingStorage(native));
@@ -168,8 +169,17 @@ export class Application {
     return takeoffProject(project, project.takeoffs[id] ? id : mainId(project));
   }
   private projectFor(id?: string): Project | null {
+    if (!id) return this.project;
     const project = this.session?.project;
-    return project && id ? takeoffProject(project, id) : this.project;
+    return project ? takeoffProject(project, id) : null;
+  }
+  get recentBrowserProject(): string | null {
+    if (this.recentBrowserPath) return this.recentBrowserPath;
+    try {
+      return localStorage.getItem('bluewing.lastProject');
+    } catch {
+      return null;
+    }
   }
   calculate() {
     if (!this.session) throw new Error('Open or create a project first');
@@ -411,7 +421,7 @@ export class Application {
           request.origin === 'cli' ? this.cliTakeoffId : this.activeTakeoffId;
         request.takeoffId ??=
           selected && root.takeoffs[selected] ? selected : mainId(root);
-        requireTakeoff(this.session.project, request.takeoffId);
+        requireTakeoff(root, request.takeoffId);
       }
 
       let data: unknown;
@@ -929,8 +939,14 @@ export class Application {
               await this.messaging.bind(project.id);
               this.attach(project);
               this.projectPath = path;
-              if (!this.native)
-                localStorage.setItem('bluewing.lastProject', path);
+              if (!this.native) {
+                this.recentBrowserPath = path;
+                try {
+                  localStorage.setItem('bluewing.lastProject', path);
+                } catch {
+                  // Device preferences are optional.
+                }
+              }
               data = project;
             } catch (error) {
               await this.storage.close();
@@ -1119,10 +1135,11 @@ export class Application {
       default:
         throw new Error(`Unknown performance command ${request.name}`);
     }
+    const observation = this.session?.observation;
     return {
       data,
-      projectId: this.project?.id ?? null,
-      revision: this.project?.revision ?? null,
+      projectId: observation?.projectId ?? null,
+      revision: observation?.expectedRevision ?? null,
     };
   }
 

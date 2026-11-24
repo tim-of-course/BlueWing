@@ -760,7 +760,7 @@ export function createWorkspace(
     async openProject() {
       const path = app.native
         ? await chooseProject(false)
-        : localStorage.getItem('bluewing.lastProject');
+        : (app.recentBrowserProject ?? recentProjects()[0]?.path);
       if (!path && !app.native)
         throw new Error('No saved browser project. Create a project first.');
       if (path) await openPath(path);
