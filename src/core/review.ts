@@ -1,6 +1,6 @@
 import type { Assignment, Point, Project } from './types';
 import { resolveConstruction } from './applied-assemblies';
-import type { ConstructionData } from './construction-types';
+import type { ConstructionData, Wall } from './construction-types';
 
 export interface SourceReference {
   kind: 'geometry' | 'wall' | 'opening' | 'assembly' | 'header' | 'ceiling';
@@ -135,7 +135,52 @@ function fingerprint(
   const sources: SourceReference[] = [target];
   const levels = new Set<string>();
   const related: unknown[] = [entity];
+  const sizes = project.standardSizes;
+  const includeWallStock = (wall: Wall): void => {
+    if (wall.stud.stockLength === undefined)
+      related.push(project.allowSpecialOrderStuds, sizes.specialOrderMinimum);
+    if (
+      wall.stud.stockLength === undefined ||
+      (wall.kickers?.enabled &&
+        wall.kickers.cutLength !== undefined &&
+        wall.kickers.member.stockLength === undefined)
+    )
+      related.push([...sizes.studLengths].sort((a, b) => a - b));
+    if (wall.track.stockLength === undefined)
+      related.push(Math.min(...sizes.trackLengths));
+    for (const finish of wall.finishes ?? []) {
+      const board = finish.board;
+      if (board)
+        related.push(
+          sizes.sheets.filter(
+            (sheet) =>
+              sheet.width === (board.width ?? 4) &&
+              (board.hangDirection !== 'horizontal' ||
+                sheet.length === (board.length ?? 12)),
+          ),
+        );
+      if (finish.battProduct !== undefined)
+        related.push(
+          sizes.batts.find((batt) => batt.name === finish.battProduct)
+            ?.coverage ?? finish.packageSize,
+        );
+    }
+  };
+  const includeCeilingStock = (
+    ceiling: ConstructionData['ceilings'][string],
+  ): void => {
+    const board = ceiling.board;
+    if (board && !ceiling.grid)
+      related.push(
+        sizes.sheets.some(
+          (sheet) =>
+            sheet.width === (board.width ?? 4) &&
+            sheet.length === (board.length ?? 12),
+        ),
+      );
+  };
   const includedWalls = new Set<string>();
+  const includedOpeningTraces = new Set<string>();
   const includeWall = (id: string): void => {
     if (includedWalls.has(id)) return;
     const wall = construction.walls[id];
@@ -156,21 +201,38 @@ function fingerprint(
         sources.push({ kind: 'header', id: opening.headerId });
       }
     }
+    // Finishes subtract openings from all wall applications on the trace.
+    if (wall.finishes?.length && !includedOpeningTraces.has(wall.geometryId)) {
+      includedOpeningTraces.add(wall.geometryId);
+      for (const other of prepared.walls.get(wall.geometryId) ?? [])
+        if (prepared.openings.has(other.id)) includeWall(other.id);
+    }
   };
-  if (target.kind === 'wall') includeWall(target.id);
+  const includeReviewedWall = (id: string): void => {
+    includeWall(id);
+    const wall = construction.walls[id];
+    if (wall) includeWallStock(wall);
+  };
+  if (target.kind === 'wall') includeReviewedWall(target.id);
   if (target.kind === 'opening') {
     const opening = construction.openings[target.id];
-    if (opening) includeWall(opening.wallId);
+    if (opening) includeReviewedWall(opening.wallId);
   }
   if (target.kind === 'geometry') {
     geometryIds.add(target.id);
     for (const wall of prepared.walls.get(target.id) ?? [])
-      includeWall(wall.id);
-    related.push(...(prepared.ceilings.get(target.id) ?? []));
+      includeReviewedWall(wall.id);
+    for (const ceiling of prepared.ceilings.get(target.id) ?? []) {
+      related.push(ceiling);
+      includeCeilingStock(ceiling);
+    }
   }
   if (target.kind === 'ceiling') {
     const ceiling = construction.ceilings[target.id];
-    if (ceiling) geometryIds.add(ceiling.geometryId);
+    if (ceiling) {
+      geometryIds.add(ceiling.geometryId);
+      includeCeilingStock(ceiling);
+    }
   }
   for (const id of geometryIds)
     for (const ceiling of prepared.ceilings.get(id) ?? [])
