@@ -20,7 +20,7 @@ function request<T>(operation: IDBRequest<T>): Promise<T> {
   });
 }
 function completion(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
+  const done = new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => {
       resolve();
     };
@@ -31,7 +31,22 @@ function completion(transaction: IDBTransaction): Promise<void> {
       /* onabort reports transaction failure. */
     };
   });
+  // A request can fail before the caller reaches its await of this promise.
+  void done.catch(() => undefined);
+  return done;
 }
+
+async function abort(transaction: IDBTransaction, done: Promise<void>) {
+  if (transaction.error === null) {
+    try {
+      transaction.abort();
+    } catch {
+      /* The transaction has already finished. */
+    }
+  }
+  await done.catch(() => undefined);
+}
+
 interface StoredMetadata {
   project?: ReturnType<typeof metadata>;
 }
@@ -47,25 +62,28 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
         opening.result.createObjectStore(store);
     };
     const database = await request(opening);
-    const transaction = database.transaction('projects', 'readwrite');
-    const done = completion(transaction);
     try {
-      const store = transaction.objectStore('projects');
-      const existing: unknown = await request(store.get(path));
-      if (create) {
-        if (existing !== undefined) throw new Error('Project already exists');
-        await request(store.add({}, path));
-      } else if (existing === undefined)
-        throw new Error('Project does not exist');
-      await done;
-      this.database = database;
-      this.path = path;
+      const transaction = database.transaction('projects', 'readwrite');
+      const done = completion(transaction);
+      try {
+        const store = transaction.objectStore('projects');
+        const existing: unknown = await request(store.get(path));
+        if (create) {
+          if (existing !== undefined) throw new Error('Project already exists');
+          await request(store.add({}, path));
+        } else if (existing === undefined)
+          throw new Error('Project does not exist');
+        await done;
+      } catch (error) {
+        await abort(transaction, done);
+        throw error;
+      }
     } catch (error) {
-      transaction.abort();
-      await done.catch(() => undefined);
       database.close();
       throw error;
     }
+    this.database = database;
+    this.path = path;
   }
   private transaction(
     mode: IDBTransactionMode,
@@ -155,14 +173,7 @@ export class BrowserStorage extends StagedStorage implements ProjectStorage {
       await done;
       this.discardStagedAssets();
     } catch (error) {
-      if (transaction.error === null) {
-        try {
-          transaction.abort();
-        } catch {
-          /* Already aborted. */
-        }
-      }
-      await done.catch(() => undefined);
+      await abort(transaction, done);
       throw error;
     }
   }
