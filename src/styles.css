@@ -15,6 +15,12 @@ fieldset {
   border-radius: 4px;
   padding: 12px;
 }
+.panel-fieldset {
+  min-inline-size: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
 legend {
   color: #94a3b8;
   font-size: 11px;

@@ -642,11 +642,7 @@ export default function ConstructionEditor(props: {
     }
   }
   return (
-    <fieldset
-      class="stack"
-      disabled={saving()}
-      style={{ border: 0, margin: 0, padding: 0 }}
-    >
+    <fieldset class="stack panel-fieldset" disabled={saving()}>
       <div class="panel-heading">
         <div>
           <h2>Construction</h2>
