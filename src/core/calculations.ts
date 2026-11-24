@@ -725,10 +725,14 @@ export function pieceSchedule(
         const geometry = project.geometries[source.geometryId];
         const groupId = source.groupId ?? output.groupId;
         const recipeId = source.recipeId ?? output.recipeId;
+        const modeling = source.pieceId
+          ? ('modeled' as const)
+          : output.modeling;
         return {
           ...common,
           outputId: source.outputId ?? output.outputId,
-          recordType: output.modeling === 'estimate' ? 'estimate' : 'installed',
+          modeling,
+          recordType: modeling === 'estimate' ? 'estimate' : 'installed',
           sheet: project.sheets[geometry?.sheetId ?? '']?.name ?? '',
           geometryId: source.geometryId,
           location: geometry?.name ?? source.geometryId,

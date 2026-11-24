@@ -267,6 +267,75 @@ void test('first-fit descending reuses offcuts independent of cut order', () => 
   assert.equal(packedStickCount([0.1, 0.1, 0.1], 0.3), 1);
 });
 
+void test('a pooled track order retains modeled and estimated piece labels', () => {
+  const { project, second, track } = twoWallTypes();
+  const originalOrder = calculateProject(project).outputs.find(
+    (output) => output.materialId === track.materialId,
+  );
+  assert.ok(originalOrder?.quantityKey);
+  project.recipes.estimate = {
+    id: 'estimate',
+    name: 'Track estimate',
+    category: second.category ?? '',
+    geometryKinds: ['path'],
+    inputs: [{ name: 'stockLength', type: 'number', unit: 'ft', default: 10 }],
+    outputs: [
+      {
+        id: 'track',
+        name: 'Track',
+        materialId: track.materialId,
+        unit: 'ea',
+        formula: '2',
+        allowance: { wastePercent: 5 },
+        piece: {
+          role: 'Track',
+          cutLength: { formula: 'length', unit: 'ft' },
+          stockLength: { formula: 'stockLength', unit: 'ft' },
+        },
+      },
+    ],
+  };
+  project.assignments.estimate = {
+    ...applied(project),
+    id: 'estimate',
+    recipeId: 'estimate',
+  };
+  validateProject(project);
+
+  const result = calculateProject(project);
+  const orders = result.outputs.filter(
+    (output) => output.materialId === track.materialId,
+  );
+  assert.deepEqual(
+    orders.map((order) => order.quantityKey),
+    [originalOrder.quantityKey],
+  );
+  const order = orders[0];
+  assert.ok(order);
+  assert.equal(order.modeling, 'estimate');
+  assert.equal(order.baseAmount, 6);
+  assert.equal(order.packedCount, 4);
+  near(order.adjustedAmount, 4.2);
+  assert.equal(order.purchasedAmount, 5);
+  near(order.purchasedLength?.value, 50);
+
+  const schedule = pieceSchedule(project, result).filter(
+    (row) => row.materialId === track.materialId,
+  );
+  const modeled = schedule.filter((row) => row.pieceId);
+  assert.equal(modeled.length, 4);
+  for (const row of modeled) {
+    assert.equal(row.modeling, 'modeled');
+    assert.equal(row.recordType, 'installed');
+    assert.equal(row.quantity, 1);
+  }
+  const estimate = schedule.find((row) => row.assignmentId === 'estimate');
+  assert.equal(estimate?.modeling, 'estimate');
+  assert.equal(estimate.recordType, 'estimate');
+  assert.equal(estimate.quantity, 2);
+  assert.equal(schedule.at(-1)?.purchasedCount, 5);
+});
+
 void test('two wall types share one track order and retain their own installed quantities', () => {
   const { project, track } = twoWallTypes();
   const result = calculateProject(project);

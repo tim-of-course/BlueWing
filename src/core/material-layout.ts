@@ -573,7 +573,7 @@ export function generateMaterialLayout(
     if (spec.stockLength !== undefined && cutLength > spec.stockLength + EPS)
       diagnostic(
         'stock-shortfall',
-        `${application.id}/${id}: cut ${String(cutLength)} m exceeds stock ${String(spec.stockLength)} m`,
+        `${application.id}/${id}: cut ${String(cutLength)} ft exceeds stock ${String(spec.stockLength)} ft`,
       );
     return true;
   };
