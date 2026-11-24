@@ -221,9 +221,11 @@ void test('optional steel wall kickers rise at 45 degrees and share packed stock
       16,
     );
     assignment.wallOverrides.kickers = { enabled: true, cutLength: 21 };
+    const shortfall = order();
     assert.ok(
-      order().model.diagnostics.some((d) => d.code === 'stock-shortfall'),
+      shortfall.model.diagnostics.some((d) => d.code === 'stock-shortfall'),
     );
+    assert.equal(shortfall.complete, false);
     assignment.wallOverrides.kickers.cutLength = 4;
     assignment.wallOverrides.kickers.spacing = 10;
     assert.equal(
