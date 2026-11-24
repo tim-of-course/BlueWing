@@ -134,6 +134,78 @@ async function cappedExport() {
   }
 }
 
+async function fractionalExport() {
+  const bytes = vectorPdf();
+  const recorder = new PerformanceRecorder();
+  const documents = new PdfDocuments(
+    () => Promise.resolve(bytes.slice()),
+    recorder,
+  );
+  try {
+    const [sheet] = await documents.import('export', 'Export.pdf', bytes);
+    if (!sheet) throw new Error('Missing export fixture sheet');
+    const project = createProject('Export');
+    project.sheets[sheet.id] = sheet;
+    const options = {
+      sheetId: sheet.id,
+      bounds: { x: 0.25, y: 10.5, width: 38.25, height: 28.25 },
+      maxDimension: 640.25,
+      annotations: [
+        {
+          points: [
+            { x: 10, y: 20 },
+            { x: 35, y: 30 },
+          ],
+          color: '#00ff00',
+          label: 'Detail',
+        },
+      ],
+    };
+    recorder.start();
+    const actual = await renderImage(project, documents, options);
+    const workerEvents = recorder
+      .report()
+      .events.filter((event) => event.name.startsWith('pdf.worker.'))
+      .map((event) => event.name);
+
+    // Replay the old export with its original, unrounded worker request.
+    documents.renderPixels = async (sheet, bounds) => {
+      const raster = await documents.rasterRegion(
+        sheet,
+        bounds,
+        options.maxDimension,
+      );
+      raster.previewBitmap?.close();
+      return raster;
+    };
+    const expected = await renderImage(project, documents, options);
+    const decode = (bytes: Uint8Array) =>
+      createImageBitmap(
+        new Blob([bytes.slice().buffer], { type: 'image/png' }),
+      );
+    const actualBitmap = await decode(actual.bytes);
+    try {
+      const expectedBitmap = await decode(expected.bytes);
+      try {
+        return {
+          metadata: actual.metadata,
+          expectedMetadata: expected.metadata,
+          dimensions: [actualBitmap.width, actualBitmap.height],
+          expectedDimensions: [expectedBitmap.width, expectedBitmap.height],
+          pixels: difference(buffer(actualBitmap), buffer(expectedBitmap)),
+          workerEvents,
+        };
+      } finally {
+        expectedBitmap.close();
+      }
+    } finally {
+      actualBitmap.close();
+    }
+  } finally {
+    await documents.clear();
+  }
+}
+
 async function singleImageClarity() {
   const bytes = planClarityPdf();
   const documents = new PdfDocuments(() => Promise.resolve(bytes.slice()));
@@ -1206,6 +1278,7 @@ async function fidelity(fixture: FidelityFixture, rotation = 90, userUnit = 1) {
 
 const harness = {
   cappedExport,
+  fractionalExport,
   singleImageClarity,
   nameCache,
   backgroundPause,

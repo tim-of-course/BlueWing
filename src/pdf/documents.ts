@@ -1,7 +1,7 @@
 import type { Sheet } from '../core/types';
 import type { AssetRange } from '../platform/storage-model';
 import type { PerformanceRecorder } from '../performance/recorder';
-import type { RasterImage } from './worker-protocol';
+import type { RasterImage, RasterPixels } from './worker-protocol';
 import { PdfWorkerClient } from './worker-client';
 
 interface LoadedDocument {
@@ -178,6 +178,27 @@ export class PdfDocuments {
     );
   }
 
+  renderPixels(
+    sheet: Sheet,
+    bounds: { x: number; y: number; width: number; height: number },
+    maxDimension: number,
+    signal?: AbortSignal,
+    paused?: () => boolean,
+  ): Promise<RasterPixels> {
+    const finish = this.recorder?.span('pdf.raster.request', {
+      pageId: sheet.id,
+      dimension: maxDimension,
+      priority: 100,
+    });
+    return this.useDocument(
+      sheet.assetId,
+      (worker) =>
+        worker.renderPixels(sheet, bounds, maxDimension, signal, paused),
+      undefined,
+      signal,
+    ).finally(() => finish?.());
+  }
+
   async renderRegion(
     sheet: Sheet,
     bounds: { x: number; y: number; width: number; height: number },
@@ -185,18 +206,13 @@ export class PdfDocuments {
     signal?: AbortSignal,
     paused?: () => boolean,
   ): Promise<HTMLCanvasElement> {
-    const finish = this.recorder?.span('pdf.raster.request', {
-      pageId: sheet.id,
-      dimension: maxDimension,
-      priority: 100,
-    });
-    const result = await this.useDocument(
-      sheet.assetId,
-      (worker) =>
-        worker.renderPixels(sheet, bounds, maxDimension, signal, paused),
-      undefined,
+    const result = await this.renderPixels(
+      sheet,
+      bounds,
+      maxDimension,
       signal,
-    ).finally(() => finish?.());
+      paused,
+    );
     try {
       signal?.throwIfAborted();
       const canvas = document.createElement('canvas');

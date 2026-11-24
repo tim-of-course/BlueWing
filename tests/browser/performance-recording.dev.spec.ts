@@ -30,7 +30,7 @@ test('performance recording stops during queued PDF work and exports the same re
     // Hold an actual export inside the ordinary application queue. Recording
     // commands must still complete before this barrier is released.
     // eslint-disable-next-line @typescript-eslint/unbound-method
-    const original = PdfDocuments.prototype.rasterRegion;
+    const original = PdfDocuments.prototype.renderPixels;
     let release!: () => void;
     const pending = new Promise<void>((resolve) => {
       release = resolve;
@@ -39,10 +39,10 @@ test('performance recording stops during queued PDF work and exports the same re
       performanceRenderStarted: false,
       releasePerformanceRender: release,
     });
-    PdfDocuments.prototype.rasterRegion = async function (...args) {
+    PdfDocuments.prototype.renderPixels = async function (...args) {
       Object.assign(window, { performanceRenderStarted: true });
       await pending;
-      PdfDocuments.prototype.rasterRegion = original;
+      PdfDocuments.prototype.renderPixels = original;
       return original.apply(this, args);
     };
   });

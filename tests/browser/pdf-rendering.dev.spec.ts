@@ -23,6 +23,21 @@ test('exports above the output limit keep the complete plan and aligned overlays
   expect(errors).toEqual([]);
 });
 
+test('fractional exports match encoded plan pixels and coordinates without worker PNG encoding', async ({
+  page,
+}) => {
+  await page.goto('/tests/browser/pdf-rendering-harness.html');
+  const result = await page.evaluate(() =>
+    window.pdfRendering.fractionalExport(),
+  );
+  expect(result.dimensions).toEqual([641, 473]);
+  expect(result.dimensions).toEqual(result.expectedDimensions);
+  expect(result.metadata).toEqual(result.expectedMetadata);
+  expect(result.pixels.mean).toBe(0);
+  expect(result.workerEvents).toContain('pdf.worker.raster');
+  expect(result.workerEvents).not.toContain('pdf.worker.encoded');
+});
+
 test('a 24 by 36-inch plan keeps one 200 DPI image with neutral antialiased text and colored markup', async ({
   page,
 }) => {

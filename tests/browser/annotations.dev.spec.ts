@@ -2,8 +2,49 @@ import { readFile } from 'node:fs/promises';
 import type { Project } from '../../src/core/types';
 import { expect, test } from '@playwright/test';
 import type { SheetAnnotation } from '../../src/core/annotations';
-import { cli, startWingmanProject } from './wingman';
+import { cli, mutate, startWingmanProject } from './wingman';
 import { drawWall, pagePoint } from './takeoff';
+
+test('snippet.render downloads the cropped PNG with matching coordinates', async ({
+  page,
+}) => {
+  await startWingmanProject(page, true);
+  const project = (await cli<Project>(page, 'project.inspect')).response.data;
+  const [sheet] = Object.values(project.sheets);
+  if (!sheet) throw new Error('Missing snippet fixture sheet');
+  const bounds = { x: 30.5, y: 40.25, width: 120, height: 60 };
+  await mutate(page, 'snippet.put', {
+    id: 'detail',
+    name: 'Detail',
+    sheetId: sheet.id,
+    bounds,
+    geometryIds: [],
+    sources: [],
+    annotations: [],
+    note: '',
+  });
+  const download = page.waitForEvent('download');
+  const maxDimension = 200.25;
+  const result = await cli(page, 'snippet.render', {
+    id: 'detail',
+    path: 'detail.png',
+    maxDimension,
+  });
+  expect(result.exitCode, JSON.stringify(result.response)).toBe(0);
+  const path = await (await download).path();
+  if (!path) throw new Error('Missing rendered snippet');
+  const png = await readFile(path);
+  expect(png.subarray(12, 16).toString()).toBe('IHDR');
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([201, 101]);
+  const scale = maxDimension / bounds.width;
+  expect(result.response.data).toMatchObject({
+    snippetId: 'detail',
+    bounds,
+    width: 201,
+    height: 101,
+    pageToPixel: [scale, 0, 0, scale, -bounds.x * scale, -bounds.y * scale],
+  });
+});
 
 test('permanent annotations draw, edit, hide and render independently of takeoff selection', async ({
   page,
