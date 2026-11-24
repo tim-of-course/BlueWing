@@ -28,8 +28,11 @@ export default function ReviewPanel(props: {
   const [dirty, setDirty] = createSignal(false);
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal('');
-  const [image, setImage] = createSignal('');
-  const [picking, setPicking] = createSignal(false);
+  const [image, setImage] = createSignal<{
+    src: string;
+    bounds: PlanSnippet['bounds'];
+    picking: boolean;
+  }>();
   const [loading, setLoading] = createSignal(false);
   const [annotation, setAnnotation] = createSignal('');
   const [filter, setFilter] = createSignal('');
@@ -102,10 +105,11 @@ export default function ReviewPanel(props: {
       value.notify?.(value.dirty);
     },
   );
-  function run(action: () => Promise<unknown>) {
+  function run(action: () => Promise<unknown>, shouldReport = () => true) {
     const report = props.onError;
     setError('');
     void action().catch((cause: unknown) => {
+      if (!shouldReport()) return;
       const message = cause instanceof Error ? cause.message : String(cause);
       setError(message);
       report(message);
@@ -192,7 +196,16 @@ export default function ReviewPanel(props: {
       setTab('snippets');
       begin(snippet);
     }
+    return () => {
+      imageRequest++;
+    };
   });
+  function invalidatePreview() {
+    imageRequest++;
+    setLoading(false);
+    setImage(undefined);
+    corner = undefined;
+  }
   function begin(snippet?: PlanSnippet) {
     const project = props.controller.project();
     const sheet = project?.sheets[props.controller.activeSheetId() ?? ''];
@@ -236,52 +249,61 @@ export default function ReviewPanel(props: {
     );
     expected = props.controller.observe();
     setDirty(!snippet);
-    setImage('');
-    setPicking(false);
-    imageRequest++;
+    invalidatePreview();
   }
-  async function preview(full = false) {
+  function preview(full = false) {
+    const controller = props.controller;
     const snippet = draft();
-    const project = props.controller.project();
+    const project = controller.project();
     if (!snippet || !project) return;
-    const request = ++imageRequest;
+    invalidatePreview();
+    const request = imageRequest;
     setLoading(true);
-    try {
-      if (full) {
-        const sheet = project.sheets[snippet.sheetId];
-        if (!sheet) throw new Error('Sheet not found');
-        const canvas = await props.controller.renderSheet(sheet, 1200);
+    run(
+      async () => {
         try {
-          if (request === imageRequest) {
-            setImage(canvas.toDataURL('image/png'));
-            setPicking(true);
+          if (full) {
+            const sheet = project.sheets[snippet.sheetId];
+            if (!sheet) throw new Error('Sheet not found');
+            const bounds = {
+              x: 0,
+              y: 0,
+              width: sheet.width,
+              height: sheet.height,
+            };
+            const canvas = await controller.renderSheet(sheet, 1200);
+            try {
+              if (request === imageRequest) {
+                setImage({
+                  src: canvas.toDataURL('image/png'),
+                  bounds,
+                  picking: true,
+                });
+              }
+            } finally {
+              canvas.width = canvas.height = 0;
+            }
+          } else {
+            const bounds = { ...snippet.bounds };
+            const src = await controller.renderSnippet(snippet);
+            if (request === imageRequest)
+              setImage({ src, bounds, picking: false });
           }
         } finally {
-          canvas.width = canvas.height = 0;
+          if (request === imageRequest) setLoading(false);
         }
-      } else {
-        const result = await props.controller.renderSnippet(snippet);
-        if (request === imageRequest) {
-          setImage(result);
-          setPicking(false);
-        }
-      }
-    } finally {
-      if (request === imageRequest) setLoading(false);
-    }
+      },
+      () => request === imageRequest,
+    );
   }
   function imagePoint(event: PointerEvent) {
-    const image =
+    const element =
       event.currentTarget instanceof HTMLElement
         ? event.currentTarget.querySelector('img')
         : null;
-    const rect = image?.getBoundingClientRect();
-    const snippet = draft();
-    if (!rect || !snippet) return undefined;
-    const sheet = props.controller.project()?.sheets[snippet.sheetId];
-    const bounds = picking()
-      ? { x: 0, y: 0, width: sheet?.width ?? 1, height: sheet?.height ?? 1 }
-      : snippet.bounds;
+    const rect = element?.getBoundingClientRect();
+    const bounds = image()?.bounds;
+    if (!rect?.width || !rect.height || !bounds) return undefined;
     return {
       x:
         bounds.x +
@@ -527,8 +549,7 @@ export default function ReviewPanel(props: {
                         geometryIds: [],
                         annotations: [],
                       });
-                      setImage('');
-                      setPicking(false);
+                      invalidatePreview();
                     }}
                   >
                     <For
@@ -657,7 +678,7 @@ export default function ReviewPanel(props: {
                     type="button"
                     disabled={loading()}
                     onClick={() => {
-                      run(() => preview(true));
+                      preview(true);
                     }}
                   >
                     Pick region on sheet
@@ -666,7 +687,7 @@ export default function ReviewPanel(props: {
                     type="button"
                     disabled={loading()}
                     onClick={() => {
-                      run(() => preview());
+                      preview();
                     }}
                   >
                     Preview snippet
@@ -677,7 +698,7 @@ export default function ReviewPanel(props: {
                 </Show>
                 <Show when={image()}>
                   <p class="hint">
-                    {picking()
+                    {image()?.picking
                       ? 'Drag across the plan to choose a crop. You can also enter bounds above.'
                       : 'Enter a callout below, then click its position in the preview.'}
                   </p>
@@ -695,7 +716,7 @@ export default function ReviewPanel(props: {
                       const start = corner;
                       corner = undefined;
                       if (saving() || !end || !start) return;
-                      if (picking()) {
+                      if (image()?.picking) {
                         const width = Math.abs(end.x - start.x),
                           height = Math.abs(end.y - start.y);
                         if (width > 1 && height > 1) {
@@ -708,8 +729,7 @@ export default function ReviewPanel(props: {
                             },
                             annotations: [],
                           });
-                          setImage('');
-                          setPicking(false);
+                          invalidatePreview();
                         }
                       } else if (annotation().trim()) {
                         update({
@@ -728,7 +748,7 @@ export default function ReviewPanel(props: {
                   >
                     <img
                       class="snippet-image"
-                      src={image()}
+                      src={image()?.src}
                       alt="Highlighted plan snippet preview"
                       draggable="false"
                     />
@@ -796,8 +816,7 @@ export default function ReviewPanel(props: {
                     onClick={() => {
                       setDraft(null);
                       setDirty(false);
-                      setImage('');
-                      imageRequest++;
+                      invalidatePreview();
                     }}
                   >
                     Cancel edits
@@ -811,7 +830,8 @@ export default function ReviewPanel(props: {
                       ]
                     }
                     onClick={() => {
-                      run(async () => {
+                      runSave(async () => {
+                        invalidatePreview();
                         await props.controller.execute(
                           {
                             name: 'snippet.delete',
@@ -820,7 +840,6 @@ export default function ReviewPanel(props: {
                           expected,
                         );
                         setDraft(null);
-                        setImage('');
                       });
                     }}
                   >
