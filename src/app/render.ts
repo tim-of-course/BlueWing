@@ -1,6 +1,7 @@
 import { takeoffContext, deductionGeometryIds } from '../core/takeoffs';
 import type { Project } from '../core/types';
 import type { PdfDocuments } from '../pdf/documents';
+import { imageDimension } from '../pdf/image-resolution';
 import { paintAnnotation } from '../components/canvas/annotations';
 import { paintTakeoff } from '../components/canvas/paint';
 import type { PlanSnippet } from '../core/review';
@@ -61,12 +62,16 @@ export async function renderImage(
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   if (options.mode !== 'takeoff') {
-    const plan = await pdf.rasterRegion(sheet, bounds, dimension);
+    // Preserve the encoded raster's rounding before compositing the plan.
+    const plan = await pdf.renderPixels(
+      sheet,
+      bounds,
+      imageDimension(bounds, dimension),
+    );
     try {
       context.drawImage(plan.bitmap, 0, 0);
     } finally {
       plan.bitmap.close();
-      plan.previewBitmap?.close();
     }
   }
   context.scale(scale, scale);
