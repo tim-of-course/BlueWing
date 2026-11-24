@@ -6,7 +6,11 @@ import {
   calculateProject,
   exportQuantities,
 } from '../../src/core/calculations';
-import { takeoffProject, required } from '../../src/core/takeoffs';
+import {
+  mergeTakeoff,
+  takeoffProject,
+  required,
+} from '../../src/core/takeoffs';
 import { resolveConstruction } from '../../src/core/applied-assemblies';
 import { constructionSceneInput } from '../../src/three/scene';
 import { estiMakerTakeoff } from '../../src/core/quantity-presentation';
@@ -334,6 +338,41 @@ void test('copying floor-area to a phase or change order preserves its output ID
     assert.equal(output.wastePercent, 10);
     assert.ok(Math.abs(output.purchasedAmount - 9 * 1.1) < 1e-9);
   }
+});
+
+void test('projection and merge retain record order and assign unlisted records to Main', () => {
+  const project = executeCommand(createProject('Job'), {
+    name: 'takeoff.create',
+    payload: { id: 'phase', name: 'Phase', kind: 'phase' },
+  }).project;
+  for (const id of ['first', 'phase-group', 'unlisted', 'last']) {
+    project.groups[id] = { id, name: id, geometryIds: [] };
+  }
+  required(project.takeoffs.main).owned.groups = ['last', 'first'];
+  required(project.takeoffs.phase).owned.groups = ['phase-group'];
+
+  const before = takeoffProject(project, 'main');
+  assert.deepEqual(Object.keys(before.groups), ['first', 'unlisted', 'last']);
+  assert.deepEqual(Object.keys(takeoffProject(project, 'phase').groups), [
+    'phase-group',
+  ]);
+
+  const view = structuredClone(before);
+  Reflect.deleteProperty(view.groups, 'first');
+  view.groups.new = { id: 'new', name: 'New', geometryIds: [] };
+  mergeTakeoff(project, view, before);
+
+  assert.deepEqual(Object.keys(project.groups), [
+    'phase-group',
+    'unlisted',
+    'last',
+    'new',
+  ]);
+  assert.deepEqual(required(project.takeoffs.main).owned.groups, [
+    'unlisted',
+    'last',
+    'new',
+  ]);
 });
 
 void test('ownership rejects cross-takeoff writes/references and phases reject deductions', async () => {
